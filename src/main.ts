@@ -4,10 +4,10 @@ import { createAppApi } from './web/shared/create-app-api';
 import {
   applyTheme,
   isThemePreference,
+  THEME_STORAGE_KEY,
   type ThemePreference,
 } from './web/shared/theme';
 
-const THEME_STORAGE_KEY = 'cantina.theme';
 const app = document.querySelector<HTMLDivElement>('#app');
 
 if (!app) {
@@ -35,7 +35,7 @@ app.innerHTML = `
       <p class="intro">
         Uma base simples e confiável para a operação diária da cantina.
       </p>
-      <div class="status-card" aria-live="polite">
+      <div class="status-card" id="health-card" aria-live="polite">
         <span class="status-dot" aria-hidden="true"></span>
         <div>
           <strong id="health-status">Verificando ambiente…</strong>
@@ -100,9 +100,11 @@ void api
   .then((health) => {
     const status = document.querySelector('#health-status');
     const detail = document.querySelector('#health-detail');
-    if (status && detail) {
+    const card = document.querySelector('#health-card');
+    if (status && detail && card instanceof HTMLElement) {
       status.textContent = 'Ambiente local funcionando';
       detail.textContent = `${health.environment} • ${health.version} • API fake pronta`;
+      card.dataset.appAdapter = health.adapter;
     }
   })
   .catch(() => {

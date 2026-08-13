@@ -12,5 +12,11 @@ test-results/
 
 .clasp.json
 .clasprc.json
+*.pem
+*.key
+*credential*
+service-account*.json
+*.token
 *.log
+logs/
 .DS_Store

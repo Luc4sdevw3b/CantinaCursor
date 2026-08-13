@@ -8,6 +8,27 @@
       content="Tela inicial local da Cantina V2 AppScript"
     />
     <title>Cantina V2 AppScript</title>
+    <script>
+      (function () {
+        var key = 'cantina.theme';
+        var stored = localStorage.getItem(key);
+        var preference =
+          stored === 'light' || stored === 'dark' || stored === 'system'
+            ? stored
+            : 'system';
+        var systemDark = window.matchMedia(
+          '(prefers-color-scheme: dark)',
+        ).matches;
+        var resolved =
+          preference === 'system'
+            ? systemDark
+              ? 'dark'
+              : 'light'
+            : preference;
+        document.documentElement.dataset.themePreference = preference;
+        document.documentElement.dataset.theme = resolved;
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

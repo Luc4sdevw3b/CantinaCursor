@@ -11,6 +11,7 @@ describe('FakeAppApi', () => {
       version: APP_VERSION,
       environment: 'LOCAL',
       status: 'ready',
+      adapter: 'fake',
       spreadsheetConfigured: false,
     });
   });

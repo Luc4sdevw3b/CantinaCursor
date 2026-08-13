@@ -4,21 +4,26 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22",
+    "npm": ">=10"
   },
   "scripts": {
     "dev": "vite",
     "preview": "vite preview",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc -b",
     "test": "vitest run",
+    "test:watch": "vitest",
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
     "test:e2e:local": "playwright test --config playwright.config.ts",
-    "test:e2e:remote": "playwright test --config playwright.remote.config.ts"
+    "test:e2e:remote": "playwright test --config playwright.remote.config.ts",
+    "version:check": "node scripts/check-version.mjs",
+    "validate:skill": "node scripts/validate-skill.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

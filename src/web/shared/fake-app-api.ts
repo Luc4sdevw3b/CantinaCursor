@@ -6,6 +6,7 @@ const LOCAL_HEALTH: AppHealth = {
   version: APP_VERSION,
   environment: 'LOCAL',
   status: 'ready',
+  adapter: 'fake',
   spreadsheetConfigured: false,
 };
 

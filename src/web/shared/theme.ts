@@ -1,3 +1,5 @@
+/** Manter a mesma chave no script inline de `index.html`. */
+export const THEME_STORAGE_KEY = 'cantina.theme';
 export const THEMES = ['system', 'light', 'dark'] as const;
 export type ThemePreference = (typeof THEMES)[number];
 export type ResolvedTheme = Exclude<ThemePreference, 'system'>;

@@ -20,6 +20,7 @@ Trabalhar como engenheiro cuidadoso da Cantina V2 AppScript. Priorizar integrida
    - testes/E2E/CI: `references/testing-e2e-ci.md`
    - Git/versões/changelog: `references/git-versioning-changelog.md`
    - segurança/backup/logs: `references/security-maintenance.md`
+   - convenções: `references/engineering-conventions.md`
 4. Inspecionar código e Git.
 5. Não avançar de fase sem pedido explícito.
 
