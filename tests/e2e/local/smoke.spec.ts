@@ -805,4 +805,42 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
       }),
     ).toBeVisible();
   });
+
+  test('charges a sibling fiado on the authorized account', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click();
+    await page
+      .locator('#sale-student')
+      .selectOption({ label: 'Bruno Lima • 11' });
+    await page
+      .locator('#sale-account')
+      .selectOption({ label: 'Ana Souza • ~8' });
+    await page.locator('#sale-payment-kind').selectOption('fiado');
+    await page.locator('#sale-due-tomorrow').click();
+    await page.getByRole('button', { name: 'Confirmar venda' }).click();
+    await expect(
+      page.getByText(
+        'Bruno Lima • 11 • Coxinha • R$ 5,50 • Fiado • conta Ana Souza • ~8 • Sexta-feira • 14/08/26',
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await goToArea(page, 'Agenda');
+    await expect(
+      page
+        .locator('#agenda-upcoming')
+        .getByText('Ana Souza • ~8 • R$ 5,50 • Sexta-feira • 14/08/26', {
+          exact: true,
+        }),
+    ).toBeVisible();
+    await expect(
+      page.locator('#agenda-upcoming').getByText('Bruno Lima • 11', {
+        exact: false,
+      }),
+    ).toHaveCount(0);
+    await goToArea(page, 'Estoque');
+    await expect(page.getByText('Coxinha • 9', { exact: true })).toBeVisible();
+  });
 });

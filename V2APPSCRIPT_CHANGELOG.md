@@ -9,6 +9,37 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-13 16:55 — Implementada a Fase 20: venda na conta do irmão
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 20
+
+### Pedido / objetivo
+
+- Iniciar a Fase 20: autorização direcional para lançar na conta do irmão, usar crédito separado, revogar, consumidor diferente da conta cobrada.
+
+### Tentativa / implementação
+
+- Sem migration nova: `_sales.charged_student_id` e `_student_account_authorizations` já existiam. Schema continua 12.
+- `createSale` aceita `chargedStudentId`. Sem autorização `can_charge_account`, a venda é recusada. O crédito pessoal do irmão só entra com `can_use_account_credit`.
+- Seed: Bruno→Ana ~8 pode lançar, sem usar crédito. Showcase: fiado Coxinha do Bruno na conta da Ana; venda `Bruno Lima • 11 • Coxinha • R$ 5,50 • Fiado • conta Ana Souza • ~8 • Sexta-feira • 14/08/26`; agenda da Ana; crédito da Ana intacto se houver depósito.
+- UI: select **Conta** na venda, formulário **Autorizar irmão** e botão **Revogar**. Confirmar venda não muda de rótulo.
+
+### Resultado
+
+- Fase 20 concluída sobre o ambiente E2E isolado e o preview local.
+- Caixa físico é a Fase 21. Reservas reais e WhatsApp permanecem nas fases seguintes.
+
+### Diferenças do pedido
+
+- Na conta própria, o crédito pessoal de um irmão com `can_use_account_credit` também pode ser consumido no fiado, depois do crédito do próprio aluno.
+
+### Impacto técnico
+
+- `chargedStudentId` entra em `createSale`. Confirmar venda, Registrar pagamento e Registrar pagamento familiar não mudam de rótulo.
+
 ## 2026-08-13 16:45 — Implementada a Fase 19: pagamento familiar
 
 **Origem:** Pedido do usuário

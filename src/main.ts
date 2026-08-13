@@ -8,6 +8,7 @@ import type {
   InventoryBalanceItem,
   Product,
   Receivable,
+  SiblingAuthorization,
   StudentSummary,
 } from './web/shared/app-api';
 import { createAppApi } from './web/shared/create-app-api';
@@ -44,7 +45,7 @@ app.innerHTML = `
         <p class="eyebrow">Web App em preparação</p>
         <div class="hero-title-row">
           <h1 id="page-title">Cantina V2 AppScript</h1>
-          <span class="phase-badge">Fase 19</span>
+          <span class="phase-badge">Fase 20</span>
         </div>
         <p class="intro">
           Uma base simples e confiável para a operação diária da cantina.
@@ -138,6 +139,29 @@ app.innerHTML = `
       </form>
       <h2>Irmãos autorizados</h2>
       <ul id="authorizations-list"></ul>
+      <form id="sibling-auth-form">
+        <label>
+          Quem compra
+          <select id="sibling-consumer" required>
+            <option value="">Escolha o aluno</option>
+          </select>
+        </label>
+        <label>
+          Conta
+          <select id="sibling-account" required>
+            <option value="">Escolha a conta</option>
+          </select>
+        </label>
+        <label class="checkbox-label">
+          <input id="sibling-charge" type="checkbox" />
+          Lançar na conta
+        </label>
+        <label class="checkbox-label">
+          <input id="sibling-credit" type="checkbox" />
+          Usar crédito
+        </label>
+        <button type="submit">Autorizar irmão</button>
+      </form>
       <h2>Crédito do responsável</h2>
       <ul id="guardian-credit-links"></ul>
       <form id="guardian-credit-auth-form">
@@ -278,6 +302,12 @@ app.innerHTML = `
           Aluno
           <select id="sale-student">
             <option value="">Venda anônima</option>
+          </select>
+        </label>
+        <label id="sale-account-label" hidden>
+          Conta
+          <select id="sale-account">
+            <option value="">Própria conta</option>
           </select>
         </label>
         <label>
@@ -890,10 +920,54 @@ async function renderFamily(session: AppSession | null): Promise<void> {
     const item = document.createElement('li');
     const age = account ? ` • ${account.ageLabel}` : '';
     const credit = authorization.canUseAccountCredit ? ' e usar crédito' : '';
-    item.textContent = authorization.canChargeAccount
+    const label = document.createElement('span');
+    label.textContent = authorization.canChargeAccount
       ? `${authorization.consumerName} pode lançar na conta de ${authorization.accountName}${age}${credit}`
       : `${authorization.consumerName} pode usar crédito de ${authorization.accountName}${age}`;
+    const revoke = document.createElement('button');
+    revoke.type = 'button';
+    revoke.textContent = 'Revogar';
+    revoke.addEventListener('click', () => {
+      void api
+        .revokeSiblingAuthorization(authorization.id)
+        .then(() => api.getSession())
+        .then((current) =>
+          renderFamily(current).then(() => renderSales(current)),
+        )
+        .catch((error: unknown) => {
+          familyStatus.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível revogar a autorização.';
+        });
+    });
+    item.append(label, revoke);
     authorizationsList.append(item);
+  }
+
+  const siblingConsumer = document.querySelector('#sibling-consumer');
+  const siblingAccount = document.querySelector('#sibling-account');
+  for (const select of [siblingConsumer, siblingAccount]) {
+    if (!(select instanceof HTMLSelectElement)) {
+      continue;
+    }
+    const current = select.value;
+    const emptyLabel =
+      select.id === 'sibling-account' ? 'Escolha a conta' : 'Escolha o aluno';
+    select.replaceChildren();
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = emptyLabel;
+    select.append(empty);
+    for (const student of students.filter((item) => item.active)) {
+      const option = document.createElement('option');
+      option.value = student.id;
+      option.textContent = `${student.fullName} • ${student.ageLabel}`;
+      select.append(option);
+    }
+    if (current && students.some((item) => item.id === current)) {
+      select.value = current;
+    }
   }
 
   const authStudent = document.querySelector('#credit-auth-student');
@@ -1171,6 +1245,8 @@ const salesList = document.querySelector('#sales-list');
 const saleCartList = document.querySelector('#sale-cart-list');
 const saleProductSelect = document.querySelector('#sale-product');
 const saleStudentSelect = document.querySelector('#sale-student');
+const saleAccountSelect = document.querySelector('#sale-account');
+const saleAccountLabel = document.querySelector('#sale-account-label');
 const saleDiscountFields = document.querySelector('#sale-discount-fields');
 const pixCopyText = document.querySelector('#pix-copy-text');
 
@@ -1185,6 +1261,8 @@ interface CartLine {
 const cart: CartLine[] = [];
 let dueDateShortcuts: DueDateShortcuts | null = null;
 let openReceivables: Receivable[] = [];
+let saleStudents: StudentSummary[] = [];
+let saleAuthorizations: SiblingAuthorization[] = [];
 let familyStudents: StudentSummary[] = [];
 let familyLinksByGuardian = new Map<string, Set<string>>();
 let dueDateHistoryLabels: string[] = [];
@@ -1232,6 +1310,45 @@ function renderCart(): void {
   }
 }
 
+function fillSaleAccounts(): void {
+  if (!(saleAccountSelect instanceof HTMLSelectElement)) {
+    return;
+  }
+  const consumerId =
+    saleStudentSelect instanceof HTMLSelectElement
+      ? saleStudentSelect.value
+      : '';
+  const current = saleAccountSelect.value;
+  saleAccountSelect.replaceChildren();
+  const own = document.createElement('option');
+  own.value = '';
+  own.textContent = 'Própria conta';
+  saleAccountSelect.append(own);
+  const chargeable = saleAuthorizations.filter(
+    (item) =>
+      item.active &&
+      item.canChargeAccount &&
+      item.consumerStudentId === consumerId,
+  );
+  for (const item of chargeable) {
+    const student = saleStudents.find(
+      (entry) => entry.id === item.accountStudentId,
+    );
+    const option = document.createElement('option');
+    option.value = item.accountStudentId;
+    option.textContent = student
+      ? `${student.fullName} • ${student.ageLabel}`
+      : item.accountName;
+    saleAccountSelect.append(option);
+  }
+  if (current && chargeable.some((item) => item.accountStudentId === current)) {
+    saleAccountSelect.value = current;
+  }
+  if (saleAccountLabel instanceof HTMLElement) {
+    saleAccountLabel.hidden = !consumerId;
+  }
+}
+
 async function renderSales(session: AppSession | null): Promise<void> {
   if (
     !(salesPanel instanceof HTMLElement) ||
@@ -1250,20 +1367,27 @@ async function renderSales(session: AppSession | null): Promise<void> {
       pixCopyText.textContent = '';
     }
     cart.length = 0;
+    saleStudents = [];
+    saleAuthorizations = [];
     renderCart();
+    fillSaleAccounts();
     syncPaymentFields();
     return;
   }
 
   try {
-    const [products, students, sales, pix, shortcuts] = await Promise.all([
-      api.listProducts(),
-      api.listStudents(),
-      api.listSales(),
-      api.getPixCopyText(),
-      api.getDueDateShortcuts(),
-    ]);
+    const [products, students, sales, pix, shortcuts, authorizations] =
+      await Promise.all([
+        api.listProducts(),
+        api.listStudents(),
+        api.listSales(),
+        api.getPixCopyText(),
+        api.getDueDateShortcuts(),
+        api.listSiblingAuthorizations(),
+      ]);
     dueDateShortcuts = shortcuts;
+    saleStudents = students;
+    saleAuthorizations = authorizations;
     if (pixCopyText) {
       pixCopyText.textContent = pix.text;
     }
@@ -1289,6 +1413,7 @@ async function renderSales(session: AppSession | null): Promise<void> {
         saleStudentSelect.append(option);
       }
     }
+    fillSaleAccounts();
     salesStatus.textContent =
       sales.length === 0
         ? 'Nenhuma venda registrada ainda.'
@@ -1789,6 +1914,9 @@ async function renderAdjust(session: AppSession | null): Promise<void> {
 document
   .querySelector('#sale-payment-kind')
   ?.addEventListener('change', syncPaymentFields);
+document
+  .querySelector('#sale-student')
+  ?.addEventListener('change', fillSaleAccounts);
 
 document.querySelector('#sale-due-tomorrow')?.addEventListener('click', () => {
   if (dueDateShortcuts) {
@@ -1864,6 +1992,10 @@ document
       saleStudentSelect instanceof HTMLSelectElement
         ? saleStudentSelect.value || null
         : null;
+    const chargedStudentId =
+      saleAccountSelect instanceof HTMLSelectElement
+        ? saleAccountSelect.value || null
+        : null;
     const paymentKindSelect = document.querySelector('#sale-payment-kind');
     const pixAmountInput = document.querySelector('#sale-pix-amount');
     const cashAmountInput = document.querySelector('#sale-cash-amount');
@@ -1920,6 +2052,7 @@ document
     void api
       .createSale({
         consumerStudentId,
+        chargedStudentId: chargedStudentId || undefined,
         items: cart.map((line) => ({
           productId: line.productId,
           quantity: line.quantity,
@@ -2299,6 +2432,48 @@ document
             error instanceof Error
               ? error.message.replace(/^[A-Z_]+:\s*/, '')
               : 'Não foi possível devolver o crédito.';
+        }
+      });
+  });
+
+document
+  .querySelector('#sibling-auth-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const status = document.querySelector('#family-status');
+    const consumer = document.querySelector('#sibling-consumer');
+    const account = document.querySelector('#sibling-account');
+    const charge = document.querySelector('#sibling-charge');
+    const credit = document.querySelector('#sibling-credit');
+    if (
+      !(consumer instanceof HTMLSelectElement) ||
+      !(account instanceof HTMLSelectElement) ||
+      !(charge instanceof HTMLInputElement) ||
+      !(credit instanceof HTMLInputElement)
+    ) {
+      return;
+    }
+    if (!consumer.value || !account.value) {
+      if (status) {
+        status.textContent = 'Escolha quem compra e a conta.';
+      }
+      return;
+    }
+    void api
+      .authorizeSibling({
+        consumerStudentId: consumer.value,
+        accountStudentId: account.value,
+        canChargeAccount: charge.checked,
+        canUseAccountCredit: credit.checked,
+      })
+      .then(() => api.getSession())
+      .then((session) => renderFamily(session).then(() => renderSales(session)))
+      .catch((error: unknown) => {
+        if (status) {
+          status.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível autorizar o irmão.';
         }
       });
   });

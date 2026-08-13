@@ -5,7 +5,10 @@ import {
   siblingStudentIds,
 } from '../../src/domain/guardian-link';
 import { validateGuardianProfile } from '../../src/domain/guardian-profile';
-import { planSiblingAuthorization } from '../../src/domain/sibling-authorization';
+import {
+  planSiblingAuthorization,
+  resolveSaleCharge,
+} from '../../src/domain/sibling-authorization';
 
 const ANA = 'aaaaaaaa-bbbb-4ccc-8ddd-000000000001';
 const BRUNO = 'aaaaaaaa-bbbb-4ccc-8ddd-000000000002';
@@ -167,5 +170,41 @@ describe('guardians and siblings', () => {
       expect(needsGuardian(age.data, 18, true)).toBe(false);
       expect(needsGuardian(age.data, 8, false)).toBe(false);
     }
+  });
+
+  it('lets a sibling charge another account only with directional authorization', () => {
+    const authorization = {
+      consumerStudentId: BRUNO,
+      accountStudentId: ANA,
+      canChargeAccount: true,
+      canUseAccountCredit: false,
+      active: true,
+    };
+    expect(
+      resolveSaleCharge({
+        consumerStudentId: BRUNO,
+        chargedStudentId: ANA,
+        authorizations: [authorization],
+      }),
+    ).toEqual({
+      ok: true,
+      data: { chargedStudentId: ANA, useAccountCredit: false },
+    });
+    expect(
+      resolveSaleCharge({
+        consumerStudentId: ANA,
+        chargedStudentId: BRUNO,
+        authorizations: [authorization],
+      }).ok,
+    ).toBe(false);
+    expect(
+      resolveSaleCharge({
+        consumerStudentId: BRUNO,
+        authorizations: [authorization],
+      }),
+    ).toEqual({
+      ok: true,
+      data: { chargedStudentId: BRUNO, useAccountCredit: true },
+    });
   });
 });

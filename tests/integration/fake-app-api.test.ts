@@ -927,4 +927,109 @@ describe('FakeAppApi', () => {
       (await api.listCreditAccounts()).map((item) => item.summaryLabel),
     ).toContain('Maria Souza • mãe • R$ 2,00');
   });
+
+  it('charges a sibling account without using the sibling personal credit', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const coxinha = (await api.listProducts()).find(
+      (item) => item.name === 'Coxinha',
+    );
+    const students = await api.listStudents();
+    const ana = students.find(
+      (student) =>
+        student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+    );
+    const bruno = students.find((student) => student.fullName === 'Bruno Lima');
+    if (!coxinha || !ana || !bruno) {
+      throw new Error('conta de irmão local incompleta');
+    }
+
+    await api.depositPersonalCredit({
+      studentId: ana.id,
+      amountCents: 200,
+      method: 'pix',
+    });
+    const sale = await api.createSale({
+      consumerStudentId: bruno.id,
+      chargedStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: '2026-08-14' }],
+    });
+    expect(sale.summaryLabel).toBe(
+      'Bruno Lima • 11 • Coxinha • R$ 5,50 • Fiado • conta Ana Souza • ~8 • Sexta-feira • 14/08/26',
+    );
+    expect(
+      (await api.listReceivables()).upcoming.map((item) => item.summaryLabel),
+    ).toEqual(['Ana Souza • ~8 • R$ 5,50 • Sexta-feira • 14/08/26']);
+    expect(
+      (await api.listCreditAccounts()).map((item) => item.summaryLabel),
+    ).toContain('Ana Souza • ~8 • R$ 2,00');
+    await expect(
+      api.createSale({
+        consumerStudentId: ana.id,
+        chargedStudentId: bruno.id,
+        items: [{ productId: coxinha.id, quantity: 1 }],
+        paymentKind: 'fiado',
+        installments: [{ dueDate: '2026-08-14' }],
+      }),
+    ).rejects.toThrow('SALE_ACCOUNT_UNAUTHORIZED');
+  });
+
+  it('uses sibling personal credit only when that permission is on', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const coxinha = (await api.listProducts()).find(
+      (item) => item.name === 'Coxinha',
+    );
+    const students = await api.listStudents();
+    const ana = students.find(
+      (student) =>
+        student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+    );
+    const bruno = students.find((student) => student.fullName === 'Bruno Lima');
+    if (!coxinha || !ana || !bruno) {
+      throw new Error('crédito de irmão local incompleto');
+    }
+    const seeded = (await api.listSiblingAuthorizations()).find(
+      (item) =>
+        item.consumerStudentId === bruno.id &&
+        item.accountStudentId === ana.id &&
+        item.active,
+    );
+    if (!seeded) {
+      throw new Error('autorização Bruno→Ana ausente');
+    }
+    await api.revokeSiblingAuthorization(seeded.id);
+    await api.authorizeSibling({
+      consumerStudentId: bruno.id,
+      accountStudentId: ana.id,
+      canChargeAccount: true,
+      canUseAccountCredit: true,
+    });
+    await api.depositPersonalCredit({
+      studentId: ana.id,
+      amountCents: 200,
+      method: 'pix',
+    });
+    expect(
+      (
+        await api.createSale({
+          consumerStudentId: bruno.id,
+          chargedStudentId: ana.id,
+          items: [{ productId: coxinha.id, quantity: 1 }],
+          paymentKind: 'fiado',
+          installments: [{ dueDate: '2026-08-14' }],
+        })
+      ).summaryLabel,
+    ).toBe(
+      'Bruno Lima • 11 • Coxinha • R$ 5,50 • Fiado • conta Ana Souza • ~8 • crédito R$ 2,00 • Sexta-feira • 14/08/26',
+    );
+    expect((await api.listReceivables()).upcoming[0]?.summaryLabel).toBe(
+      'Ana Souza • ~8 • R$ 3,50 • Sexta-feira • 14/08/26',
+    );
+    expect(
+      (await api.listCreditAccounts()).map((item) => item.summaryLabel),
+    ).toContain('Ana Souza • ~8 • R$ 0,00');
+  });
 });

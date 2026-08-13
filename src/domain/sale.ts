@@ -455,6 +455,7 @@ export function saleSummaryLabel(input: {
   dueDateLabel?: string | null;
   creditLabel?: string | null;
   guardianCreditLabel?: string | null;
+  accountLabel?: string | null;
 }): string {
   const base = `${input.consumerLabel} • ${input.descriptions.join(', ')} • ${input.netLabel}`;
   const extras: string[] = [];
@@ -466,6 +467,9 @@ export function saleSummaryLabel(input: {
   }
   if (input.paymentKind === PAYMENT_FIADO) {
     extras.push('Fiado');
+  }
+  if (input.accountLabel) {
+    extras.push(`conta ${input.accountLabel}`);
   }
   if (input.creditLabel) {
     extras.push(`crédito ${input.creditLabel}`);

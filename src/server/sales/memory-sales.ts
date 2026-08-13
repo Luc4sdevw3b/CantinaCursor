@@ -22,6 +22,7 @@ import {
 } from '../../domain/civil-date';
 import { INVENTORY_SALE_KIND } from '../../domain/inventory';
 import { formatBrl } from '../../domain/money';
+import { resolveSaleCharge } from '../../domain/sibling-authorization';
 import {
   familyPaymentSummaryLabel,
   parsePaymentMethod,
@@ -863,6 +864,7 @@ export class MemorySales {
 
   createSale(input: {
     consumerStudentId?: string | null;
+    chargedStudentId?: string | null;
     items: SaleLineInput[];
     paymentKind: string;
     pixAmountCents?: unknown;
@@ -929,13 +931,29 @@ export class MemorySales {
       }
       consumerId = student.data.id;
     }
+    const authorizations = unwrap(this.roster.listSiblingAuthorizations());
+    const charge = resolveSaleCharge({
+      consumerStudentId: consumerId || null,
+      chargedStudentId: input.chargedStudentId,
+      authorizations,
+    });
+    if (!charge.ok) {
+      return err(charge.error);
+    }
+    const chargedId = charge.data.chargedStudentId;
     const totals = planSaleTotals(planned);
-    const usableGuardianCredits = consumerId
-      ? this.usableGuardianCredits(consumerId)
-      : [];
+    const personalSources = this.personalCreditSources(
+      consumerId,
+      chargedId,
+      charge.data.useAccountCredit,
+    );
+    const usableGuardianCredits =
+      chargedId && (chargedId === consumerId || charge.data.useAccountCredit)
+        ? this.usableGuardianCredits(chargedId)
+        : [];
     const creditBalanceCents =
-      input.paymentKind === PAYMENT_FIADO && consumerId
-        ? this.personalCreditBalance(consumerId)
+      input.paymentKind === PAYMENT_FIADO
+        ? personalSources.reduce((total, item) => total + item.balance, 0)
         : 0;
     const guardianCreditCents =
       input.paymentKind === PAYMENT_FIADO
@@ -954,7 +972,7 @@ export class MemorySales {
     }
     let installments: Array<{ due_date: string; amount_cents: string }> = [];
     if (settlements.data.paymentKind === PAYMENT_FIADO) {
-      if (!consumerId) {
+      if (!chargedId) {
         return err(FIADO_STUDENT_REQUIRED_ERROR);
       }
       const fiadoCents = settlements.data.rows
@@ -975,7 +993,7 @@ export class MemorySales {
     const sale: SaleRecord = {
       id: this.createId(),
       consumer_student_id: consumerId,
-      charged_student_id: consumerId,
+      charged_student_id: chargedId,
       status: SALE_STATUS_PAID,
       gross_total_cents: totals.gross_total_cents,
       discount_total_cents: totals.discount_total_cents,
@@ -1015,7 +1033,7 @@ export class MemorySales {
       const receivableId = this.createId();
       this.receivables.push({
         id: receivableId,
-        charged_student_id: consumerId,
+        charged_student_id: chargedId,
         source_sale_id: sale.id,
         due_date: installment.due_date,
         status: RECEIVABLE_STATUS_OPEN,
@@ -1040,21 +1058,31 @@ export class MemorySales {
     const guardianUsedCents = settlements.data.rows
       .filter((row) => row.kind === SETTLEMENT_GUARDIAN_CREDIT)
       .reduce((total, row) => total + Number(row.amount_cents), 0);
-    if (personalUsedCents > 0 && consumerId) {
-      const account = this.ensurePersonalCreditAccount(consumerId, now);
-      this.creditMovements.push({
-        credit_account_id: account.id,
-        kind: CREDIT_KIND_SALE,
-        amount_delta_cents: String(-personalUsedCents),
-        source_type: CREDIT_SOURCE_SALE,
-        source_id: sale.id,
-        student_id: consumerId,
-        created_by: LOCAL_ACTOR_ID,
-        created_at: now,
-        note: '',
-      });
+    if (personalUsedCents > 0) {
+      let leftover = personalUsedCents;
+      for (const item of personalSources) {
+        if (leftover <= 0) {
+          break;
+        }
+        const used = Math.min(item.balance, leftover);
+        if (used <= 0) {
+          continue;
+        }
+        this.creditMovements.push({
+          credit_account_id: item.account.id,
+          kind: CREDIT_KIND_SALE,
+          amount_delta_cents: String(-used),
+          source_type: CREDIT_SOURCE_SALE,
+          source_id: sale.id,
+          student_id: item.studentId,
+          created_by: LOCAL_ACTOR_ID,
+          created_at: now,
+          note: '',
+        });
+        leftover -= used;
+      }
     }
-    if (guardianUsedCents > 0 && consumerId) {
+    if (guardianUsedCents > 0) {
       let leftover = guardianUsedCents;
       for (const item of usableGuardianCredits) {
         if (leftover <= 0) {
@@ -1070,7 +1098,7 @@ export class MemorySales {
           amount_delta_cents: String(-used),
           source_type: CREDIT_SOURCE_SALE,
           source_id: sale.id,
-          student_id: consumerId,
+          student_id: chargedId,
           created_by: LOCAL_ACTOR_ID,
           created_at: now,
           note: '',
@@ -1163,9 +1191,47 @@ export class MemorySales {
       .reduce((total, item) => total + Number(item.amount_delta_cents), 0);
   }
 
-  private personalCreditBalance(studentId: string): number {
-    const account = this.findPersonalCreditAccount(studentId);
-    return account ? this.creditBalanceCents(account.id) : 0;
+  private personalCreditSources(
+    consumerId: string,
+    chargedId: string,
+    useAccountCredit: boolean,
+  ): Array<{
+    studentId: string;
+    account: CreditAccountRecord;
+    balance: number;
+  }> {
+    if (!chargedId || !consumerId) {
+      return [];
+    }
+    const studentIds: string[] = [];
+    if (chargedId === consumerId) {
+      studentIds.push(consumerId);
+      const authorizations = unwrap(this.roster.listSiblingAuthorizations());
+      for (const item of authorizations) {
+        if (
+          item.active &&
+          item.canUseAccountCredit &&
+          item.consumerStudentId === consumerId &&
+          !studentIds.includes(item.accountStudentId)
+        ) {
+          studentIds.push(item.accountStudentId);
+        }
+      }
+    } else if (useAccountCredit) {
+      studentIds.push(chargedId);
+    }
+    const sources = [];
+    for (const studentId of studentIds) {
+      const account = this.findPersonalCreditAccount(studentId);
+      if (!account) {
+        continue;
+      }
+      const balance = this.creditBalanceCents(account.id);
+      if (balance > 0) {
+        sources.push({ studentId, account, balance });
+      }
+    }
+    return sources;
   }
 
   private ensurePersonalCreditAccount(
@@ -1440,6 +1506,11 @@ export class MemorySales {
       const student = unwrap(this.roster.getStudent(sale.consumer_student_id));
       consumerLabel = `${student.fullName} • ${student.ageLabel}`;
     }
+    const accountLabel =
+      sale.charged_student_id &&
+      sale.charged_student_id !== sale.consumer_student_id
+        ? this.studentLabel(sale.charged_student_id)
+        : null;
     const dueDateLabel = dueDateLabelForDates(this.dueDatesForSale(sale.id));
     const netLabel = formatBrl(netTotalCents);
     const changeLabel = changeCents > 0 ? formatBrl(changeCents) : null;
@@ -1480,6 +1551,7 @@ export class MemorySales {
         dueDateLabel,
         creditLabel,
         guardianCreditLabel,
+        accountLabel,
       }),
       createdAt: sale.created_at,
     };

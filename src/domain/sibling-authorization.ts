@@ -107,6 +107,53 @@ export const AUTHORIZATION_NOT_FOUND_ERROR = {
   retryable: false,
 } as const;
 
+export const SALE_ACCOUNT_UNAUTHORIZED_ERROR = {
+  code: 'SALE_ACCOUNT_UNAUTHORIZED',
+  message: 'Este aluno não pode lançar nesta conta.',
+  retryable: false,
+} as const;
+
+export interface SaleChargeAuthorization {
+  consumerStudentId: string;
+  accountStudentId: string;
+  canChargeAccount: boolean;
+  canUseAccountCredit: boolean;
+  active: boolean;
+}
+
+export function resolveSaleCharge(input: {
+  consumerStudentId?: string | null;
+  chargedStudentId?: string | null;
+  authorizations: readonly SaleChargeAuthorization[];
+}): Result<{ chargedStudentId: string; useAccountCredit: boolean }> {
+  const consumerId = input.consumerStudentId || '';
+  const requested = input.chargedStudentId || '';
+  if (!consumerId) {
+    if (requested) {
+      return err(SALE_ACCOUNT_UNAUTHORIZED_ERROR);
+    }
+    return ok({ chargedStudentId: '', useAccountCredit: false });
+  }
+  const chargedId = requested || consumerId;
+  if (chargedId === consumerId) {
+    return ok({ chargedStudentId: consumerId, useAccountCredit: true });
+  }
+  const authorization = input.authorizations.find(
+    (item) =>
+      item.active &&
+      item.canChargeAccount &&
+      item.consumerStudentId === consumerId &&
+      item.accountStudentId === chargedId,
+  );
+  if (!authorization) {
+    return err(SALE_ACCOUNT_UNAUTHORIZED_ERROR);
+  }
+  return ok({
+    chargedStudentId: chargedId,
+    useAccountCredit: authorization.canUseAccountCredit,
+  });
+}
+
 export function planSiblingRevocation(input: {
   id: string;
   revokedAt: string;

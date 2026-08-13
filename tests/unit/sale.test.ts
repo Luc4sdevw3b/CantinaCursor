@@ -181,5 +181,17 @@ describe('cart sale and PIX', () => {
     ).toBe(
       'Ana Souza • ~8 • Coxinha • R$ 5,50 • Fiado • crédito resp. R$ 2,00 • Sexta-feira • 14/08/26',
     );
+    expect(
+      saleSummaryLabel({
+        consumerLabel: 'Bruno Lima • 11',
+        descriptions: ['Coxinha'],
+        netLabel: 'R$ 5,50',
+        paymentKind: 'fiado',
+        accountLabel: 'Ana Souza • ~8',
+        dueDateLabel: 'Sexta-feira • 14/08/26',
+      }),
+    ).toBe(
+      'Bruno Lima • 11 • Coxinha • R$ 5,50 • Fiado • conta Ana Souza • ~8 • Sexta-feira • 14/08/26',
+    );
   });
 });

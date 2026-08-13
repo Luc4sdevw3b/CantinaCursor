@@ -81,7 +81,7 @@ scripts/
 
 Definir `AppApi` com funções específicas do domínio, nunca ranges/SQL/Sheets genéricos.
 
-Até a Fase 19 o contrato `AppApi` inclui sessão, cadastro, cardápio, estoque diário, vendas, agenda, pagamento parcial, juros, renegociação, crédito pessoal, crédito de responsável e pagamento familiar. Sem caixa físico, reservas reais ou envio de WhatsApp.
+Até a Fase 20 o contrato `AppApi` inclui sessão, cadastro, cardápio, estoque diário, vendas, agenda, pagamento parcial, juros, renegociação, crédito pessoal, crédito de responsável, pagamento familiar e venda na conta do irmão (autorização direcional, crédito separado e revogação). Sem caixa físico, reservas reais ou envio de WhatsApp.
 
 A tela privada é uma só: hero com atalhos e uma área visível por vez.
 

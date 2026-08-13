@@ -91,7 +91,7 @@ Turmas pertencem a um ano letivo. Histórico de matrícula fica em `_student_enr
 
 `_student_guardians`: id, student_id, guardian_id, is_primary, can_use_guardian_credit, auto_settle_debt_from_guardian_credit, active, started_at, ended_at, note, created_at. Um aluno pode ter vários responsáveis; só um vínculo ativo é principal. Irmãos = alunos que compartilham pelo menos um responsável ativo.
 
-`_student_account_authorizations`: id, consumer_student_id, account_student_id, can_charge_account, can_use_account_credit, active, authorized_at, revoked_at, created_by, note. IDs são UUID; atualizações são append.
+`_student_account_authorizations`: id, consumer_student_id, account_student_id, can_charge_account, can_use_account_credit, active, authorized_at, revoked_at, created_by, note. IDs são UUID; atualizações são append. Autorização é direcional. Lançar na conta e usar o crédito pessoal do irmão são permissões separadas. Revogar preserva o histórico; vendas antigas não mudam.
 
 `_settings`: key, value. A Fase 9 usa `require_guardian_below_age` (padrão 18), idade operacional para pedir responsável, não regra jurídica. A Fase 12 usa `pix_copy_text` (chave PIX de teste, sem API bancária).
 
@@ -113,7 +113,7 @@ Turmas pertencem a um ano letivo. Histórico de matrícula fica em `_student_enr
 
 `_sale_settlements`: id, sale_id, kind, amount_cents, related_entity_id, created_at.
 
-Invariante: soma settlements = net_total. Kinds desta fase: `pix`, `cash` (valor recebido), `change` (troco negativo) e `fiado` (valor líquido da conta). `consumer_student_id` vazio é venda anônima; `charged_student_id` = consumidor quando há aluno. Fiado exige aluno. Caixa físico ainda não consome esses settlements.
+Invariante: soma settlements = net_total. Kinds desta fase: `pix`, `cash` (valor recebido), `change` (troco negativo) e `fiado` (valor líquido da conta). `consumer_student_id` vazio é venda anônima. `charged_student_id` é o consumidor, ou a conta do irmão quando há autorização direcional `can_charge_account` (Fase 20). Fiado exige aluno na conta cobrada. Caixa físico ainda não consome esses settlements.
 
 ## Recebíveis
 
@@ -141,7 +141,7 @@ Todo valor recebido precisa ser alocado. Pagamento de aluno usa `payer_student_i
 
 `_credit_movements`: credit_account_id, kind, amount_delta_cents, source_type, source_id, student_id, created_by, created_at, note.
 
-Saldo = soma dos movimentos. Conta pessoal: `owner_type=student`. Conta de responsável: `owner_type=guardian`, pai e mãe separados. `_credit_account_students.can_use` espelha `can_use_guardian_credit` do vínculo. Fiado consome crédito pessoal primeiro e, se o filho pode usar, o crédito do responsável. Depósito no responsável só quita dívida do filho com `auto_settle_debt_from_guardian_credit`. Sem autorização, crédito do responsável pode coexistir com dívida do filho. Schema version 12 (`012_credits`).
+Saldo = soma dos movimentos. Conta pessoal: `owner_type=student`. Conta de responsável: `owner_type=guardian`, pai e mãe separados. `_credit_account_students.can_use` espelha `can_use_guardian_credit` do vínculo. Fiado consome crédito pessoal primeiro e, se o filho pode usar, o crédito do responsável. Na conta do irmão (Fase 20), o crédito pessoal do irmão só entra com `can_use_account_credit`. Depósito no responsável só quita dívida do filho com `auto_settle_debt_from_guardian_credit`. Sem autorização, crédito do responsável pode coexistir com dívida do filho. Schema version 12 (`012_credits`).
 
 ## Estoque
 

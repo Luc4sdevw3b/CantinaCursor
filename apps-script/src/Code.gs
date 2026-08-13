@@ -4062,6 +4062,7 @@ function saleSummaryLabelGs(
   dueDateLabel,
   creditLabel,
   guardianCreditLabel,
+  accountLabel,
 ) {
   const base =
     consumerLabel + ' • ' + descriptions.join(', ') + ' • ' + netLabel;
@@ -4074,6 +4075,9 @@ function saleSummaryLabelGs(
   }
   if (paymentKind === PAYMENT_FIADO) {
     extras.push('Fiado');
+  }
+  if (accountLabel) {
+    extras.push('conta ' + accountLabel);
   }
   if (creditLabel) {
     extras.push('crédito ' + creditLabel);
@@ -4127,6 +4131,11 @@ function toSaleViewGs(sale) {
   );
   const netTotalCents = Number(sale.net_total_cents);
   const consumerLabel = saleConsumerLabelGs(sale.consumer_student_id);
+  const accountLabel =
+    sale.charged_student_id &&
+    sale.charged_student_id !== sale.consumer_student_id
+      ? saleConsumerLabelGs(sale.charged_student_id)
+      : '';
   const netLabel = formatBrlGs(netTotalCents);
   const changeLabel = changeCents > 0 ? formatBrlGs(changeCents) : null;
   const descriptions = items.map(function (item) {
@@ -4187,6 +4196,7 @@ function toSaleViewGs(sale) {
       dueDateLabel,
       creditLabel,
       guardianCreditLabel,
+      accountLabel,
     ),
     createdAt: sale.created_at,
   };
@@ -4216,6 +4226,83 @@ function ensurePixCopySettingUnlocked() {
   if (!exists) {
     settings.appendRow([PIX_COPY_TEXT_KEY, DEFAULT_PIX_COPY_TEXT]);
   }
+}
+
+function activeSaleAuthorizationsGs() {
+  return latestRecordsById(listAuthorizationRecords()).filter(
+    function (record) {
+      return record.active === 'true' && record.revoked_at === '';
+    },
+  );
+}
+
+function resolveSaleChargeGs(consumerId, chargedStudentId) {
+  const requested = chargedStudentId ? String(chargedStudentId) : '';
+  if (!consumerId) {
+    if (requested) {
+      throw new Error(
+        'SALE_ACCOUNT_UNAUTHORIZED: Este aluno não pode lançar nesta conta.',
+      );
+    }
+    return { chargedStudentId: '', useAccountCredit: false };
+  }
+  const chargedId = requested || consumerId;
+  if (chargedId === consumerId) {
+    return { chargedStudentId: consumerId, useAccountCredit: true };
+  }
+  const authorization = activeSaleAuthorizationsGs().filter(function (record) {
+    return (
+      record.can_charge_account === 'true' &&
+      record.consumer_student_id === consumerId &&
+      record.account_student_id === chargedId
+    );
+  })[0];
+  if (!authorization) {
+    throw new Error(
+      'SALE_ACCOUNT_UNAUTHORIZED: Este aluno não pode lançar nesta conta.',
+    );
+  }
+  return {
+    chargedStudentId: chargedId,
+    useAccountCredit: authorization.can_use_account_credit === 'true',
+  };
+}
+
+function personalCreditSourcesGs(consumerId, chargedId, useAccountCredit) {
+  if (!chargedId || !consumerId) {
+    return [];
+  }
+  const studentIds = [];
+  if (chargedId === consumerId) {
+    studentIds.push(consumerId);
+    activeSaleAuthorizationsGs().forEach(function (record) {
+      if (
+        record.can_use_account_credit === 'true' &&
+        record.consumer_student_id === consumerId &&
+        studentIds.indexOf(record.account_student_id) === -1
+      ) {
+        studentIds.push(record.account_student_id);
+      }
+    });
+  } else if (useAccountCredit) {
+    studentIds.push(chargedId);
+  }
+  const sources = [];
+  studentIds.forEach(function (studentId) {
+    const account = findPersonalCreditAccountGs(studentId);
+    if (!account) {
+      return;
+    }
+    const balance = creditBalanceCentsGs(account.id);
+    if (balance > 0) {
+      sources.push({
+        studentId: studentId,
+        account: account,
+        balance: balance,
+      });
+    }
+  });
+  return sources;
 }
 
 function createSaleUnlocked(userId, payload, actorIsOwner) {
@@ -4264,15 +4351,26 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
     }
     consumerId = student.id;
   }
+  const charge = resolveSaleChargeGs(
+    consumerId,
+    payload && payload.chargedStudentId,
+  );
+  const chargedId = charge.chargedStudentId;
   const totals = planSaleTotalsGs(planned);
-  const usableGuardianCredits =
-    payload && payload.paymentKind === PAYMENT_FIADO && consumerId
-      ? usableGuardianCreditsGs(consumerId)
+  const personalSources =
+    payload && payload.paymentKind === PAYMENT_FIADO
+      ? personalCreditSourcesGs(consumerId, chargedId, charge.useAccountCredit)
       : [];
-  const creditBalance =
-    payload && payload.paymentKind === PAYMENT_FIADO && consumerId
-      ? personalCreditBalanceGs(consumerId)
-      : 0;
+  const usableGuardianCredits =
+    payload &&
+    payload.paymentKind === PAYMENT_FIADO &&
+    chargedId &&
+    (chargedId === consumerId || charge.useAccountCredit)
+      ? usableGuardianCreditsGs(chargedId)
+      : [];
+  const creditBalance = personalSources.reduce(function (total, item) {
+    return total + item.balance;
+  }, 0);
   const guardianCreditBalance = usableGuardianCredits.reduce(function (
     total,
     item,
@@ -4289,7 +4387,7 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
   );
   let installments = [];
   if (plannedSettlements.paymentKind === PAYMENT_FIADO) {
-    if (!consumerId) {
+    if (!chargedId) {
       throw new Error(
         'FIADO_STUDENT_REQUIRED: Fiado precisa de um aluno na conta.',
       );
@@ -4313,7 +4411,7 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
   openNamedSheet(SALES_SHEET, SALES_HEADERS).appendRow([
     saleId,
     consumerId,
-    consumerId,
+    chargedId,
     SALE_STATUS_PAID,
     totals.gross_total_cents,
     totals.discount_total_cents,
@@ -4365,7 +4463,7 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
     const receivableId = Utilities.getUuid();
     receivablesSheet.appendRow([
       receivableId,
-      consumerId,
+      chargedId,
       saleId,
       installment.due_date,
       RECEIVABLE_STATUS_OPEN,
@@ -4398,21 +4496,34 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
     .reduce(function (total, row) {
       return total + Number(row.amount_cents);
     }, 0);
-  if (personalUsedCents > 0 && consumerId) {
-    const account = ensurePersonalCreditAccountGs(consumerId, userId, now);
-    openNamedSheet(CREDIT_MOVEMENTS_SHEET, CREDIT_MOVEMENTS_HEADERS).appendRow([
-      account.id,
-      CREDIT_KIND_SALE,
-      String(-personalUsedCents),
-      CREDIT_SOURCE_SALE,
-      saleId,
-      consumerId,
-      userId,
-      now,
-      '',
-    ]);
+  if (personalUsedCents > 0) {
+    let leftoverPersonal = personalUsedCents;
+    personalSources.forEach(function (item) {
+      if (leftoverPersonal <= 0) {
+        return;
+      }
+      const used = Math.min(item.balance, leftoverPersonal);
+      if (used <= 0) {
+        return;
+      }
+      openNamedSheet(
+        CREDIT_MOVEMENTS_SHEET,
+        CREDIT_MOVEMENTS_HEADERS,
+      ).appendRow([
+        item.account.id,
+        CREDIT_KIND_SALE,
+        String(-used),
+        CREDIT_SOURCE_SALE,
+        saleId,
+        item.studentId,
+        userId,
+        now,
+        '',
+      ]);
+      leftoverPersonal -= used;
+    });
   }
-  if (guardianUsedCents > 0 && consumerId) {
+  if (guardianUsedCents > 0) {
     let leftover = guardianUsedCents;
     usableGuardianCredits.forEach(function (item) {
       if (leftover <= 0) {
@@ -4431,7 +4542,7 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
         String(-used),
         CREDIT_SOURCE_SALE,
         saleId,
-        consumerId,
+        chargedId,
         userId,
         now,
         '',
@@ -4463,7 +4574,7 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
   return toSaleViewGs({
     id: saleId,
     consumer_student_id: consumerId,
-    charged_student_id: consumerId,
+    charged_student_id: chargedId,
     status: SALE_STATUS_PAID,
     gross_total_cents: totals.gross_total_cents,
     discount_total_cents: totals.discount_total_cents,

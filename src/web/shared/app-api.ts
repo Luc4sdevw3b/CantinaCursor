@@ -249,6 +249,7 @@ export interface InventoryMovement {
 
 export interface CreateSaleInput {
   consumerStudentId?: string | null;
+  chargedStudentId?: string | null;
   items: Array<{
     productId?: string | null;
     adHocName?: string | null;
@@ -420,7 +421,7 @@ export interface RefundGuardianCreditInput {
 }
 
 /**
- * Contrato técnico da Fase 19.
+ * Contrato técnico da Fase 20.
  * Sem caixa físico, reservas reais ou envio de WhatsApp.
  */
 export interface AppApi {

@@ -151,10 +151,15 @@ interface ServerContext {
     sessionToken: string,
     payload: Record<string, unknown>,
   ): { id: string; canChargeAccount: boolean };
+  revokeSiblingAuthorization(
+    sessionToken: string,
+    id: string,
+  ): { id: string; active: boolean };
   listSiblingAuthorizations(
     sessionToken: string,
     studentId?: string,
   ): Array<{
+    id: string;
     consumerStudentId: string;
     accountStudentId: string;
     canChargeAccount: boolean;
@@ -2252,5 +2257,124 @@ describe('Apps Script E2E server', () => {
     expect(
       server.listCreditAccounts(owner).map((item) => item.summaryLabel),
     ).toContain('Maria Souza • mãe • R$ 2,00');
+  });
+
+  it('charges a sibling account without using the sibling personal credit', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const coxinha = server
+      .listProducts(owner)
+      .find((item) => item.name === 'Coxinha');
+    const students = server.listStudents(owner);
+    const ana = students.find(
+      (student) =>
+        student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+    );
+    const bruno = students.find((student) => student.fullName === 'Bruno Lima');
+    if (!coxinha || !ana || !bruno) {
+      throw new Error('conta de irmão E2E incompleta');
+    }
+    const shortcuts = server.getDueDateShortcuts(owner);
+    const upcomingLabel = formatCivilDisplay(shortcuts.tomorrow);
+
+    server.depositPersonalCredit(owner, {
+      studentId: ana.id,
+      amountCents: 200,
+      method: 'pix',
+    });
+    const sale = server.createSale(owner, {
+      consumerStudentId: bruno.id,
+      chargedStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: shortcuts.tomorrow }],
+    });
+    expect(sale.summaryLabel).toBe(
+      `Bruno Lima • 11 • Coxinha • R$ 5,50 • Fiado • conta Ana Souza • ~8 • ${upcomingLabel}`,
+    );
+    expect(
+      server.listReceivables(owner).upcoming.map((item) => item.summaryLabel),
+    ).toEqual([`Ana Souza • ~8 • R$ 5,50 • ${upcomingLabel}`]);
+    expect(
+      server.listCreditAccounts(owner).map((item) => item.summaryLabel),
+    ).toContain('Ana Souza • ~8 • R$ 2,00');
+    expect(() =>
+      server.createSale(owner, {
+        consumerStudentId: ana.id,
+        chargedStudentId: bruno.id,
+        items: [{ productId: coxinha.id, quantity: 1 }],
+        paymentKind: 'fiado',
+        installments: [{ dueDate: shortcuts.tomorrow }],
+      }),
+    ).toThrow('SALE_ACCOUNT_UNAUTHORIZED');
+  });
+
+  it('uses sibling personal credit only when that permission is on', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const coxinha = server
+      .listProducts(owner)
+      .find((item) => item.name === 'Coxinha');
+    const students = server.listStudents(owner);
+    const ana = students.find(
+      (student) =>
+        student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+    );
+    const bruno = students.find((student) => student.fullName === 'Bruno Lima');
+    if (!coxinha || !ana || !bruno) {
+      throw new Error('crédito de irmão E2E incompleto');
+    }
+    const seeded = server
+      .listSiblingAuthorizations(owner, bruno.id)
+      .find(
+        (item) =>
+          item.consumerStudentId === bruno.id &&
+          item.accountStudentId === ana.id &&
+          item.active,
+      );
+    if (!seeded) {
+      throw new Error('autorização Bruno→Ana E2E ausente');
+    }
+    server.revokeSiblingAuthorization(owner, seeded.id);
+    server.authorizeSibling(owner, {
+      consumerStudentId: bruno.id,
+      accountStudentId: ana.id,
+      canChargeAccount: true,
+      canUseAccountCredit: true,
+    });
+    server.depositPersonalCredit(owner, {
+      studentId: ana.id,
+      amountCents: 200,
+      method: 'pix',
+    });
+    const shortcuts = server.getDueDateShortcuts(owner);
+    const upcomingLabel = formatCivilDisplay(shortcuts.tomorrow);
+    expect(
+      server.createSale(owner, {
+        consumerStudentId: bruno.id,
+        chargedStudentId: ana.id,
+        items: [{ productId: coxinha.id, quantity: 1 }],
+        paymentKind: 'fiado',
+        installments: [{ dueDate: shortcuts.tomorrow }],
+      }).summaryLabel,
+    ).toBe(
+      `Bruno Lima • 11 • Coxinha • R$ 5,50 • Fiado • conta Ana Souza • ~8 • crédito R$ 2,00 • ${upcomingLabel}`,
+    );
+    expect(server.listReceivables(owner).upcoming[0]?.summaryLabel).toBe(
+      `Ana Souza • ~8 • R$ 3,50 • ${upcomingLabel}`,
+    );
+    expect(
+      server.listCreditAccounts(owner).map((item) => item.summaryLabel),
+    ).toContain('Ana Souza • ~8 • R$ 0,00');
   });
 });
