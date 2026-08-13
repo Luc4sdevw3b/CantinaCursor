@@ -3,11 +3,13 @@
 ## Toda mudança lógica recebe commit
 
 Antes:
+
 - testes aplicáveis;
 - diff review;
 - changelog.
 
 Exemplos:
+
 - `feat: add reservation slots`
 - `fix: prevent duplicate family payment`
 - `test: cover concurrent reservation`
@@ -16,6 +18,7 @@ Exemplos:
 ## Falhas da IA também são história
 
 Se não conseguir concluir:
+
 1. não esconder;
 2. reverter código quebrado quando possível;
 3. deixar branch verde;
@@ -28,6 +31,7 @@ Se não conseguir concluir:
 `V2APPSCRIPT_CHANGELOG.md`, entrada nova no topo.
 
 Registrar:
+
 - pedido do usuário;
 - implementação adicional da IA;
 - correção;
@@ -53,11 +57,17 @@ Formato:
 **Fase:** Fase N
 
 ### Pedido / objetivo
+
 ### Tentativa / implementação
+
 ### Resultado
+
 ### Diferenças do pedido
+
 ### Impacto técnico
+
 ### Testes
+
 ### Pendências / próxima versão
 ```
 
@@ -67,10 +77,11 @@ Nunca incluir PII ou secrets.
 ## Versionamento
 
 SemVer operacional:
+
 - PATCH correção;
 - MINOR funcionalidade compatível;
 - MAJOR incompatibilidade/arquitetura.
-Durante desenvolvimento: `0.x.y`.
+  Durante desenvolvimento: `0.x.y`.
 
 Manter `VERSION`.
 

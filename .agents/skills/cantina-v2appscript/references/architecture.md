@@ -7,9 +7,11 @@ Web app da cantina acessível por navegador, com Apps Script no backend, Google 
 ## Duas superfícies
 
 ### App privado
+
 Dashboard, vendas, alunos, responsáveis, produtos, estoque, fiado, pagamentos, créditos, caixa, agenda, reservas, anotações, relatórios e configurações.
 
 ### Portal público de reservas
+
 Link enviado no WhatsApp. Não expõe alunos, responsáveis, dívidas, créditos ou histórico. Mostra apenas catálogo reservável, disponibilidade, horários e formulário mínimo.
 
 ## Stack
@@ -29,12 +31,15 @@ Link enviado no WhatsApp. Não expõe alunos, responsáveis, dívidas, créditos
 ## Ambientes
 
 ### DEV
+
 Apps Script + Spreadsheet DEV com dados fictícios.
 
 ### E2E
+
 Apps Script/deployment + Spreadsheet E2E resetável, só para automação.
 
 ### PROD
+
 Apps Script + Spreadsheet PROD, nunca usado por testes destrutivos.
 
 IDs/configuração ficam em Script Properties/GitHub Secrets, não hardcoded.
@@ -101,7 +106,6 @@ Sistema, Claro, Escuro.
 ## Fora da arquitetura
 
 Electron, SQLite, offline completo, API bancária/PIX automática e ERP completo.
-
 
 ## WhatsApp oficial V2.1
 

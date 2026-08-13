@@ -6,6 +6,7 @@ Coletar o mínimo.
 Portal público não retorna cadastro privado.
 
 Nunca expor no portal:
+
 - lista de alunos;
 - telefones;
 - dívidas;
@@ -31,6 +32,7 @@ Nunca commitar `.clasprc.json`, tokens, refresh tokens ou credenciais.
 ## Backup
 
 PROD:
+
 - cópia do Spreadsheet no Drive;
 - pasta configurada;
 - timestamp + versão app/schema;
@@ -45,6 +47,7 @@ Não depender apenas do histórico de versão do Sheets.
 Privilegiado.
 Não mesclar automaticamente.
 Fluxo:
+
 1. backup atual;
 2. validar snapshot;
 3. restauração/reapontamento controlado;
@@ -55,6 +58,7 @@ Fluxo:
 ## Logs
 
 Permitido:
+
 - timestamp;
 - app/schema version;
 - environment;
@@ -65,6 +69,7 @@ Permitido:
 - stack sem payload.
 
 Proibido:
+
 - nomes;
 - telefones;
 - WhatsApp;
@@ -77,6 +82,7 @@ Proibido:
 ## Diagnóstico
 
 Sem PII:
+
 - app version;
 - schema;
 - environment;
@@ -105,6 +111,7 @@ Proteção do Sheets é camada adicional, não única segurança.
 ## Auditoria
 
 Registrar:
+
 - desconto;
 - juros;
 - estorno;

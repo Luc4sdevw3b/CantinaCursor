@@ -65,6 +65,7 @@ Quando houver mais de uma interpretação financeira válida, oferecer escolhas 
 ## Como explicar
 
 O usuário faz vibecoding e conhece programação básica:
+
 - linguagem simples primeiro;
 - termo técnico depois;
 - mudanças pequenas;

@@ -3,6 +3,7 @@
 Use `$cantina-v2appscript`.
 
 Antes de alterar qualquer coisa:
+
 1. leia `.agents/skills/cantina-v2appscript/SKILL.md`;
 2. leia as referências relevantes;
 3. leia `IMPLEMENTATION_PLAN_CANTINA_V2APPSCRIPT.md`;
@@ -12,6 +13,7 @@ Antes de alterar qualquer coisa:
 Implemente **somente a Fase 0 e a Fase 1**. Pare antes da Fase 2.
 
 Regras:
+
 - Apps Script + Sheets + Drive; nunca Electron/SQLite.
 - Git obrigatório.
 - Toda mudança lógica: testes aplicáveis → changelog → commit.
@@ -24,6 +26,7 @@ Regras:
 - Não avance para alunos, produtos, vendas, estoque ou `clasp`/deploy da Fase 2.
 
 Pronto quando:
+
 - `VERSION` existe;
 - Git está limpo após commits;
 - package + lockfile;
@@ -38,6 +41,7 @@ Pronto quando:
 - commits claros.
 
 Ao terminar, informe:
+
 - commits;
 - testes/resultados;
 - arquivos principais;

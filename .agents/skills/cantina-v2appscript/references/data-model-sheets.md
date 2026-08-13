@@ -55,12 +55,14 @@ _settings
 ## Schema/migrations
 
 `_meta`:
+
 - schema_version
 - app_version
 - environment
 - created_at
 
 `_schema_migrations`:
+
 - migration_id
 - applied_at
 - app_version
@@ -149,6 +151,7 @@ Disponível = físico - reservado ativo.
 
 Chamadas críticas recebem `request_id`.
 `_operation_requests` pode registrar:
+
 - request_id
 - operation_type
 - result_entity_id
@@ -160,6 +163,7 @@ Retry não pode duplicar venda, pagamento, reserva ou estorno.
 ## Integridade
 
 Para mutações críticas:
+
 - ScriptLock;
 - leitura do estado atual;
 - validação;
@@ -174,7 +178,6 @@ Para mutações críticas:
 - mapear IDs em memória;
 - cachear catálogo/config seguro;
 - evitar varrer planilha inteira em cada clique.
-
 
 ## WhatsApp V2.1
 
@@ -193,6 +196,7 @@ _whatsapp_webhook_events
 ```
 
 ### `_whatsapp_contacts`
+
 - id
 - wa_id
 - phone_normalized
@@ -200,6 +204,7 @@ _whatsapp_webhook_events
 - updated_at
 
 ### `_whatsapp_contact_links`
+
 - id
 - contact_id
 - entity_type: guardian | student
@@ -210,6 +215,7 @@ _whatsapp_webhook_events
 - created_by
 
 ### `_whatsapp_messages`
+
 - id
 - whatsapp_message_id UNIQUE
 - contact_id
@@ -228,6 +234,7 @@ _whatsapp_webhook_events
 - updated_at
 
 ### `_whatsapp_message_versions`
+
 - id
 - message_id
 - text_content
@@ -235,6 +242,7 @@ _whatsapp_webhook_events
 - captured_at
 
 ### `_whatsapp_message_actions`
+
 - id
 - message_id
 - action_type
@@ -247,9 +255,11 @@ _whatsapp_webhook_events
 - reversal_entity_id
 
 ### `_whatsapp_message_action_links`
+
 Permite relacionar várias mensagens à mesma ação quando necessário, por exemplo comprovante + texto.
 
 ### `_whatsapp_outbound_echoes`
+
 - id
 - whatsapp_message_id
 - contact_id
@@ -258,6 +268,7 @@ Permite relacionar várias mensagens à mesma ação quando necessário, por exe
 - received_at
 
 ### `_whatsapp_response_links`
+
 - id
 - inbound_message_id
 - outbound_echo_id
@@ -268,6 +279,7 @@ Permite relacionar várias mensagens à mesma ação quando necessário, por exe
 Somente `exact_context` pode marcar `RESPONDED` automaticamente.
 
 ### `_whatsapp_webhook_events`
+
 - event_id
 - event_type
 - external_message_id nullable
@@ -279,4 +291,5 @@ Somente `exact_context` pode marcar `RESPONDED` automaticamente.
 Não manter payload bruto além do necessário.
 
 ### Retenção
+
 Job periódico não remove pendentes, remove texto após retenção configurada (default 90 dias) e preserva IDs/timestamps/status/vínculos de ações.

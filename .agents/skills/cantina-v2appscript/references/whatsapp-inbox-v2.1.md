@@ -34,12 +34,14 @@ No modo Coexistence, assinar também eventos oficiais que permitam observar mens
 A unidade de trabalho é cada mensagem individual, não a conversa.
 
 Se um número enviar 4 mensagens:
+
 - aparecem 4 itens;
 - cada uma pode ter zero, uma ou várias ações;
 - cada uma possui seu próprio estado;
 - cada uma pode ser respondida/descartada separadamente.
 
 Contato/conversa serve só para contexto:
+
 - reconhecer número;
 - mostrar aluno/responsável;
 - mostrar filhos vinculados;
@@ -50,6 +52,7 @@ A fila padrão ordena **mais antigas primeiro**.
 ## Estados da mensagem
 
 ### Tratamento
+
 - `PENDING`: ainda precisa ser decidida.
 - `HANDLED`: dona concluiu as ações necessárias.
 - `DISCARDED`: inútil/sem valor operacional.
@@ -58,7 +61,9 @@ A fila padrão ordena **mais antigas primeiro**.
 Não manter “Em atendimento” persistente na V2.1. Existe só estado visual local enquanto a tela está aberta.
 
 ### Resposta
+
 Estado separado:
+
 - `PENDING_REPLY`
 - `RESPONDED`
 - `NO_REPLY_REQUIRED`
@@ -66,6 +71,7 @@ Estado separado:
 Uma ação concluída não significa que a mensagem saiu da fila.
 
 Fila principal contém mensagens em que:
+
 - tratamento ainda está pendente; OU
 - tratamento terminou, mas `reply_status=PENDING_REPLY`.
 
@@ -81,6 +87,7 @@ Adicionar botão visível:
 `↻ Atualizar mensagens`
 
 Ele:
+
 1. recarrega do backend as mensagens/eventos já recebidos pelos webhooks;
 2. reaplica deduplicação/verificações;
 3. atualiza estados de resposta detectáveis;
@@ -92,6 +99,7 @@ Ele:
 Webhooks são o mecanismo de entrada. O botão não deve fingir que “baixa todas as mensagens do WhatsApp” se a plataforma não fornecer essa operação. Ele reconcilia o Inbox com os eventos recebidos.
 
 Executar o verificador também:
+
 - ao abrir o Inbox;
 - depois de processar webhook;
 - depois de concluir/desfazer ação;
@@ -106,10 +114,12 @@ O verificador é **determinístico**, não semântico. Ele não decide se uma me
 `whatsapp_message_id` é único.
 
 Se a Meta reenviar o mesmo ID:
+
 - processar uma vez;
 - não mostrar duplicata.
 
 Duas mensagens de conteúdo idêntico com IDs diferentes:
+
 - são mensagens diferentes;
 - podem receber `Possível duplicada` por regra objetiva de mesmo remetente/texto em janela curta;
 - nunca descartar automaticamente;
@@ -129,6 +139,7 @@ Se Coexistence fornecer evento de mensagem enviada pela dona:
    - dona decide manualmente.
 
 A dona sempre pode:
+
 - `Marcar como respondida`;
 - `Marcar como não respondida`;
 - `Não precisa responder`.
@@ -136,6 +147,7 @@ A dona sempre pode:
 ### Ações vinculadas
 
 Verificar:
+
 - ações criadas;
 - entidade ainda existente/ativa;
 - ação revertida;
@@ -145,18 +157,21 @@ Verificar:
 ### Atraso de entrega
 
 Se timestamp original da mensagem for anterior ao recebimento pelo sistema:
+
 - manter ordem pelo horário original;
 - badge `Recebida com atraso` quando relevante.
 
 ### Editada/apagada
 
 Se a plataforma fornecer evento de edição:
+
 - preservar versão anterior durante retenção;
 - mostrar `Editada`;
 - se já tratada: `Mensagem editada após o tratamento`;
 - nunca alterar reserva/pagamento automaticamente.
 
 Se a plataforma fornecer exclusão:
+
 - marcar `Apagada no WhatsApp`;
 - não desfazer ações já realizadas.
 
@@ -165,28 +180,33 @@ Se a plataforma fornecer exclusão:
 Não classificar texto automaticamente.
 
 ### Reservas
+
 - Criar reserva
 - Alterar reserva
 - Cancelar reserva
 - Pesquisar reservas
 
 ### Financeiro
+
 - Consultar conta
 - Registrar pagamento
 - Registrar crédito/adiantamento
 - Registrar promessa / alterar vencimento
 
 ### Contato
+
 - Vincular número
 - Atualizar contato
 
 ### Informações para copiar
+
 - Consultar cardápio
 - Copiar cardápio
 - Copiar link de reservas
 - Copiar dados PIX
 
 ### Controle
+
 - Marcar como respondida
 - Não precisa responder
 - Descartar
@@ -200,6 +220,7 @@ Não incluir `Criar anotação` como ação do WhatsApp V2.1.
 Uma mensagem pode gerar várias ações.
 
 Exemplo:
+
 - criar reserva para Júlia;
 - alterar vencimento de Robson.
 
@@ -212,6 +233,7 @@ Uma ação não encerra automaticamente a mensagem.
 Permitir seleção de múltiplas **mensagens**, nunca conversas.
 
 Ações em lote inicialmente:
+
 - Descartar;
 - Marcar como respondidas;
 - Marcar como não precisam de resposta.
@@ -222,6 +244,7 @@ Não permitir reservas/pagamentos/créditos em lote.
 ## Contatos e telefones
 
 Número pode estar ligado a:
+
 - responsável;
 - aluno maior que a idade configurada;
 - mais de uma entidade (ambiguidade).
@@ -229,12 +252,14 @@ Número pode estar ligado a:
 Responsável/aluno pode ter vários telefones.
 
 Número compartilhado:
+
 - mostrar possibilidades;
 - nunca escolher automaticamente;
 - dona seleciona a entidade para aquela ação;
 - escolha da ação não precisa alterar cadastro.
 
 Número desconhecido:
+
 - vincular responsável existente;
 - vincular aluno existente;
 - cadastrar novo quando fluxo permitir;
@@ -258,6 +283,7 @@ Padrão: **90 dias após tratamento/descartar**.
 Não baixar/armazenar áudio, imagem ou documento.
 
 Inbox mostra:
+
 - `🎤 Áudio recebido — verificar no WhatsApp`;
 - `🖼 Imagem recebida — verificar no WhatsApp`;
 - `📎 Documento recebido — verificar no WhatsApp`.
@@ -269,18 +295,22 @@ Comprovante em imagem + texto podem ser relacionados à mesma ação para audito
 ## Reserva criada a partir de mensagem
 
 ### Para quem
+
 - aluno cadastrado; ou
 - nome digitado sem cadastro.
 
 Se contato é responsável por vários filhos:
+
 - mostrar filhos primeiro;
 - permitir pesquisar qualquer aluno.
 
 Uma mensagem pode criar mais de uma reserva:
+
 - uma por criança quando necessário;
 - botão `+ Criar outra reserva desta mensagem`.
 
 ### Campos
+
 - data;
 - recreio/slot;
 - aluno/nome;
@@ -294,10 +324,12 @@ Uma mensagem pode criar mais de uma reserva:
 Forma prevista é expectativa. Forma real é confirmada na retirada.
 
 ### Preço
+
 Preço trava no momento da reserva.
 Alteração posterior somente via desconto permitido da dona, com histórico.
 
 ### Pagamento
+
 Reserva não cria dívida e não consome crédito.
 Pode registrar intenção de PIX, dinheiro, crédito, fiado ou conta de irmão autorizado.
 Efeito real só na retirada.
@@ -313,6 +345,7 @@ Não usar `PREPARED`.
 Não usar `PARTIALLY_FULFILLED`.
 
 Se cliente retirar parte:
+
 - informar quantidade entregue;
 - restante é cancelado;
 - venda contém apenas o entregue.
@@ -320,6 +353,7 @@ Se cliente retirar parte:
 ## Estoque e reserva
 
 Confirmar reserva:
+
 - físico não muda;
 - reservado aumenta;
 - disponível diminui.
@@ -329,6 +363,7 @@ Confirmar reserva:
 Reserva pública e WhatsApp usam o mesmo reservado.
 
 Se quantidade insuficiente:
+
 - bloquear;
 - oferecer reduzir;
 - trocar produto;
@@ -340,6 +375,7 @@ Se quantidade insuficiente:
 Reservas ajudam no planejamento, mas a dona pode priorizar quem está presencialmente.
 
 Se `disponível=0` mas `físico>0` porque unidades estão reservadas:
+
 - venda presencial pode oferecer `Usar unidade que está reservada`;
 - nunca fazer isso automaticamente;
 - exigir confirmação;
@@ -351,6 +387,7 @@ Se `disponível=0` mas `físico>0` porque unidades estão reservadas:
 ## Alterar reserva
 
 Pesquisar por:
+
 - aluno;
 - responsável/telefone;
 - código;
@@ -366,6 +403,7 @@ Dona pode alterar mesmo após cutoff.
 ## Cancelar reserva
 
 Cancelar:
+
 - libera reservado;
 - físico não muda;
 - sem motivo obrigatório.
@@ -376,6 +414,7 @@ Reserva `FULFILLED` usa estorno da venda.
 ## Não retirada
 
 Somente a dona marca `NO_SHOW`.
+
 - libera reservado;
 - físico não muda;
 - nenhuma venda/dívida.
@@ -387,6 +426,7 @@ No-show fica no histórico/filtro de reservas, sem punição automática.
 ## Retirada
 
 Ao clicar `Entregar`, mostrar:
+
 - aluno;
 - itens;
 - quantidade;
@@ -401,12 +441,14 @@ Se previsto fiado e pagou PIX: sem dívida.
 Se previsto PIX e não pagou: pode escolher fiado.
 
 Se levar menos:
+
 - venda apenas entregue;
 - restante cancelado.
 
 Substituição de produto: alterar reserva antes da venda.
 
 Entrega:
+
 - vira venda normal;
 - baixa estoque físico uma vez;
 - remove reservado;
@@ -417,6 +459,7 @@ Entrega:
 Dona escolhe aluno(s): um, vários ou todos os filhos do responsável.
 
 Períodos:
+
 - Hoje;
 - Esta semana;
 - Este mês;
@@ -426,6 +469,7 @@ Períodos:
 Semana = segunda a domingo.
 
 Tela pode mostrar:
+
 - total;
 - composição detalhada;
 - crédito pessoal;
@@ -436,6 +480,7 @@ O sistema não gera/envia resposta financeira. Dona responde manualmente no celu
 ## Histórico completo do aluno
 
 Filtros:
+
 - Hoje;
 - Semana;
 - Mês;
@@ -445,6 +490,7 @@ Filtros:
 - Reservas.
 
 Cada compra mostra:
+
 - data completa;
 - hora;
 - produtos;
@@ -505,11 +551,13 @@ Por padrão tenta desfazer **todas as ações produzidas por aquela mensagem**.
 Antes mostra preview completo dos efeitos.
 
 Se tudo puder ser revertido com segurança:
+
 - executar reversões;
 - preservar histórico;
 - voltar mensagem a `PENDING`.
 
 Se alguma ação tiver dependência posterior e não puder ser desfeita diretamente:
+
 - não fazer parcialmente em silêncio;
 - avisar o que exige estorno/cancelamento específico;
 - permitir abrir operações correspondentes.
@@ -530,6 +578,7 @@ Se alguma ação tiver dependência posterior e não puder ser desfeita diretame
 ## Auditoria
 
 Toda ação originada em WhatsApp registra:
+
 - message_id(s);
 - contact_id;
 - action type;

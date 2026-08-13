@@ -10,6 +10,7 @@ WhatsApp → link → portal público → reserva → fila da dona → preparaç
 ## Portal público
 
 Não mostrar:
+
 - autocomplete de alunos;
 - responsáveis;
 - dívidas;
@@ -17,6 +18,7 @@ Não mostrar:
 - notas/histórico.
 
 Coletar mínimo:
+
 - nome para retirada/aluno digitado;
 - turma;
 - contato opcional;
@@ -27,6 +29,7 @@ Coletar mínimo:
 ## Slots
 
 `_reservation_slots`:
+
 - id
 - business_date
 - label
@@ -40,6 +43,7 @@ Ex.: Recreio manhã, reservas até 09:15, retirada 09:45–10:05.
 ## Reserva
 
 `_reservations`:
+
 - id
 - public_code
 - requester_name
@@ -55,6 +59,7 @@ Ex.: Recreio manhã, reservas até 09:15, retirada 09:45–10:05.
 - note
 
 Estados:
+
 - pending/confirmed conforme config;
 - confirmed;
 - fulfilled;
@@ -75,6 +80,7 @@ Disponível = físico - reservado.
 Cancelar/no-show libera reservado sem alterar físico.
 
 Entregar:
+
 - converte/liga uma venda;
 - venda baixa físico;
 - reserva deixa de segurar reservado;
@@ -87,6 +93,7 @@ Entrega 3 → físico 17, reservado 0, disponível 17.
 ## Concorrência
 
 Criar reserva:
+
 1. lock;
 2. reler disponibilidade;
 3. validar;
@@ -116,6 +123,7 @@ Sem integração bancária automática.
 ## Abuso
 
 Começar simples:
+
 - limite por item/reserva;
 - cutoff;
 - validação server-side;
@@ -127,11 +135,11 @@ Começar simples:
 ## WhatsApp
 
 Na V2 existem dois caminhos de origem de reserva:
+
 - portal público por link;
 - Inbox V2.1 via WhatsApp Business Platform oficial, sempre com decisão manual da dona.
 
 WhatsApp Flows, bots conversacionais e respostas automáticas continuam fora da V2.1.
-
 
 ## Prioridade presencial
 

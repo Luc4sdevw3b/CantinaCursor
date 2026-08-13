@@ -8,6 +8,7 @@ Nenhuma feature financeira, de estoque ou reserva é pronta sem teste automatiza
 ## Unitários — Vitest
 
 Domínio puro:
+
 - centavos/BRL;
 - arredondamento;
 - descontos;
@@ -22,6 +23,7 @@ Domínio puro:
 ## Integração local — Vitest
 
 Testar:
+
 - repositories fake/in-memory;
 - serialização de rows;
 - schemas;
@@ -32,6 +34,7 @@ Testar:
 ## Integração remota — E2E env
 
 Spreadsheet + deployment E2E:
+
 - migrations;
 - criação/consulta real;
 - batchUpdate;
@@ -43,14 +46,18 @@ Nunca PROD.
 ## E2E — Playwright
 
 ### Local
+
 Desde a Fase 1:
+
 - preview local;
 - `FakeAppApi`;
 - browser real;
 - smoke, tema, navegação e fluxos visuais.
 
 ### Remoto
+
 Quando deployment E2E existir:
+
 - URL Apps Script real;
 - Spreadsheet E2E;
 - reset/seed antes da suíte;
@@ -84,6 +91,7 @@ Quando deployment E2E existir:
 ## Concorrência
 
 Testar:
+
 - duas vendas do último item;
 - duas reservas do último item;
 - pagamento reenviado com mesmo request_id;
@@ -91,6 +99,7 @@ Testar:
 - timeout + retry.
 
 Esperado:
+
 - sem duplicação;
 - sem estoque negativo;
 - sem pagamento duplicado.
@@ -123,6 +132,7 @@ npm run build
 ## GitHub Actions
 
 Desde o início:
+
 - npm ci;
 - lint;
 - typecheck;
@@ -132,12 +142,14 @@ Desde o início:
 - E2E local.
 
 Depois:
+
 - secrets E2E;
 - deploy E2E;
 - reset/seed;
 - E2E remoto.
 
 PROD:
+
 - deploy somente por release/tag aprovada;
 - backup antes de mudança estrutural.
 
@@ -151,10 +163,10 @@ Nunca usar dados reais PROD nesses artefatos.
 Teste flaky deve ser investigado e registrado, não ignorado indefinidamente.
 Usar locators por role/label/texto estável/contrato explícito.
 
-
 ## WhatsApp V2.1 — testes obrigatórios
 
 Unit/integration:
+
 - dedupe por `whatsapp_message_id`;
 - IDs diferentes com texto igual não são apagados automaticamente;
 - fila mais antigas primeiro;
@@ -169,6 +181,7 @@ Unit/integration:
 - atraso usa timestamp original.
 
 E2E Inbox:
+
 1. webhook fictício cria mensagem pendente;
 2. reenviar mesmo message_id não duplica;
 3. botão Atualizar mensagens atualiza contador/estados;
@@ -186,6 +199,7 @@ E2E Inbox:
 15. histórico do aluno registra origem Reserva/WhatsApp sem guardar texto após retenção.
 
 Gateway/webhook:
+
 - assinatura inválida rejeitada;
 - Apps Script indisponível não gera ack falso;
 - retry não duplica;

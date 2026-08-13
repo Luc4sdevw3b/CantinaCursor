@@ -11,6 +11,7 @@
 ## Alunos e turmas
 
 Aluno:
+
 - nome completo;
 - ativo/inativo;
 - nascimento opcional;
@@ -36,6 +37,7 @@ Configuração de idade mínima para exigir responsável é operacional, não ju
 ## Irmãos e autorizações
 
 Autorização direcional:
+
 - lançar compra/fiado na conta de outro;
 - usar crédito pessoal do outro é permissão separada.
 
@@ -65,6 +67,7 @@ Item avulso: só dona, não vira produto automaticamente.
 - venda anônima quando não há conta.
 
 Meios combináveis:
+
 - PIX;
 - dinheiro;
 - crédito pessoal;
@@ -77,6 +80,7 @@ Soma dos settlements = total líquido.
 
 Somente dona e somente produto que permite.
 Por item:
+
 - valor;
 - percentual.
 
@@ -86,6 +90,7 @@ Cada cobrança tem vencimento próprio.
 Uma venda pode ser dividida em vários vencimentos por escolha explícita.
 
 Date picker:
+
 - calendário;
 - amanhã;
 - próxima sexta;
@@ -93,6 +98,7 @@ Date picker:
 - exibição `Segunda-feira • 17/08/26`.
 
 Agenda:
+
 - atrasados;
 - hoje;
 - próximos;
@@ -129,6 +135,7 @@ Dona pode devolver crédito.
 Conta pertence ao responsável.
 Pai/mãe separados podem ter contas separadas.
 Por filho:
+
 - pode usar;
 - pode autoquitar dívida quando autorizado.
 
@@ -138,6 +145,7 @@ Irmão sem vínculo não herda crédito do responsável.
 ## Pagamento de responsável
 
 Opções:
+
 - quitar um filho;
 - quitar selecionados;
 - todos selecionados;
@@ -156,11 +164,13 @@ Sem integração bancária automática.
 ## Dinheiro e caixa
 
 Venda R$8, entrega R$10:
+
 - +R$10 entrada física;
 - -R$2 troco;
 - +R$8 líquido.
 
 Caixa:
+
 - abertura opcional;
 - PIX funciona sem caixa;
 - dinheiro exige caixa;
@@ -194,11 +204,13 @@ Disponível = físico - reservado ativo.
 ## Anotações
 
 Escopos:
+
 - operação;
 - dia;
 - semana (segunda a domingo).
 
 Menções estruturadas:
+
 - `@aluno`;
 - `@responsável`;
 - múltiplas.
@@ -210,15 +222,17 @@ Anulação preserva histórico.
 ## Usuários
 
 V2 inicial:
+
 - dona;
 - funcionário;
 - permissões fixas simples.
-Customização detalhada futura.
-Toda autorização checada no backend.
+  Customização detalhada futura.
+  Toda autorização checada no backend.
 
 ## Relatórios
 
 Dia/semana/mês:
+
 - vendas brutas;
 - descontos;
 - vendas líquidas;
@@ -235,7 +249,6 @@ Dia/semana/mês:
 - reservas.
 
 Não chamar de lucro.
-
 
 ## WhatsApp V2.1
 

@@ -20,15 +20,17 @@
 # Marco A — Governança, Git e testes
 
 ## Fase 0 — Baseline
+
 - Git init;
 - `.gitignore`;
 - `VERSION` = `0.1.0-dev`;
 - Skill/plano/changelog;
 - README;
 - GitHub remote quando disponível.
-Commit sugerido: `chore: initialize Cantina V2 AppScript`.
+  Commit sugerido: `chore: initialize Cantina V2 AppScript`.
 
 ## Fase 1 — Toolchain + testes desde o primeiro código
+
 - package/lockfile;
 - TypeScript;
 - lint/format;
@@ -44,6 +46,7 @@ Commit sugerido: `chore: initialize Cantina V2 AppScript`.
 Pronto quando tudo passa localmente.
 
 ## Fase 2 — `clasp` + Web App DEV
+
 - projeto Apps Script DEV;
 - `.clasp.json` ignorado;
 - `appsscript.json`;
@@ -58,6 +61,7 @@ Pronto quando tudo passa localmente.
 E2E: smoke no deployment DEV.
 
 ## Fase 3 — Ambiente E2E isolado
+
 - Apps Script E2E;
 - Spreadsheet E2E;
 - config separada;
@@ -68,6 +72,7 @@ E2E: smoke no deployment DEV.
 # Marco B — Banco Sheets confiável
 
 ## Fase 4 — Schema, migrations e repositories
+
 - `_meta`, `_schema_migrations`;
 - schemas em código;
 - validação cabeçalhos;
@@ -77,6 +82,7 @@ E2E: smoke no deployment DEV.
 - setup idempotente.
 
 ## Fase 5 — Locks, batch e idempotência
+
 - `withScriptLock`;
 - Advanced Sheets Service;
 - batch mutation builder;
@@ -87,6 +93,7 @@ E2E: smoke no deployment DEV.
 Testar retry e double submit.
 
 ## Fase 6 — Backup e saúde
+
 - backup Drive;
 - pasta/config;
 - pré-migration;
@@ -98,6 +105,7 @@ Testar retry e double submit.
 # Marco C — Acesso e cadastros
 
 ## Fase 7 — Auth e usuários
+
 - dona;
 - funcionário;
 - sessão;
@@ -107,6 +115,7 @@ Testar retry e double submit.
 E2E login/role.
 
 ## Fase 8 — Ano letivo, turmas e alunos
+
 - nascimento ou idade aproximada;
 - histórico matrícula;
 - ativo/inativo;
@@ -114,6 +123,7 @@ E2E login/role.
 - homônimos.
 
 ## Fase 9 — Responsáveis e irmãos
+
 - múltiplos responsáveis;
 - um principal;
 - WhatsApp flag;
@@ -122,6 +132,7 @@ E2E login/role.
 - idade para solicitar responsável.
 
 ## Fase 10 — Produtos/categorias
+
 - preço centavos;
 - desconto permitido;
 - controla estoque;
@@ -133,6 +144,7 @@ E2E login/role.
 # Marco D — Estoque e vendas
 
 ## Fase 11 — Estoque diário
+
 - abertura;
 - quantidade inicial;
 - ledger;
@@ -141,6 +153,7 @@ E2E login/role.
 - `ACABOU`.
 
 ## Fase 12 — Carrinho e PIX
+
 - múltiplos itens;
 - snapshot;
 - desconto por item;
@@ -149,6 +162,7 @@ E2E login/role.
 - baixa atômica.
 
 ## Fase 13 — Dinheiro e settlements
+
 - dinheiro;
 - PIX + dinheiro;
 - settlements;
@@ -158,6 +172,7 @@ E2E login/role.
 # Marco E — Fiado e créditos
 
 ## Fase 14 — Recebíveis e calendário
+
 - cobrança;
 - vencimentos;
 - múltiplos vencimentos opcionais;
@@ -165,18 +180,21 @@ E2E login/role.
 - agenda atrasado/hoje/próximo.
 
 ## Fase 15 — Parcial
+
 - oldest-first;
 - seleção;
 - manual;
 - alocações.
 
 ## Fase 16 — Juros e renegociação
+
 - fixo/%;
 - motivo;
 - cobrança específica;
 - histórico de vencimento.
 
 ## Fase 17 — Crédito pessoal
+
 - ledger;
 - uso opcional;
 - fiado consome crédito primeiro;
@@ -184,12 +202,14 @@ E2E login/role.
 - devolução dona.
 
 ## Fase 18 — Crédito de responsável
+
 - conta por responsável;
 - autorização por filho;
 - autoquitação opcional;
 - pai/mãe separados.
 
 ## Fase 19 — Pagamento familiar
+
 - quitar um;
 - selecionados;
 - manual;
@@ -199,6 +219,7 @@ E2E login/role.
 Cenário: 200 = 20 Robson + 15 Júlia + 165 responsável.
 
 ## Fase 20 — Autorizações entre irmãos
+
 - direcional;
 - lançar na conta;
 - usar crédito separado;
@@ -208,6 +229,7 @@ Cenário: 200 = 20 Robson + 15 Júlia + 165 responsável.
 # Marco F — Caixa e estornos
 
 ## Fase 21 — Caixa físico
+
 - abertura opcional;
 - troco inicial;
 - dinheiro recebido;
@@ -220,6 +242,7 @@ Cenário: 200 = 20 Robson + 15 Júlia + 165 responsável.
 E2E: R$8 com R$10 = +10/-2.
 
 ## Fase 22 — Estornos
+
 - venda/pagamento/crédito;
 - PIX/dinheiro;
 - devolução em meio diferente;
@@ -229,6 +252,7 @@ E2E: R$8 com R$10 = +10/-2.
 # Marco G — Reservas
 
 ## Fase 23 — Modelo/slots
+
 - recreios;
 - cutoff;
 - reservas/itens/status;
@@ -240,6 +264,7 @@ E2E: R$8 com R$10 = +10/-2.
 - sem PREPARED e sem retirada parcial persistente.
 
 ## Fase 24 — Portal público
+
 - catálogo reservável;
 - `ACABOU`;
 - nome digitado;
@@ -251,6 +276,7 @@ E2E: R$8 com R$10 = +10/-2.
 E2E remoto obrigatório.
 
 ## Fase 25 — Gestão da dona
+
 - reservas por recreio;
 - resumo de produção;
 - pesquisar;
@@ -261,6 +287,7 @@ E2E remoto obrigatório.
 - vincular aluno.
 
 ## Fase 26 — Reserva → venda
+
 - entrega usa motor normal;
 - escolher pagamento;
 - baixa físico uma vez;
@@ -275,6 +302,7 @@ Invariante:
 # Marco H — WhatsApp oficial V2.1
 
 ## Fase 27 — Gateway e webhooks oficiais
+
 - WhatsApp Business Platform/Cloud API;
 - modo Coexistence quando aplicável;
 - gateway mínimo para validar assinatura;
@@ -287,12 +315,14 @@ Invariante:
 - não baixar mídia.
 
 Testes:
+
 - assinatura inválida;
 - retry;
 - Apps Script indisponível;
 - mesmo message_id não duplica.
 
 ## Fase 28 — Modelo de Inbox por mensagem
+
 - `_whatsapp_contacts`;
 - vínculos many-to-many com aluno/responsável;
 - `_whatsapp_messages`;
@@ -304,10 +334,12 @@ Testes:
 - mais antigas primeiro.
 
 Estados separados:
+
 - tratamento;
 - resposta.
 
 ## Fase 29 — Inbox privado + Atualizar mensagens + verificador
+
 - lista de mensagens;
 - contador;
 - filtros;
@@ -324,7 +356,9 @@ Estados separados:
 E2E obrigatório.
 
 ## Fase 30 — Ações manuais do Inbox
+
 Cada mensagem pode executar zero, uma ou várias ações:
+
 - criar/alterar/cancelar/pesquisar reserva;
 - consultar conta;
 - registrar pagamento;
@@ -342,6 +376,7 @@ Não enviar resposta pelo sistema.
 Não criar anotação a partir do WhatsApp.
 
 ## Fase 31 — Desfazer tratamento + integrações de histórico
+
 - preview de todas as ações geradas pela mensagem;
 - tentar desfazer o conjunto inteiro;
 - reversões/estornos rastreáveis;
@@ -355,6 +390,7 @@ Não criar anotação a partir do WhatsApp.
 # Marco I — Organização e gestão
 
 ## Fase 32 — Notas/menções internas
+
 - operação/dia/semana;
 - @aluno/@responsável;
 - versões;
@@ -363,6 +399,7 @@ Não criar anotação a partir do WhatsApp.
 Observação: Inbox WhatsApp não cria notas automaticamente nem oferece “Criar anotação” como ação V2.1.
 
 ## Fase 33 — Dashboard/relatórios
+
 - dia/semana/mês;
 - vendas/descontos/recebido;
 - PIX/dinheiro/fiado;
@@ -372,9 +409,10 @@ Observação: Inbox WhatsApp não cria notas automaticamente nem oferece “Cria
 - caixa;
 - estoque/reservas;
 - métricas operacionais do Inbox sem conteúdo das mensagens.
-Não usar “lucro”.
+  Não usar “lucro”.
 
 ## Fase 34 — Auditoria/logs/diagnóstico
+
 - audit events;
 - retenção;
 - logger sanitizado;
@@ -383,6 +421,7 @@ Não usar “lucro”.
 - saúde do webhook/inbox sem PII.
 
 ## Fase 35 — Restore/exportações
+
 - restore protegido;
 - backup pré-restore;
 - validação;
@@ -392,6 +431,7 @@ Não usar “lucro”.
 # Marco J — Hardening e release
 
 ## Fase 36 — UX/acessibilidade
+
 - teclado/atalhos;
 - responsivo;
 - tema;
@@ -402,6 +442,7 @@ Não usar “lucro”.
 - Inbox eficiente para 100+ mensagens.
 
 ## Fase 37 — Regressão e concorrência
+
 - unit;
 - integration;
 - E2E local/remoto;
@@ -413,6 +454,7 @@ Não usar “lucro”.
 - verificador/dedupe/retention.
 
 ## Fase 38 — Release PROD
+
 - CI/CD final;
 - secrets separados;
 - release por tag;
@@ -428,15 +470,19 @@ Não usar “lucro”.
 # Aceitação final
 
 Financeiro:
+
 - PIX, dinheiro/troco, misto, fiado, parcial, juros, crédito, família, irmãos, estorno.
 
 Estoque:
+
 - abertura, baixa, acabou, ajuste, retorno/não retorno, concorrência, override presencial explícito de unidade reservada.
 
 Caixa:
+
 - opcional, fechamento, diferença, caixa antigo, PIX sem caixa.
 
 Reservas:
+
 - portal público sem PII;
 - cutoff;
 - concorrência;
@@ -448,6 +494,7 @@ Reservas:
 - retirada parcial cancela restante.
 
 WhatsApp V2.1:
+
 - API oficial inbound;
 - Inbox por mensagem;
 - mais antigas primeiro;
@@ -464,6 +511,7 @@ WhatsApp V2.1:
 - desfazer tratamento rastreável.
 
 Confiabilidade:
+
 - idempotência;
 - migrations;
 - backup/restore;
