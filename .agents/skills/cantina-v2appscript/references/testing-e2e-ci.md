@@ -26,7 +26,8 @@ Testar:
 
 - repositories fake/in-memory;
 - serialização de rows;
-- schemas;
+- schemas e validação de cabeçalhos;
+- `setupSchema` idempotente (recusa PROD);
 - construção de batch requests;
 - idempotência;
 - validações.
@@ -83,7 +84,7 @@ Não confundir com o ambiente Google E2E da Fase 3.
 
 Quando o deployment E2E da Fase 3 existir:
 
-- URL Apps Script real em `E2E_BASE_URL` (nunca PROD);
+- URL Apps Script real em `E2E_BASE_URL` no formato `https://script.google.com/macros/s/<id>/exec` (nunca PROD, docs ou editor);
 - Spreadsheet E2E isolada;
 - `resetE2E` / `seedE2E` abortam se `ENVIRONMENT !== E2E` e nunca em PROD;
 - dados somente fictícios;

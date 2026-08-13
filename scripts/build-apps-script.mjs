@@ -32,9 +32,10 @@ const javascript = await readFile(
 html = html
   .replace('<head>', '<head>\n    <base target="_top" />')
   .replace(stylesheetMatch[0], `<style>${css}</style>`)
+  .replace(scriptMatch[0], '')
   .replace(
-    scriptMatch[0],
-    `<script>${javascript.replace(/<\/script/gi, '<\\/script')}</script>`,
+    '</body>',
+    `<script>${javascript.replace(/<\/script/gi, '<\\/script')}</script>\n  </body>`,
   );
 
 await rm(outputDir, { recursive: true, force: true });
@@ -45,5 +46,11 @@ await cp(
   resolve(outputDir, 'appsscript.json'),
 );
 await writeFile(resolve(outputDir, 'Index.html'), html);
+
+const appIndex = html.indexOf('id="app"');
+const lastScript = html.lastIndexOf('<script>');
+if (appIndex === -1 || lastScript < appIndex) {
+  throw new Error('BUILD_ERROR: o bundle JS precisa vir depois de #app.');
+}
 
 console.log('Apps Script bundle criado em apps-script/dist.');

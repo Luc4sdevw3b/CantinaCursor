@@ -17,6 +17,7 @@
     "vite.config.ts",
     "vitest.config.ts",
     "playwright.config.ts",
-    "playwright.remote.config.ts"
+    "playwright.remote.config.ts",
+    "src/server/e2e-web-app-url.ts"
   ]
 }

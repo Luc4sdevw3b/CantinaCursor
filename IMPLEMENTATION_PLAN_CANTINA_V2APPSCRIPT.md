@@ -79,10 +79,12 @@ Este ambiente Google isolado é distinto do E2E local da Fase 1.
 - `_meta`, `_schema_migrations`;
 - schemas em código;
 - validação cabeçalhos;
-- IDs imutáveis;
+- IDs imutáveis (UUID, nunca número da linha);
 - serialização;
 - migration runner;
-- setup idempotente.
+- setup idempotente (`setupSchema`, recusa PROD).
+
+`AppApi` permanece mínimo. Repositórios de domínio (alunos, vendas, etc.) ficam para as fases seguintes. Locks/batch são a Fase 5.
 
 ## Fase 5 — Locks, batch e idempotência
 

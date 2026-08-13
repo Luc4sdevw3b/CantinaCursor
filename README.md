@@ -2,7 +2,7 @@
 
 Aplicação web da cantina, planejada para Google Apps Script + Google Sheets + Google Drive.
 
-O projeto está na Fase 3 (`0.1.0-dev`): ambiente E2E isolado. O E2E local da Fase 1 continua sendo preview + `FakeAppApi`. A Fase 2 (Web App DEV) não foi o alvo desta entrega.
+O projeto está na Fase 4 (`0.1.0-dev`): schema, migrations e IDs imutáveis sobre o ambiente E2E isolado.
 
 Consulte:
 
@@ -57,30 +57,24 @@ O E2E local usa **somente** `vite preview` + `FakeAppApi`. Não chama Apps Scrip
 
 ## Ambiente E2E no Google
 
-1. Copie `.clasp.json.example` para `.clasp.json` (arquivo ignorado pelo Git).
-2. Com o `clasp` já autenticado:
+O Web App E2E usa dados fictícios e pode ser aberto sem login (`ANYONE_ANONYMOUS`, executado como a conta que fez o deploy). Isso é só para o ambiente E2E, nunca para PROD.
 
-```bash
-npm run build
-clasp create --type sheets --title "Cantina V2 AppScript E2E" --rootDir apps-script/dist
-npm run clasp:push
+A URL **obrigatória** é a do deployment `/exec`:
+
+```text
+https://script.google.com/macros/s/<DEPLOYMENT_ID>/exec
 ```
 
-3. No editor (`clasp open-script`), execute **uma vez** a função `configureE2EEnvironment` e autorize o acesso à planilha E2E. Isso grava somente `ENVIRONMENT=E2E`, `SPREADSHEET_ID` e `APP_VERSION`.
-4. Crie um deployment Web App restrito à sua conta:
+Não use a documentação (`developers.google.com`), o editor (`/d/.../edit`) nem `script.google.com` sem `/macros/s/.../exec`.
 
 ```bash
+npm run clasp:push
 clasp deploy --description "E2E"
 clasp deployments
-```
-
-5. Para o smoke remoto autenticado:
-
-```bash
 E2E_BASE_URL='https://script.google.com/macros/s/SEU_DEPLOYMENT_ID/exec' npm run test:e2e:remote
 ```
 
-Não torne o Web App anônimo só para o teste passar. Nunca use uma planilha PROD. `resetE2E` / `seedE2E` recusam qualquer ambiente que não seja E2E.
+O primeiro `getHealth` configura `ENVIRONMENT=E2E` e aplica o schema de fundação se a planilha estiver vinculada. `resetE2E` / `seedE2E` recusam qualquer ambiente que não seja E2E, inclusive PROD.
 
 Validação completa da fundação (sem Google):
 

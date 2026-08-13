@@ -1,11 +1,13 @@
 import { defineConfig, devices } from '@playwright/test';
+import { assertE2EWebAppUrl } from './src/server/e2e-web-app-url';
 
 /**
  * E2E remoto da Fase 3: Web App Apps Script E2E + planilha E2E.
- * Exige E2E_BASE_URL. Nunca apontar para PROD.
+ * Exige E2E_BASE_URL no formato https://script.google.com/macros/s/<id>/exec
+ * Nunca apontar para PROD, documentação ou editor.
  * Sem E2E_BASE_URL os testes são ignorados.
  */
-const e2eBaseUrl = process.env.E2E_BASE_URL;
+const e2eBaseUrl = assertE2EWebAppUrl(process.env.E2E_BASE_URL);
 
 export default defineConfig({
   testDir: 'tests/e2e/remote',
@@ -14,7 +16,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: 1,
   reporter: 'list',
-  timeout: 30_000,
+  timeout: 45_000,
   use: {
     baseURL: e2eBaseUrl || 'http://127.0.0.1:4173',
     trace: 'on-first-retry',

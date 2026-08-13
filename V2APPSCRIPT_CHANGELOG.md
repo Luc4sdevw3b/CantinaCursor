@@ -9,6 +9,94 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-13 12:34 — Implementada a Fase 4: schema, migrations e repositório genérico
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 4
+
+### Pedido / objetivo
+
+- Depois de consertar o smoke remoto, avançar à Fase 4: `_meta`, `_schema_migrations`, schemas em código, validação de cabeçalhos, IDs UUID, serialização, migration runner e `setupSchema` idempotente com recusa de PROD.
+
+### Tentativa / implementação
+
+- Schema de fundação em código (`_meta`, `_schema_migrations`) com migration `001_foundation`.
+- `setupSchema` idempotente no domínio TypeScript e no Apps Script; recusa PROD e migrations fora do catálogo; `HEADER_MISMATCH` se a aba já tem dados com cabeçalho errado.
+- Repositório genérico de registros por UUID; número da linha nunca é identidade.
+- `AppApi` permanece só `getHealth`. Locks, batch e `_operation_requests` não foram iniciados.
+
+### Resultado
+
+- Fase 4 concluída sobre o ambiente E2E isolado.
+- Nenhum ID Google, token ou dado de planilha foi versionado.
+
+### Diferenças do pedido
+
+- O repositório desta fase é genérico (append/list/findById). Repositórios de alunos/vendas ficam para as fases de cadastro.
+
+### Impacto técnico
+
+- `src/domain/ids.ts`, `src/server/sheets/*`, `src/server/repositories/sheet-repository.ts`
+- `apps-script/src/Code.gs` (`setupSchema`)
+- testes unitários/integração de schema, serialização, migrations e repositório
+- referências de arquitetura/testes, Implementation Plan e README
+
+### Testes
+
+- `npm run format:check` / `lint` / `typecheck` / `version:check` / `validate:skill`: passou.
+- `npm test`: 52 testes passaram.
+- `npm run build`: passou.
+- `npm run test:e2e:local`: 9 testes Chromium passaram.
+- `npm run test:e2e:remote`: 1 teste Chromium passou (Web App E2E isolado, dados fictícios).
+
+### Pendências / próxima versão
+
+- Não iniciar a Fase 5 (locks/batch/idempotência) sem pedido explícito.
+
+## 2026-08-13 12:29 — Corrigido o smoke remoto do Web App E2E
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 3
+
+### Pedido / objetivo
+
+- O smoke `remote-readiness.spec.ts` falhava ao abrir o Web App E2E. Corrigir e seguir.
+
+### Tentativa / implementação
+
+- `page.goto('/')` com `baseURL=.../exec` resolvia para `https://script.google.com/` (docs do Apps Script). O teste agora navega para a URL `/exec` completa e rejeita docs/editor.
+- O bundle Vite era inlined no `<head>` como script clássico e rodava antes de `#app`, deixando a tela bege sem título. O JS agora vai no fim do `body`.
+- O Web App E2E auto-configura `ENVIRONMENT=E2E` no primeiro `getHealth` e usa acesso anônimo só neste ambiente fictício.
+
+### Resultado
+
+- Smoke remoto passou no Chromium.
+- A Fase 3 deixa de ficar bloqueada no healthcheck.
+
+### Diferenças do pedido
+
+- Nenhuma: o conserto foi o necessário para o smoke verde.
+
+### Impacto técnico
+
+- `scripts/build-apps-script.mjs`, `playwright.remote.config.ts`, `src/server/e2e-web-app-url.ts`
+- `tests/e2e/remote/remote-readiness.spec.ts`
+- `apps-script/src/Code.gs`, `apps-script/src/appsscript.json`
+- README com a regra da URL `/exec`
+
+### Testes
+
+- `npm run test:e2e:remote`: 1 teste passou após o conserto.
+- Checks locais da fundação permaneceram verdes na entrega da Fase 4.
+
+### Pendências / próxima versão
+
+- Nenhuma da Fase 3; a Fase 4 segue nesta mesma entrega.
+
 ## 2026-08-13 12:16 — Iniciada a Fase 3 com ambiente E2E isolado
 
 **Origem:** Pedido do usuário

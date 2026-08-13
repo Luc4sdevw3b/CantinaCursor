@@ -1,27 +1,60 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Frame, type Page, test } from '@playwright/test';
+import { isLoadedE2EWebAppUrl } from '../../../src/server/e2e-web-app-url';
 
 const e2eBaseUrl = process.env.E2E_BASE_URL;
+
+async function e2ePage(page: Page) {
+  let found: Frame | undefined;
+
+  await expect
+    .poll(
+      async () => {
+        for (const frame of page.frames()) {
+          const heading = frame.getByRole('heading', {
+            level: 1,
+            name: 'Cantina V2 AppScript',
+          });
+          if (await heading.isVisible().catch(() => false)) {
+            found = frame;
+            return true;
+          }
+        }
+        return false;
+      },
+      { timeout: 20_000 },
+    )
+    .toBe(true);
+
+  if (!found) {
+    throw new Error('Tela da Cantina não apareceu no Web App E2E.');
+  }
+
+  return found;
+}
 
 test.describe('E2E remoto (Apps Script E2E + planilha isolada)', () => {
   test.skip(
     !e2eBaseUrl,
-    'Defina E2E_BASE_URL para o smoke no deployment E2E. Nunca use PROD.',
+    'Defina E2E_BASE_URL como https://script.google.com/macros/s/<id>/exec. Nunca use PROD.',
   );
 
   test('opens the isolated E2E Web App and shows configured health', async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto(e2eBaseUrl as string);
+    expect(isLoadedE2EWebAppUrl(page.url())).toBe(true);
 
-    await expect(page).toHaveTitle('Cantina V2 AppScript');
+    const app = await e2ePage(page);
     await expect(
-      page.getByRole('heading', { level: 1, name: 'Cantina V2 AppScript' }),
+      app.getByRole('heading', { level: 1, name: 'Cantina V2 AppScript' }),
     ).toBeVisible();
-    await expect(page.getByText('Ambiente E2E funcionando')).toBeVisible();
+    await expect(app.getByText('Ambiente E2E funcionando')).toBeVisible({
+      timeout: 20_000,
+    });
     await expect(
-      page.getByText('E2E • 0.1.0-dev • Planilha configurada'),
+      app.getByText('E2E • 0.1.0-dev • Planilha configurada'),
     ).toBeVisible();
-    await expect(page.locator('#health-card')).toHaveAttribute(
+    await expect(app.locator('#health-card')).toHaveAttribute(
       'data-app-adapter',
       'google-script',
     );
