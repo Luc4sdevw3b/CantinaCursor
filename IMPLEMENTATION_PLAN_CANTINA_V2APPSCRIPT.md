@@ -156,6 +156,8 @@ Produtos e categorias são a Fase 10.
 - histórico de preço;
 - item avulso dona.
 
+Estoque diário é a Fase 11.
+
 # Marco D — Estoque e vendas
 
 ## Fase 11 — Estoque diário

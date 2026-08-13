@@ -26,6 +26,11 @@ import {
   STUDENT_GUARDIANS_SHEET,
   USERS_MIGRATION_ID,
   USERS_SHEET,
+  PRODUCTS_MIGRATION_ID,
+  PRODUCT_CATEGORIES_SHEET,
+  PRODUCTS_SHEET,
+  PRODUCT_PRICE_HISTORY_SHEET,
+  AD_HOC_ITEMS_SHEET,
 } from './schema';
 import { deserializeRecord, serializeRecord } from './serialize';
 import { ensureSheet } from './ensure-sheet';
@@ -209,6 +214,37 @@ export function setupSchema(
           value: String(DEFAULT_REQUIRE_GUARDIAN_BELOW_AGE),
         }),
       );
+      meta.data.appendRow(
+        serializeRecord(META_SHEET.headers, {
+          key: 'schema_version',
+          value: '6',
+        }),
+      );
+    }
+
+    if (migration.id === PRODUCTS_MIGRATION_ID) {
+      const categories = ensureSheet(
+        input.spreadsheet,
+        PRODUCT_CATEGORIES_SHEET,
+      );
+      if (!categories.ok) {
+        return err(categories.error);
+      }
+      const products = ensureSheet(input.spreadsheet, PRODUCTS_SHEET);
+      if (!products.ok) {
+        return err(products.error);
+      }
+      const history = ensureSheet(
+        input.spreadsheet,
+        PRODUCT_PRICE_HISTORY_SHEET,
+      );
+      if (!history.ok) {
+        return err(history.error);
+      }
+      const adHoc = ensureSheet(input.spreadsheet, AD_HOC_ITEMS_SHEET);
+      if (!adHoc.ok) {
+        return err(adHoc.error);
+      }
       meta.data.appendRow(
         serializeRecord(META_SHEET.headers, {
           key: 'schema_version',

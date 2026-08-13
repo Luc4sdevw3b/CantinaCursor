@@ -8,6 +8,7 @@ import {
   OPERATION_REQUESTS_MIGRATION_ID,
   USERS_MIGRATION_ID,
   STUDENTS_MIGRATION_ID,
+  PRODUCTS_MIGRATION_ID,
 } from '../../src/server/sheets/schema';
 
 describe('setupSchema', () => {
@@ -26,7 +27,7 @@ describe('setupSchema', () => {
     expect(first).toEqual({
       ok: true,
       data: {
-        schemaVersion: 6,
+        schemaVersion: 7,
         appliedMigrations: [
           FOUNDATION_MIGRATION_ID,
           OPERATION_REQUESTS_MIGRATION_ID,
@@ -34,11 +35,12 @@ describe('setupSchema', () => {
           USERS_MIGRATION_ID,
           STUDENTS_MIGRATION_ID,
           GUARDIANS_MIGRATION_ID,
+          PRODUCTS_MIGRATION_ID,
         ],
       },
     });
     expect(second).toEqual(first);
-    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(6);
+    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(7);
     expect(sheets.get('_meta')?.getHeaders()).toEqual(['key', 'value']);
     expect(sheets.get('_operation_requests')?.getHeaders()).toEqual([
       'request_id',
@@ -91,6 +93,32 @@ describe('setupSchema', () => {
       'updated_at',
     ]);
     expect(sheets.get('_settings')?.getHeaders()).toEqual(['key', 'value']);
+    expect(sheets.get('_product_categories')?.getHeaders()).toEqual([
+      'id',
+      'name',
+      'sort_order',
+      'active',
+      'created_at',
+    ]);
+    expect(sheets.get('_products')?.getHeaders()).toEqual([
+      'id',
+      'category_id',
+      'name',
+      'price_cents',
+      'discount_allowed',
+      'stock_tracked',
+      'reservable',
+      'active',
+      'created_at',
+      'updated_at',
+    ]);
+    expect(sheets.get('_ad_hoc_items')?.getHeaders()).toEqual([
+      'id',
+      'name',
+      'price_cents',
+      'created_by',
+      'created_at',
+    ]);
   });
 
   it('applies only the operation-requests migration when foundation already exists', () => {
@@ -129,9 +157,10 @@ describe('setupSchema', () => {
         USERS_MIGRATION_ID,
         STUDENTS_MIGRATION_ID,
         GUARDIANS_MIGRATION_ID,
+        PRODUCTS_MIGRATION_ID,
       ]);
     }
-    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(6);
+    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(7);
   });
 
   it('refuses PROD', () => {

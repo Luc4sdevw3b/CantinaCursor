@@ -167,6 +167,49 @@ interface ServerContext {
     sessionToken: string,
     age: number,
   ): { requireGuardianBelowAge: number };
+  listProductCategories(sessionToken: string): Array<{
+    id: string;
+    name: string;
+    active: boolean;
+  }>;
+  listProducts(
+    sessionToken: string,
+    query?: { includeInactive?: boolean },
+  ): Array<{
+    id: string;
+    name: string;
+    categoryId: string;
+    categoryName: string;
+    priceCents: number;
+    priceLabel: string;
+    active: boolean;
+  }>;
+  createProduct(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): { id: string; name: string; priceCents: number };
+  updateProduct(
+    sessionToken: string,
+    id: string,
+    payload: Record<string, unknown>,
+  ): { id: string; priceCents: number };
+  listProductPriceHistory(
+    sessionToken: string,
+    productId: string,
+  ): Array<{
+    id: string;
+    priceCents: number;
+    endedAt: string | null;
+  }>;
+  createAdHocItem(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): { id: string; name: string; priceCents: number; priceLabel: string };
+  listAdHocItems(sessionToken: string): Array<{
+    id: string;
+    name: string;
+    priceCents: number;
+  }>;
 }
 
 interface DriveMockFile {
@@ -474,7 +517,7 @@ describe('Apps Script E2E server', () => {
     expect(health.status).toBe('ready');
     expect(health.adapter).toBe('google-script');
     expect(health.spreadsheetConfigured).toBe(true);
-    expect(health.schemaVersion).toBe(6);
+    expect(health.schemaVersion).toBe(7);
     expect(health.backupConfigured).toBe(true);
     expect(health.lastBackupAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(JSON.stringify(health)).not.toContain('private-e2e-sheet-id');
@@ -557,7 +600,7 @@ describe('Apps Script E2E server', () => {
     const second = server.setupSchema();
 
     expect(first).toEqual(second);
-    expect(first.schemaVersion).toBe(6);
+    expect(first.schemaVersion).toBe(7);
     expect(first.appliedMigrations).toEqual([
       '001_foundation',
       '002_operation_requests',
@@ -565,6 +608,7 @@ describe('Apps Script E2E server', () => {
       '004_users',
       '005_students',
       '006_guardians',
+      '007_products',
     ]);
     expect(sheets.get('_meta')?.rows[0]).toEqual(['key', 'value']);
     expect(sheets.get('_schema_migrations')?.rows[0]).toEqual([
@@ -779,7 +823,7 @@ describe('Apps Script E2E server', () => {
     const backup = server.runBackup(token, 'manual');
 
     expect(backup.reason).toBe('manual');
-    expect(backup.schemaVersion).toBe(6);
+    expect(backup.schemaVersion).toBe(7);
     expect(JSON.stringify(backup)).not.toContain('e2e-sheet-id');
     expect(JSON.stringify(backup)).not.toContain('e2e-backup-folder');
     expect(projectTriggers).toEqual(['runScheduledBackup']);
@@ -1086,5 +1130,68 @@ describe('Apps Script E2E server', () => {
       requireGuardianBelowAge: 16,
     });
     expect(() => server.listGuardians('')).toThrow('UNAUTHENTICATED');
+  });
+
+  it('seeds catalog products, keeps ad-hoc to the owner and refuses anonymous access', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const products = server.listProducts(owner);
+    const coxinha = products.find((item) => item.name === 'Coxinha');
+    const suco = products.find((item) => item.name === 'Suco de uva');
+
+    if (!coxinha || !suco) {
+      throw new Error('cardápio E2E incompleto');
+    }
+    expect(coxinha.categoryName).toBe('Salgados');
+    expect(coxinha.priceCents).toBe(550);
+    expect(coxinha.priceLabel).toBe('R$ 5,50');
+    expect(suco.priceCents).toBe(400);
+
+    const history = server.listProductPriceHistory(owner, coxinha.id);
+    expect(
+      history.some((item) => item.priceCents === 550 && !item.endedAt),
+    ).toBe(true);
+    expect(
+      server.updateProduct(owner, coxinha.id, {
+        name: 'Coxinha',
+        categoryId: coxinha.categoryId,
+        priceCents: 600,
+      }).priceCents,
+    ).toBe(600);
+
+    const staff = server.loginE2E('staff').token;
+    expect(
+      server.createProduct(staff, {
+        name: 'Pão de queijo',
+        categoryId: server
+          .listProductCategories(staff)
+          .find((item) => item.name === 'Salgados')?.id,
+        priceCents: 450,
+      }).name,
+    ).toBe('Pão de queijo');
+    expect(() =>
+      server.createAdHocItem(staff, {
+        name: 'Pastel da hora',
+        priceCents: 600,
+      }),
+    ).toThrow('FORBIDDEN');
+
+    const adHoc = server.createAdHocItem(owner, {
+      name: 'Pastel da hora',
+      priceCents: 600,
+    });
+    expect(adHoc.priceLabel).toBe('R$ 6,00');
+    expect(server.listAdHocItems(owner).map((item) => item.name)).toContain(
+      'Pastel da hora',
+    );
+    expect(
+      server.listProducts(owner).some((item) => item.name === 'Pastel da hora'),
+    ).toBe(false);
+    expect(() => server.listProducts('')).toThrow('UNAUTHENTICATED');
   });
 });

@@ -190,4 +190,21 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
       page.getByText('Bruno Lima pode lançar na conta de Ana Souza • ~8'),
     ).toBeVisible();
   });
+
+  test('shows catalog products after login and keeps ad-hoc to the owner', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Produtos', exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText('Coxinha • Salgados • R$ 5,50')).toBeVisible();
+    await expect(page.locator('#ad-hoc-block')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Sair' }).click();
+    await page.getByRole('button', { name: 'Entrar como funcionário' }).click();
+    await expect(page.getByText('Coxinha • Salgados • R$ 5,50')).toBeVisible();
+    await expect(page.locator('#ad-hoc-block')).toBeHidden();
+  });
 });

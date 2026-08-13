@@ -54,8 +54,9 @@ export const BACKUPS_MIGRATION_ID = '003_backups';
 export const USERS_MIGRATION_ID = '004_users';
 export const STUDENTS_MIGRATION_ID = '005_students';
 export const GUARDIANS_MIGRATION_ID = '006_guardians';
+export const PRODUCTS_MIGRATION_ID = '007_products';
 export const FOUNDATION_SCHEMA_VERSION = 1;
-export const CURRENT_SCHEMA_VERSION = 6;
+export const CURRENT_SCHEMA_VERSION = 7;
 
 export const USERS_SHEET: SheetSchema = {
   name: '_users',
@@ -154,4 +155,42 @@ export const STUDENT_ACCOUNT_AUTHORIZATIONS_SHEET: SheetSchema = {
 export const SETTINGS_SHEET: SheetSchema = {
   name: '_settings',
   headers: ['key', 'value'],
+};
+
+export const PRODUCT_CATEGORIES_SHEET: SheetSchema = {
+  name: '_product_categories',
+  headers: ['id', 'name', 'sort_order', 'active', 'created_at'],
+};
+
+export const PRODUCTS_SHEET: SheetSchema = {
+  name: '_products',
+  headers: [
+    'id',
+    'category_id',
+    'name',
+    'price_cents',
+    'discount_allowed',
+    'stock_tracked',
+    'reservable',
+    'active',
+    'created_at',
+    'updated_at',
+  ],
+};
+
+export const PRODUCT_PRICE_HISTORY_SHEET: SheetSchema = {
+  name: '_product_price_history',
+  headers: [
+    'id',
+    'product_id',
+    'price_cents',
+    'started_at',
+    'ended_at',
+    'created_by',
+  ],
+};
+
+export const AD_HOC_ITEMS_SHEET: SheetSchema = {
+  name: '_ad_hoc_items',
+  headers: ['id', 'name', 'price_cents', 'created_by', 'created_at'],
 };

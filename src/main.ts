@@ -1,7 +1,8 @@
 import './styles.css';
 import { APP_VERSION } from './app-version';
 import { roleLabel, type UserRole } from './domain/auth';
-import type { AppSession, StudentSummary } from './web/shared/app-api';
+import { parseReaisToCents } from './domain/money';
+import type { AppSession, Product, StudentSummary } from './web/shared/app-api';
 import { createAppApi } from './web/shared/create-app-api';
 import {
   applyTheme,
@@ -59,10 +60,10 @@ app.innerHTML = `
     <section class="next-step" aria-labelledby="next-step-title">
       <p class="step-number">01</p>
       <div>
-        <h2 id="next-step-title">Responsáveis e irmãos</h2>
-        <p>Vários responsáveis, um principal, irmãos e idade para pedir responsável.</p>
+        <h2 id="next-step-title">Produtos e categorias</h2>
+        <p>Preço em centavos, desconto, estoque, reserva e item avulso só da dona.</p>
       </div>
-      <span class="phase-badge">Fase 9</span>
+      <span class="phase-badge">Fase 10</span>
     </section>
 
     <section class="students-panel" id="students-panel" hidden>
@@ -127,6 +128,55 @@ app.innerHTML = `
         </label>
         <button type="submit" id="save-age-setting">Salvar idade</button>
       </form>
+    </section>
+
+    <section class="students-panel" id="products-panel" hidden>
+      <h2>Produtos</h2>
+      <p id="products-status">Entre para ver o cardápio.</p>
+      <ul id="products-list"></ul>
+      <form id="product-form">
+        <label>
+          Nome
+          <input id="product-name" required />
+        </label>
+        <label>
+          Categoria
+          <select id="product-category"></select>
+        </label>
+        <label>
+          Preço (R$)
+          <input id="product-price" inputmode="decimal" placeholder="5,50" required />
+        </label>
+        <label class="checkbox-label">
+          <input id="product-discount" type="checkbox" />
+          Permite desconto
+        </label>
+        <label class="checkbox-label">
+          <input id="product-stock" type="checkbox" />
+          Controla estoque
+        </label>
+        <label class="checkbox-label">
+          <input id="product-reservable" type="checkbox" />
+          Reservável
+        </label>
+        <button type="submit">Cadastrar produto</button>
+      </form>
+      <div id="ad-hoc-block">
+        <h2>Item avulso</h2>
+        <p id="ad-hoc-status">Só a dona registra item avulso. Ele não vira produto.</p>
+        <ul id="ad-hoc-list"></ul>
+        <form id="ad-hoc-form">
+          <label>
+            Nome
+            <input id="ad-hoc-name" required />
+          </label>
+          <label>
+            Preço (R$)
+            <input id="ad-hoc-price" inputmode="decimal" placeholder="6,00" required />
+          </label>
+          <button type="submit">Registrar avulso</button>
+        </form>
+      </div>
     </section>
 
     <footer>
@@ -203,6 +253,7 @@ async function showAuthenticated(session: AppSession | null): Promise<void> {
   renderSession(session, true);
   await renderStudents(Boolean(session));
   await renderFamily(session);
+  await renderProducts(session);
 }
 
 document.querySelector('#login-owner')?.addEventListener('click', () => {
@@ -381,6 +432,93 @@ async function renderFamily(session: AppSession | null): Promise<void> {
   }
 }
 
+const productsPanel = document.querySelector('#products-panel');
+const productsStatus = document.querySelector('#products-status');
+const productsList = document.querySelector('#products-list');
+const productCategorySelect = document.querySelector('#product-category');
+const adHocBlock = document.querySelector('#ad-hoc-block');
+const adHocStatus = document.querySelector('#ad-hoc-status');
+const adHocList = document.querySelector('#ad-hoc-list');
+
+function productLine(product: Product): string {
+  const inactive = product.active ? '' : ' • Inativo';
+  return `${product.name} • ${product.categoryName} • ${product.priceLabel}${inactive}`;
+}
+
+async function renderProducts(session: AppSession | null): Promise<void> {
+  if (
+    !(productsPanel instanceof HTMLElement) ||
+    !productsStatus ||
+    !(productsList instanceof HTMLElement)
+  ) {
+    return;
+  }
+  productsPanel.hidden = !session;
+  productsList.replaceChildren();
+  if (adHocList instanceof HTMLElement) {
+    adHocList.replaceChildren();
+  }
+  if (!session) {
+    productsStatus.textContent = 'Entre para ver o cardápio.';
+    return;
+  }
+
+  const [categories, products] = await Promise.all([
+    api.listProductCategories(),
+    api.listProducts({ includeInactive: true }),
+  ]);
+  productsStatus.textContent =
+    products.length === 0
+      ? 'Nenhum produto cadastrado ainda.'
+      : `${products.length} produto(s) no cardápio.`;
+
+  if (productCategorySelect instanceof HTMLSelectElement) {
+    productCategorySelect.replaceChildren();
+    for (const category of categories) {
+      const option = document.createElement('option');
+      option.value = category.id;
+      option.textContent = category.name;
+      productCategorySelect.append(option);
+    }
+  }
+
+  for (const product of products) {
+    const item = document.createElement('li');
+    item.textContent = productLine(product);
+    if (product.active) {
+      const deactivate = document.createElement('button');
+      deactivate.type = 'button';
+      deactivate.textContent = 'Desativar';
+      deactivate.addEventListener('click', () => {
+        void api
+          .deactivateProduct(product.id)
+          .then(() => api.getSession().then(renderProducts));
+      });
+      item.append(deactivate);
+    }
+    productsList.append(item);
+  }
+
+  const isOwner = session.role === 'owner';
+  if (adHocBlock instanceof HTMLElement) {
+    adHocBlock.hidden = !isOwner;
+  }
+  if (!isOwner || !(adHocList instanceof HTMLElement) || !adHocStatus) {
+    return;
+  }
+
+  const adHocItems = await api.listAdHocItems();
+  adHocStatus.textContent =
+    adHocItems.length === 0
+      ? 'Só a dona registra item avulso. Ele não vira produto.'
+      : `${adHocItems.length} item(ns) avulso(s).`;
+  for (const item of adHocItems) {
+    const row = document.createElement('li');
+    row.textContent = `${item.name} • ${item.priceLabel}`;
+    adHocList.append(row);
+  }
+}
+
 document.querySelector('#student-form')?.addEventListener('submit', (event) => {
   event.preventDefault();
   const name = document.querySelector('#student-name');
@@ -493,6 +631,94 @@ document
       });
   });
 
+document.querySelector('#product-form')?.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const name = document.querySelector('#product-name');
+  const price = document.querySelector('#product-price');
+  const discount = document.querySelector('#product-discount');
+  const stock = document.querySelector('#product-stock');
+  const reservable = document.querySelector('#product-reservable');
+  if (
+    !(name instanceof HTMLInputElement) ||
+    !(price instanceof HTMLInputElement) ||
+    !(discount instanceof HTMLInputElement) ||
+    !(stock instanceof HTMLInputElement) ||
+    !(reservable instanceof HTMLInputElement) ||
+    !(productCategorySelect instanceof HTMLSelectElement)
+  ) {
+    return;
+  }
+  const cents = parseReaisToCents(price.value);
+  if (!cents.ok) {
+    if (productsStatus) {
+      productsStatus.textContent = cents.error.message;
+    }
+    return;
+  }
+  void api
+    .createProduct({
+      name: name.value,
+      categoryId: productCategorySelect.value,
+      priceCents: cents.data,
+      discountAllowed: discount.checked,
+      stockTracked: stock.checked,
+      reservable: reservable.checked,
+    })
+    .then(() => {
+      name.value = '';
+      price.value = '';
+      discount.checked = false;
+      stock.checked = false;
+      reservable.checked = false;
+      return api.getSession().then(renderProducts);
+    })
+    .catch((error: unknown) => {
+      if (productsStatus) {
+        productsStatus.textContent =
+          error instanceof Error
+            ? error.message.replace(/^[A-Z_]+:\s*/, '')
+            : 'Não foi possível cadastrar o produto.';
+      }
+    });
+});
+
+document.querySelector('#ad-hoc-form')?.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const name = document.querySelector('#ad-hoc-name');
+  const price = document.querySelector('#ad-hoc-price');
+  if (
+    !(name instanceof HTMLInputElement) ||
+    !(price instanceof HTMLInputElement)
+  ) {
+    return;
+  }
+  const cents = parseReaisToCents(price.value);
+  if (!cents.ok) {
+    if (adHocStatus) {
+      adHocStatus.textContent = cents.error.message;
+    }
+    return;
+  }
+  void api
+    .createAdHocItem({
+      name: name.value,
+      priceCents: cents.data,
+    })
+    .then(() => {
+      name.value = '';
+      price.value = '';
+      return api.getSession().then(renderProducts);
+    })
+    .catch((error: unknown) => {
+      if (adHocStatus) {
+        adHocStatus.textContent =
+          error instanceof Error
+            ? error.message.replace(/^[A-Z_]+:\s*/, '')
+            : 'Não foi possível registrar o item avulso.';
+      }
+    });
+});
+
 void api
   .getHealth()
   .then(async (health) => {
@@ -518,6 +744,7 @@ void api
     renderSession(session, canLogin);
     await renderStudents(Boolean(session));
     await renderFamily(session);
+    await renderProducts(session);
   })
   .catch(() => {
     const status = document.querySelector('#health-status');

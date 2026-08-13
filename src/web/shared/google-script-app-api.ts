@@ -2,6 +2,7 @@ import { APP_NAME, APP_VERSION } from '../../app-version';
 import { isUserRole, type UserRole } from '../../domain/auth';
 import { isEnvironment } from '../../domain/environment';
 import type {
+  AdHocItem,
   AppApi,
   AppHealth,
   AppSession,
@@ -14,6 +15,10 @@ import type {
   GuardianProfileFields,
   GuardianSettings,
   LinkGuardianInput,
+  Product,
+  ProductCategory,
+  ProductFields,
+  ProductPriceHistory,
   ReactivateStudentInput,
   SchoolYear,
   SiblingAuthorization,
@@ -65,6 +70,14 @@ export interface GoogleScriptRunner {
   listSiblingAuthorizations(token: string, studentId?: string): void;
   getGuardianSettings(token: string): void;
   setRequireGuardianBelowAge(token: string, age: number): void;
+  listProductCategories(token: string): void;
+  listProducts(token: string, query?: unknown): void;
+  createProduct(token: string, payload: unknown): void;
+  updateProduct(token: string, id: string, payload: unknown): void;
+  deactivateProduct(token: string, id: string): void;
+  listProductPriceHistory(token: string, productId: string): void;
+  createAdHocItem(token: string, payload: unknown): void;
+  listAdHocItems(token: string): void;
 }
 
 export type SessionTokenStorage = Pick<
@@ -395,6 +408,64 @@ export class GoogleScriptAppApi implements AppApi {
     return this.callWithToken((runner, token) =>
       runner.setRequireGuardianBelowAge(token, age),
     );
+  }
+
+  listProductCategories(): Promise<ProductCategory[]> {
+    return this.callWithToken((runner, token) =>
+      runner.listProductCategories(token),
+    );
+  }
+
+  listProducts(query?: { includeInactive?: boolean }): Promise<Product[]> {
+    return this.callWithToken((runner, token) =>
+      runner.listProducts(token, query),
+    );
+  }
+
+  createProduct(input: ProductFields): Promise<Product> {
+    return this.callWithToken((runner, token) =>
+      runner.createProduct(token, {
+        ...input,
+        requestId: crypto.randomUUID(),
+      }),
+    );
+  }
+
+  updateProduct(id: string, input: ProductFields): Promise<Product> {
+    return this.callWithToken((runner, token) =>
+      runner.updateProduct(token, id, {
+        ...input,
+        requestId: crypto.randomUUID(),
+      }),
+    );
+  }
+
+  deactivateProduct(id: string): Promise<Product> {
+    return this.callWithToken((runner, token) =>
+      runner.deactivateProduct(token, id),
+    );
+  }
+
+  listProductPriceHistory(productId: string): Promise<ProductPriceHistory[]> {
+    return this.callWithToken((runner, token) =>
+      runner.listProductPriceHistory(token, productId),
+    );
+  }
+
+  createAdHocItem(input: {
+    name: string;
+    priceCents: number;
+  }): Promise<AdHocItem> {
+    return this.callWithToken((runner, token) =>
+      runner.createAdHocItem(token, {
+        ...input,
+        requestId: crypto.randomUUID(),
+      }),
+    );
+  }
+
+  listAdHocItems(): Promise<AdHocItem[]> {
+    return this.callWithToken((runner, token) => runner.listAdHocItems(token));
   }
 
   private callWithToken<T>(

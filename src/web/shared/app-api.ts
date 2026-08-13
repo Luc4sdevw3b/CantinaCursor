@@ -156,9 +156,54 @@ export interface AuthorizeSiblingInput {
   note?: string;
 }
 
+export interface ProductCategory {
+  id: string;
+  name: string;
+  active: boolean;
+}
+
+export interface Product {
+  id: string;
+  categoryId: string;
+  categoryName: string;
+  name: string;
+  priceCents: number;
+  priceLabel: string;
+  discountAllowed: boolean;
+  stockTracked: boolean;
+  reservable: boolean;
+  active: boolean;
+}
+
+export interface ProductFields {
+  name: string;
+  categoryId: string;
+  priceCents: number;
+  discountAllowed?: boolean;
+  stockTracked?: boolean;
+  reservable?: boolean;
+}
+
+export interface ProductPriceHistory {
+  id: string;
+  productId: string;
+  priceCents: number;
+  priceLabel: string;
+  startedAt: string;
+  endedAt: string | null;
+}
+
+export interface AdHocItem {
+  id: string;
+  name: string;
+  priceCents: number;
+  priceLabel: string;
+  createdAt: string;
+}
+
 /**
- * Contrato técnico da Fase 9.
- * Sem produtos, vendas, estoque, fiado, crédito como movimento, caixa, reservas ou envio de WhatsApp.
+ * Contrato técnico da Fase 10.
+ * Sem vendas, estoque diário, fiado, crédito como movimento, caixa, reservas ou envio de WhatsApp.
  */
 export interface AppApi {
   getHealth(): Promise<AppHealth>;
@@ -212,4 +257,15 @@ export interface AppApi {
   ): Promise<SiblingAuthorization[]>;
   getGuardianSettings(): Promise<GuardianSettings>;
   setRequireGuardianBelowAge(age: number): Promise<GuardianSettings>;
+  listProductCategories(): Promise<ProductCategory[]>;
+  listProducts(query?: { includeInactive?: boolean }): Promise<Product[]>;
+  createProduct(input: ProductFields): Promise<Product>;
+  updateProduct(id: string, input: ProductFields): Promise<Product>;
+  deactivateProduct(id: string): Promise<Product>;
+  listProductPriceHistory(productId: string): Promise<ProductPriceHistory[]>;
+  createAdHocItem(input: {
+    name: string;
+    priceCents: number;
+  }): Promise<AdHocItem>;
+  listAdHocItems(): Promise<AdHocItem[]>;
 }

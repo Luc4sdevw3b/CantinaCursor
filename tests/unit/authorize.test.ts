@@ -7,8 +7,10 @@ describe('authorize', () => {
     expect(authorize('owner', 'backup.restore').ok).toBe(true);
     expect(authorize('staff', 'students.write').ok).toBe(true);
     expect(authorize('staff', 'guardians.write').ok).toBe(true);
+    expect(authorize('staff', 'products.write').ok).toBe(true);
     expect(authorize('staff', 'e2e.probe').ok).toBe(true);
     expect(authorize('owner', 'settings.manage').ok).toBe(true);
+    expect(authorize('owner', 'ad_hoc.create').ok).toBe(true);
   });
 
   it('rejects missing role and staff on owner-only actions', () => {
@@ -16,6 +18,7 @@ describe('authorize', () => {
     const staffReset = authorize('staff', 'e2e.reset');
     const staffBackup = authorize('staff', 'backup.run');
     const staffSettings = authorize('staff', 'settings.manage');
+    const staffAdHoc = authorize('staff', 'ad_hoc.create');
 
     expect(anonymous.ok).toBe(false);
     if (!anonymous.ok) {
@@ -32,6 +35,10 @@ describe('authorize', () => {
     expect(staffSettings.ok).toBe(false);
     if (!staffSettings.ok) {
       expect(staffSettings.error.code).toBe('FORBIDDEN');
+    }
+    expect(staffAdHoc.ok).toBe(false);
+    if (!staffAdHoc.ok) {
+      expect(staffAdHoc.error.code).toBe('FORBIDDEN');
     }
   });
 });

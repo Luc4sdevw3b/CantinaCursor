@@ -35,6 +35,7 @@ Testar:
 - sessão/role no backend (`owner`/`staff`), login E2E só no ambiente E2E, recusa de token inválido/expirado/revogado;
 - alunos: idade (nascimento ou aproximada), homônimos distintos, matrícula com histórico, reativação com revisão;
 - responsáveis: vários por aluno, um principal, irmãos por responsável compartilhado, autorização direcional, idade operacional para pedir responsável;
+- produtos: preço em centavos, categorias, histórico de preço, item avulso só da dona e fora do cardápio;
 - validações.
 
 ## Integração remota — E2E env
@@ -84,7 +85,8 @@ Mínimo obrigatório do smoke local:
 9. nenhuma chamada externa é realizada;
 10. login local como dona/funcionário e logout, sem campo de senha;
 11. homônimos distinguíveis e reativação só com revisão do cadastro;
-12. responsáveis fictícios, flag WhatsApp e autorização entre irmãos após o login.
+12. responsáveis fictícios, flag WhatsApp e autorização entre irmãos após o login;
+13. cardápio fictício após o login (`Coxinha • Salgados • R$ 5,50`); item avulso visível só para a dona.
 
 Não confundir com o ambiente Google E2E da Fase 3.
 

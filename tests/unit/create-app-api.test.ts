@@ -64,6 +64,14 @@ function runnerWith(
     listSiblingAuthorizations() {},
     getGuardianSettings() {},
     setRequireGuardianBelowAge() {},
+    listProductCategories() {},
+    listProducts() {},
+    createProduct() {},
+    updateProduct() {},
+    deactivateProduct() {},
+    listProductPriceHistory() {},
+    createAdHocItem() {},
+    listAdHocItems() {},
     ...extra,
   };
   return runner;

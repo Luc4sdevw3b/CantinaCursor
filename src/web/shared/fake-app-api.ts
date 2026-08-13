@@ -2,8 +2,10 @@ import { APP_NAME, APP_VERSION } from '../../app-version';
 import { isUserRole, type AuthAction, type UserRole } from '../../domain/auth';
 import { authorize } from '../../domain/authorize';
 import type { AppError } from '../../domain/result';
+import { MemoryCatalog } from '../../server/products/memory-catalog';
 import { MemoryRoster } from '../../server/students/memory-roster';
 import type {
+  AdHocItem,
   AppApi,
   AppHealth,
   AppSession,
@@ -16,6 +18,10 @@ import type {
   GuardianProfileFields,
   GuardianSettings,
   LinkGuardianInput,
+  Product,
+  ProductCategory,
+  ProductFields,
+  ProductPriceHistory,
   ReactivateStudentInput,
   SchoolYear,
   SiblingAuthorization,
@@ -49,6 +55,9 @@ function throwResult<T>(
 export class FakeAppApi implements AppApi {
   private session: AppSession | null = null;
   private readonly roster = new MemoryRoster(() => '2026-08-13T16:00:00.000Z');
+  private readonly catalog = new MemoryCatalog(
+    () => '2026-08-13T16:00:00.000Z',
+  );
 
   async getHealth(): Promise<AppHealth> {
     return { ...LOCAL_HEALTH };
@@ -64,6 +73,7 @@ export class FakeAppApi implements AppApi {
     }
     this.session = { role };
     this.roster.ensureDemoRoster();
+    this.catalog.ensureDemoCatalog();
     return { role };
   }
 
@@ -219,6 +229,53 @@ export class FakeAppApi implements AppApi {
   async setRequireGuardianBelowAge(age: number): Promise<GuardianSettings> {
     this.assertAction('settings.manage');
     return throwResult(this.roster.setRequireGuardianBelowAge(age));
+  }
+
+  async listProductCategories(): Promise<ProductCategory[]> {
+    this.assertAction('products.read');
+    return throwResult(this.catalog.listCategories());
+  }
+
+  async listProducts(query?: {
+    includeInactive?: boolean;
+  }): Promise<Product[]> {
+    this.assertAction('products.read');
+    return throwResult(this.catalog.listProducts(query));
+  }
+
+  async createProduct(input: ProductFields): Promise<Product> {
+    this.assertAction('products.write');
+    return throwResult(this.catalog.createProduct(input));
+  }
+
+  async updateProduct(id: string, input: ProductFields): Promise<Product> {
+    this.assertAction('products.write');
+    return throwResult(this.catalog.updateProduct(id, input));
+  }
+
+  async deactivateProduct(id: string): Promise<Product> {
+    this.assertAction('products.write');
+    return throwResult(this.catalog.deactivateProduct(id));
+  }
+
+  async listProductPriceHistory(
+    productId: string,
+  ): Promise<ProductPriceHistory[]> {
+    this.assertAction('products.read');
+    return throwResult(this.catalog.listProductPriceHistory(productId));
+  }
+
+  async createAdHocItem(input: {
+    name: string;
+    priceCents: number;
+  }): Promise<AdHocItem> {
+    this.assertAction('ad_hoc.create');
+    return throwResult(this.catalog.createAdHocItem(input));
+  }
+
+  async listAdHocItems(): Promise<AdHocItem[]> {
+    this.assertAction('ad_hoc.create');
+    return throwResult(this.catalog.listAdHocItems());
   }
 
   private assertSession(): void {

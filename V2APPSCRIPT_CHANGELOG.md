@@ -9,6 +9,52 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-13 13:56 — Implementada a Fase 10: produtos e categorias
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 10
+
+### Pedido / objetivo
+
+- Rodar a Fase 10: produtos/categorias, preço em centavos, desconto, flags de estoque e reserva, ativo/inativo, histórico de preço e item avulso só da dona.
+
+### Tentativa / implementação
+
+- Migration `007_products` cria `_product_categories`, `_products`, `_product_price_history` e `_ad_hoc_items` (schema version 7). A 006 continua gravando a versão 6; IDs continuam UUID; atualizações são append.
+- Preço fica em centavos inteiros. BRL (`R$ 5,50`) é só exibição. Categorias iniciais: Salgados, Bebidas, Doces, Outros.
+- Troca de preço fecha o período anterior e abre um id novo. Inativo preserva o cadastro. Flags `stock_tracked` e `reservable` existem; não há estoque diário nem reservas reais.
+- Item avulso é só da dona e não entra no cardápio. Dona e funcionário leem/escrevem produtos. `getHealth` segue público.
+
+### Resultado
+
+- Fase 10 concluída sobre o ambiente E2E isolado e o preview local.
+- Nenhum ID Google, token, telefone real ou dado de planilha foi versionado.
+
+### Diferenças do pedido
+
+- Estoque diário, vendas, fiado, crédito como movimento, caixa, reservas reais e envio de WhatsApp permanecem na Fase 11 em diante. O seed E2E e o preview local usam cardápio fictício (Coxinha, Suco de uva, Brigadeiro).
+
+### Impacto técnico
+
+- domínio de dinheiro, produto, histórico de preço e item avulso
+- `MemoryCatalog` + `AppApi` de produtos; `Code.gs` com as mesmas regras
+- UI após o login: lista de produtos, formulário em reais→centavos, desativar e item avulso só da dona; textos de health do smoke inalterados
+- README, Implementation Plan e referências
+
+### Testes
+
+- `npm run format:check` / `lint` / `typecheck` / `version:check` / `validate:skill`: passou.
+- `npm test`: 120 testes passaram.
+- `npm run build`: passou.
+- `npm run test:e2e:local`: 13 testes Chromium passaram.
+- `npm run test:e2e:remote`: 1 teste Chromium passou (health público, sem login).
+
+### Pendências / próxima versão
+
+- Não iniciar a Fase 11 (estoque diário) sem pedido explícito.
+
 ## 2026-08-13 13:26 — Implementada a Fase 9: responsáveis e irmãos
 
 **Origem:** Pedido do usuário

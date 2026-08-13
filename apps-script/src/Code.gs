@@ -26,7 +26,7 @@ const FOUNDATION_MIGRATION_CHECKSUM = 'meta|schema_migrations';
 const OPERATION_REQUESTS_MIGRATION_ID = '002_operation_requests';
 const OPERATION_REQUESTS_MIGRATION_CHECKSUM =
   'request_id|operation_type|result_entity_id|status|created_at';
-const CURRENT_SCHEMA_VERSION = 6;
+const CURRENT_SCHEMA_VERSION = 7;
 const BACKUPS_SHEET = '_backups';
 const BACKUPS_HEADERS = [
   'id',
@@ -138,6 +138,47 @@ const SETTINGS_HEADERS = ['key', 'value'];
 const GUARDIANS_MIGRATION_ID = '006_guardians';
 const GUARDIANS_MIGRATION_CHECKSUM =
   'id|full_name|phone|whatsapp_enabled|relation_label|active|created_at|updated_at|id|student_id|guardian_id|is_primary|can_use_guardian_credit|auto_settle_debt_from_guardian_credit|active|started_at|ended_at|note|created_at|id|consumer_student_id|account_student_id|can_charge_account|can_use_account_credit|active|authorized_at|revoked_at|created_by|note|key|value';
+const PRODUCT_CATEGORIES_SHEET = '_product_categories';
+const PRODUCT_CATEGORIES_HEADERS = [
+  'id',
+  'name',
+  'sort_order',
+  'active',
+  'created_at',
+];
+const PRODUCTS_SHEET = '_products';
+const PRODUCTS_HEADERS = [
+  'id',
+  'category_id',
+  'name',
+  'price_cents',
+  'discount_allowed',
+  'stock_tracked',
+  'reservable',
+  'active',
+  'created_at',
+  'updated_at',
+];
+const PRODUCT_PRICE_HISTORY_SHEET = '_product_price_history';
+const PRODUCT_PRICE_HISTORY_HEADERS = [
+  'id',
+  'product_id',
+  'price_cents',
+  'started_at',
+  'ended_at',
+  'created_by',
+];
+const AD_HOC_ITEMS_SHEET = '_ad_hoc_items';
+const AD_HOC_ITEMS_HEADERS = [
+  'id',
+  'name',
+  'price_cents',
+  'created_by',
+  'created_at',
+];
+const PRODUCTS_MIGRATION_ID = '007_products';
+const PRODUCTS_MIGRATION_CHECKSUM =
+  'id|name|sort_order|active|created_at|id|category_id|name|price_cents|discount_allowed|stock_tracked|reservable|active|created_at|updated_at|id|product_id|price_cents|started_at|ended_at|created_by|id|name|price_cents|created_by|created_at';
 const REQUIRE_GUARDIAN_BELOW_AGE_KEY = 'require_guardian_below_age';
 const DEFAULT_REQUIRE_GUARDIAN_BELOW_AGE = 18;
 const E2E_OWNER_SUBJECT = 'e2e-owner';
@@ -157,6 +198,9 @@ const ACTION_ROLES = {
   'guardians.read': ['owner', 'staff'],
   'guardians.write': ['owner', 'staff'],
   'settings.manage': ['owner'],
+  'products.read': ['owner', 'staff'],
+  'products.write': ['owner', 'staff'],
+  'ad_hoc.create': ['owner'],
 };
 const BACKUP_FILE_PREFIX = 'cantina-backup';
 const BACKUP_FOLDER_NAME = 'Cantina V2 AppScript E2E backups';
@@ -542,6 +586,10 @@ function resetE2EUnlocked() {
     STUDENT_GUARDIANS_SHEET,
     STUDENT_ACCOUNT_AUTHORIZATIONS_SHEET,
     SETTINGS_SHEET,
+    PRODUCT_CATEGORIES_SHEET,
+    PRODUCTS_SHEET,
+    PRODUCT_PRICE_HISTORY_SHEET,
+    AD_HOC_ITEMS_SHEET,
   ].forEach(function (name) {
     const sheet = spreadsheet.getSheetByName(name);
     if (sheet) {
@@ -570,6 +618,7 @@ function seedE2E(sessionToken) {
     sheet.appendRow(['seeded', 'true']);
     seedE2EStudentsUnlocked();
     seedE2EGuardiansUnlocked();
+    seedE2EProductsUnlocked();
     return {
       marker: E2E_SEED_MARKER,
       seeded: true,
@@ -600,6 +649,7 @@ function assertKnownMigrations(applied) {
     USERS_MIGRATION_ID,
     STUDENTS_MIGRATION_ID,
     GUARDIANS_MIGRATION_ID,
+    PRODUCTS_MIGRATION_ID,
   ];
   applied.forEach(function (id) {
     if (catalog.indexOf(id) === -1) {
@@ -627,7 +677,8 @@ function setupSchema() {
     applied.indexOf(BACKUPS_MIGRATION_ID) === -1 ||
     applied.indexOf(USERS_MIGRATION_ID) === -1 ||
     applied.indexOf(STUDENTS_MIGRATION_ID) === -1 ||
-    applied.indexOf(GUARDIANS_MIGRATION_ID) === -1;
+    applied.indexOf(GUARDIANS_MIGRATION_ID) === -1 ||
+    applied.indexOf(PRODUCTS_MIGRATION_ID) === -1;
   let pendingCopy = null;
   if (pending) {
     try {
@@ -727,13 +778,35 @@ function setupSchema() {
       REQUIRE_GUARDIAN_BELOW_AGE_KEY,
       String(DEFAULT_REQUIRE_GUARDIAN_BELOW_AGE),
     ]);
-    meta.appendRow(['schema_version', String(CURRENT_SCHEMA_VERSION)]);
+    meta.appendRow(['schema_version', '6']);
     migrations.appendRow([
       GUARDIANS_MIGRATION_ID,
       createdAt,
       CANTINA_APP_VERSION,
       GUARDIANS_MIGRATION_CHECKSUM,
       'Cria responsáveis, vínculos, autorizações de irmãos e settings',
+    ]);
+  }
+  if (applied.indexOf(PRODUCTS_MIGRATION_ID) === -1) {
+    getOrCreateSheet(
+      spreadsheet,
+      PRODUCT_CATEGORIES_SHEET,
+      PRODUCT_CATEGORIES_HEADERS,
+    );
+    getOrCreateSheet(spreadsheet, PRODUCTS_SHEET, PRODUCTS_HEADERS);
+    getOrCreateSheet(
+      spreadsheet,
+      PRODUCT_PRICE_HISTORY_SHEET,
+      PRODUCT_PRICE_HISTORY_HEADERS,
+    );
+    getOrCreateSheet(spreadsheet, AD_HOC_ITEMS_SHEET, AD_HOC_ITEMS_HEADERS);
+    meta.appendRow(['schema_version', String(CURRENT_SCHEMA_VERSION)]);
+    migrations.appendRow([
+      PRODUCTS_MIGRATION_ID,
+      createdAt,
+      CANTINA_APP_VERSION,
+      PRODUCTS_MIGRATION_CHECKSUM,
+      'Cria categorias, produtos, histórico de preço e itens avulsos',
     ]);
   }
   if (pendingCopy) {
@@ -2337,5 +2410,393 @@ function setRequireGuardianBelowAge(sessionToken, age) {
       String(parsed),
     ]);
     return { requireGuardianBelowAge: parsed };
+  });
+}
+
+function parseCentsGs(value) {
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) {
+    return value;
+  }
+  if (typeof value === 'string' && /^\d+$/.test(String(value).trim())) {
+    return Number(String(value).trim());
+  }
+  throw new Error(
+    'INVALID_CENTS: O preço precisa ser um valor em centavos, número inteiro.',
+  );
+}
+
+function formatBrlGs(cents) {
+  const safe =
+    Number.isInteger(cents) && cents >= 0 ? cents : parseCentsGs(cents);
+  const reais = Math.floor(safe / 100);
+  let fraction = String(safe % 100);
+  if (fraction.length < 2) {
+    fraction = '0' + fraction;
+  }
+  return 'R$ ' + reais + ',' + fraction;
+}
+
+function validateProductProfileGs(payload) {
+  const name = normalizePersonName(
+    payload && payload.name ? String(payload.name) : '',
+  );
+  if (name.length < 2) {
+    throw new Error('PRODUCT_NAME_REQUIRED: Informe o nome do produto.');
+  }
+  const categoryId = payload && payload.categoryId;
+  if (!REQUEST_ID_PATTERN.test(String(categoryId || ''))) {
+    throw new Error(
+      'INVALID_ID: ID deve ser UUID imutável, nunca número da linha.',
+    );
+  }
+  return {
+    name: name,
+    category_id: categoryId,
+    price_cents: String(parseCentsGs(payload && payload.priceCents)),
+    discount_allowed:
+      payload && payload.discountAllowed === true ? 'true' : 'false',
+    stock_tracked: payload && payload.stockTracked === true ? 'true' : 'false',
+    reservable: payload && payload.reservable === true ? 'true' : 'false',
+  };
+}
+
+function listCategoryRecords() {
+  return listSheetRecords(
+    openNamedSheet(PRODUCT_CATEGORIES_SHEET, PRODUCT_CATEGORIES_HEADERS),
+    PRODUCT_CATEGORIES_HEADERS,
+  );
+}
+
+function listProductRecords() {
+  return listSheetRecords(
+    openNamedSheet(PRODUCTS_SHEET, PRODUCTS_HEADERS),
+    PRODUCTS_HEADERS,
+  );
+}
+
+function listPriceHistoryRecords() {
+  return listSheetRecords(
+    openNamedSheet(PRODUCT_PRICE_HISTORY_SHEET, PRODUCT_PRICE_HISTORY_HEADERS),
+    PRODUCT_PRICE_HISTORY_HEADERS,
+  );
+}
+
+function latestCategoryById(id, required) {
+  if (!REQUEST_ID_PATTERN.test(id)) {
+    throw new Error(
+      'INVALID_ID: ID deve ser UUID imutável, nunca número da linha.',
+    );
+  }
+  const category = latestRecordsById(listCategoryRecords()).filter(
+    function (item) {
+      return item.id === id;
+    },
+  )[0];
+  if (!category && required) {
+    throw new Error('CATEGORY_NOT_FOUND: Categoria não encontrada.');
+  }
+  return category || null;
+}
+
+function latestProductById(id) {
+  if (!REQUEST_ID_PATTERN.test(id)) {
+    throw new Error(
+      'INVALID_ID: ID deve ser UUID imutável, nunca número da linha.',
+    );
+  }
+  const product = latestRecordsById(listProductRecords()).filter(
+    function (item) {
+      return item.id === id;
+    },
+  )[0];
+  if (!product) {
+    throw new Error('PRODUCT_NOT_FOUND: Produto não encontrado.');
+  }
+  return product;
+}
+
+function appendProductRecord(record) {
+  openNamedSheet(PRODUCTS_SHEET, PRODUCTS_HEADERS).appendRow([
+    record.id,
+    record.category_id,
+    record.name,
+    record.price_cents,
+    record.discount_allowed,
+    record.stock_tracked,
+    record.reservable,
+    record.active,
+    record.created_at,
+    record.updated_at,
+  ]);
+}
+
+function appendPriceHistoryGs(productId, priceCents, createdBy, changedAt) {
+  const existing = listPriceHistoryRecords().filter(function (record) {
+    return record.product_id === productId && record.ended_at === '';
+  });
+  const current = existing.length ? existing[existing.length - 1] : null;
+  const history = openNamedSheet(
+    PRODUCT_PRICE_HISTORY_SHEET,
+    PRODUCT_PRICE_HISTORY_HEADERS,
+  );
+  if (current && current.price_cents === String(priceCents)) {
+    return;
+  }
+  if (current) {
+    history.appendRow([
+      current.id,
+      current.product_id,
+      current.price_cents,
+      current.started_at,
+      changedAt,
+      current.created_by,
+    ]);
+  }
+  history.appendRow([
+    Utilities.getUuid(),
+    productId,
+    String(priceCents),
+    changedAt,
+    '',
+    createdBy,
+  ]);
+}
+
+function toProductGs(record) {
+  const category = latestCategoryById(record.category_id, false);
+  const priceCents = Number(record.price_cents);
+  return {
+    id: record.id,
+    categoryId: record.category_id,
+    categoryName: category ? category.name : '',
+    name: record.name,
+    priceCents: priceCents,
+    priceLabel: formatBrlGs(priceCents),
+    discountAllowed: record.discount_allowed === 'true',
+    stockTracked: record.stock_tracked === 'true',
+    reservable: record.reservable === 'true',
+    active: record.active === 'true',
+  };
+}
+
+function seedE2EProductsUnlocked() {
+  setupSchema();
+  const now = new Date().toISOString();
+  const names = ['Salgados', 'Bebidas', 'Doces', 'Outros'];
+  const ids = {};
+  names.forEach(function (name, index) {
+    const id = Utilities.getUuid();
+    ids[name] = id;
+    openNamedSheet(
+      PRODUCT_CATEGORIES_SHEET,
+      PRODUCT_CATEGORIES_HEADERS,
+    ).appendRow([id, name, String(index + 1), 'true', now]);
+  });
+  const items = [
+    {
+      name: 'Coxinha',
+      category: 'Salgados',
+      price: 550,
+      discount: true,
+      stock: true,
+      reservable: false,
+    },
+    {
+      name: 'Suco de uva',
+      category: 'Bebidas',
+      price: 400,
+      discount: false,
+      stock: true,
+      reservable: true,
+    },
+    {
+      name: 'Brigadeiro',
+      category: 'Doces',
+      price: 250,
+      discount: true,
+      stock: false,
+      reservable: false,
+    },
+  ];
+  items.forEach(function (item) {
+    const id = Utilities.getUuid();
+    appendProductRecord({
+      id: id,
+      category_id: ids[item.category],
+      name: item.name,
+      price_cents: String(item.price),
+      discount_allowed: item.discount ? 'true' : 'false',
+      stock_tracked: item.stock ? 'true' : 'false',
+      reservable: item.reservable ? 'true' : 'false',
+      active: 'true',
+      created_at: now,
+      updated_at: now,
+    });
+    appendPriceHistoryGs(id, item.price, Utilities.getUuid(), now);
+  });
+}
+
+function listProductCategories(sessionToken) {
+  requireAction(sessionToken, 'products.read');
+  return latestRecordsById(listCategoryRecords())
+    .slice()
+    .sort(function (left, right) {
+      return Number(left.sort_order) - Number(right.sort_order);
+    })
+    .map(function (category) {
+      return {
+        id: category.id,
+        name: category.name,
+        active: category.active === 'true',
+      };
+    });
+}
+
+function listProducts(sessionToken, query) {
+  requireAction(sessionToken, 'products.read');
+  const includeInactive = !query || query.includeInactive !== false;
+  return latestRecordsById(listProductRecords())
+    .filter(function (product) {
+      return includeInactive || product.active === 'true';
+    })
+    .map(toProductGs);
+}
+
+function createProduct(sessionToken, payload) {
+  const session = requireAction(sessionToken, 'products.write');
+  return withScriptLock(function () {
+    setupSchema();
+    const profile = validateProductProfileGs(payload || {});
+    latestCategoryById(profile.category_id, true);
+    const now = new Date().toISOString();
+    const record = Object.assign(
+      {
+        id: Utilities.getUuid(),
+        active: 'true',
+        created_at: now,
+        updated_at: now,
+      },
+      profile,
+    );
+    appendProductRecord(record);
+    appendPriceHistoryGs(
+      record.id,
+      Number(record.price_cents),
+      session.user_id,
+      now,
+    );
+    return toProductGs(record);
+  });
+}
+
+function updateProduct(sessionToken, id, payload) {
+  const session = requireAction(sessionToken, 'products.write');
+  return withScriptLock(function () {
+    setupSchema();
+    const previous = latestProductById(id);
+    const profile = validateProductProfileGs(payload || {});
+    latestCategoryById(profile.category_id, true);
+    const now = new Date().toISOString();
+    const record = Object.assign({}, previous, profile, { updated_at: now });
+    appendProductRecord(record);
+    appendPriceHistoryGs(
+      record.id,
+      Number(record.price_cents),
+      session.user_id,
+      now,
+    );
+    return toProductGs(record);
+  });
+}
+
+function deactivateProduct(sessionToken, id) {
+  requireAction(sessionToken, 'products.write');
+  return withScriptLock(function () {
+    setupSchema();
+    const previous = latestProductById(id);
+    if (previous.active !== 'true') {
+      throw new Error(
+        'PRODUCT_ALREADY_INACTIVE: Este produto já está inativo.',
+      );
+    }
+    const record = Object.assign({}, previous, {
+      active: 'false',
+      updated_at: new Date().toISOString(),
+    });
+    appendProductRecord(record);
+    return toProductGs(record);
+  });
+}
+
+function listProductPriceHistory(sessionToken, productId) {
+  requireAction(sessionToken, 'products.read');
+  latestProductById(productId);
+  return latestRecordsById(listPriceHistoryRecords())
+    .filter(function (record) {
+      return record.product_id === productId;
+    })
+    .map(function (record) {
+      const priceCents = Number(record.price_cents);
+      return {
+        id: record.id,
+        productId: record.product_id,
+        priceCents: priceCents,
+        priceLabel: formatBrlGs(priceCents),
+        startedAt: record.started_at,
+        endedAt: record.ended_at || null,
+      };
+    });
+}
+
+function createAdHocItem(sessionToken, payload) {
+  const session = requireAction(sessionToken, 'ad_hoc.create');
+  return withScriptLock(function () {
+    setupSchema();
+    const name = normalizePersonName(
+      payload && payload.name ? String(payload.name) : '',
+    );
+    if (name.length < 2) {
+      throw new Error('AD_HOC_NAME_REQUIRED: Informe o nome do item avulso.');
+    }
+    const priceCents = parseCentsGs(payload && payload.priceCents);
+    const now = new Date().toISOString();
+    const record = {
+      id: Utilities.getUuid(),
+      name: name,
+      price_cents: String(priceCents),
+      created_by: session.user_id,
+      created_at: now,
+    };
+    openNamedSheet(AD_HOC_ITEMS_SHEET, AD_HOC_ITEMS_HEADERS).appendRow([
+      record.id,
+      record.name,
+      record.price_cents,
+      record.created_by,
+      record.created_at,
+    ]);
+    return {
+      id: record.id,
+      name: record.name,
+      priceCents: priceCents,
+      priceLabel: formatBrlGs(priceCents),
+      createdAt: record.created_at,
+    };
+  });
+}
+
+function listAdHocItems(sessionToken) {
+  requireAction(sessionToken, 'ad_hoc.create');
+  return listSheetRecords(
+    openNamedSheet(AD_HOC_ITEMS_SHEET, AD_HOC_ITEMS_HEADERS),
+    AD_HOC_ITEMS_HEADERS,
+  ).map(function (record) {
+    const priceCents = Number(record.price_cents);
+    return {
+      id: record.id,
+      name: record.name,
+      priceCents: priceCents,
+      priceLabel: formatBrlGs(priceCents),
+      createdAt: record.created_at,
+    };
   });
 }

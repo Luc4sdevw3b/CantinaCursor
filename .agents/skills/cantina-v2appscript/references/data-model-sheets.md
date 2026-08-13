@@ -26,6 +26,7 @@ _student_account_authorizations
 _product_categories
 _products
 _product_price_history
+_ad_hoc_items
 _sales
 _sale_items
 _sale_settlements
@@ -96,7 +97,13 @@ Turmas pertencem a um ano letivo. Histórico de matrícula fica em `_student_enr
 
 ## Produtos
 
-`_products`: id, category_id, name, price_cents, discount_allowed, stock_tracked, reservable, active, timestamps.
+`_product_categories`: id, name, sort_order, active, created_at. Categorias iniciais: Salgados, Bebidas, Doces, Outros.
+
+`_products`: id, category_id, name, price_cents, discount_allowed, stock_tracked, reservable, active, created_at, updated_at. Preço em centavos inteiros. Inativo preserva histórico. Flags de estoque e reserva ainda não abrem estoque diário nem reservas.
+
+`_product_price_history`: id, product_id, price_cents, started_at, ended_at, created_by. Append-oriented; troca de preço fecha o período anterior e abre um id novo. Não reescreve venda antiga (vendas ainda não existem).
+
+`_ad_hoc_items`: id, name, price_cents, created_by, created_at. Só a dona registra. Item avulso não vira produto automaticamente.
 
 ## Vendas
 

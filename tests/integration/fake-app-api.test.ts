@@ -141,4 +141,78 @@ describe('FakeAppApi', () => {
       requireGuardianBelowAge: 16,
     });
   });
+
+  it('lists demo products, records price history and keeps ad-hoc out of the catalog', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const products = await api.listProducts();
+    const coxinha = products.find((item) => item.name === 'Coxinha');
+    const suco = products.find((item) => item.name === 'Suco de uva');
+    const brigadeiro = products.find((item) => item.name === 'Brigadeiro');
+
+    if (!coxinha || !suco || !brigadeiro) {
+      throw new Error('cardápio local incompleto');
+    }
+    expect(coxinha.categoryName).toBe('Salgados');
+    expect(coxinha.priceCents).toBe(550);
+    expect(coxinha.priceLabel).toBe('R$ 5,50');
+    expect(coxinha.discountAllowed).toBe(true);
+    expect(suco.reservable).toBe(true);
+    expect(brigadeiro.stockTracked).toBe(false);
+
+    const historyBefore = await api.listProductPriceHistory(coxinha.id);
+    expect(
+      historyBefore.some((item) => item.priceCents === 550 && !item.endedAt),
+    ).toBe(true);
+    await api.updateProduct(coxinha.id, {
+      name: coxinha.name,
+      categoryId: coxinha.categoryId,
+      priceCents: 600,
+      discountAllowed: coxinha.discountAllowed,
+      stockTracked: coxinha.stockTracked,
+      reservable: coxinha.reservable,
+    });
+    const history = await api.listProductPriceHistory(coxinha.id);
+    expect(
+      history.some((item) => item.priceCents === 550 && item.endedAt),
+    ).toBe(true);
+    expect(
+      history.some((item) => item.priceCents === 550 && !item.endedAt),
+    ).toBe(false);
+    expect(
+      history.some((item) => item.priceCents === 600 && !item.endedAt),
+    ).toBe(true);
+
+    await api.loginE2E('staff');
+    const categories = await api.listProductCategories();
+    const salgados = categories.find((item) => item.name === 'Salgados');
+    if (!salgados) {
+      throw new Error('categoria Salgados ausente');
+    }
+    expect(
+      (
+        await api.createProduct({
+          name: 'Pão de queijo',
+          categoryId: salgados.id,
+          priceCents: 450,
+        })
+      ).name,
+    ).toBe('Pão de queijo');
+    await expect(
+      api.createAdHocItem({ name: 'Pastel da hora', priceCents: 600 }),
+    ).rejects.toThrow('FORBIDDEN');
+
+    await api.loginE2E('owner');
+    const adHoc = await api.createAdHocItem({
+      name: 'Pastel da hora',
+      priceCents: 600,
+    });
+    expect(adHoc.priceLabel).toBe('R$ 6,00');
+    expect((await api.listAdHocItems()).map((item) => item.name)).toContain(
+      'Pastel da hora',
+    );
+    expect(
+      (await api.listProducts()).some((item) => item.name === 'Pastel da hora'),
+    ).toBe(false);
+  });
 });

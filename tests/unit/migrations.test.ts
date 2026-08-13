@@ -5,6 +5,7 @@ import {
   GUARDIANS_MIGRATION,
   OPERATION_REQUESTS_MIGRATION,
   STUDENTS_MIGRATION,
+  PRODUCTS_MIGRATION,
   USERS_MIGRATION,
   pendingMigrations,
 } from '../../src/server/sheets/migrations';
@@ -20,6 +21,7 @@ describe('migration runner', () => {
         USERS_MIGRATION,
         STUDENTS_MIGRATION,
         GUARDIANS_MIGRATION,
+        PRODUCTS_MIGRATION,
       ],
     });
     expect(pendingMigrations(['001_foundation'])).toEqual({
@@ -30,6 +32,7 @@ describe('migration runner', () => {
         USERS_MIGRATION,
         STUDENTS_MIGRATION,
         GUARDIANS_MIGRATION,
+        PRODUCTS_MIGRATION,
       ],
     });
   });
@@ -43,6 +46,7 @@ describe('migration runner', () => {
         '004_users',
         '005_students',
         '006_guardians',
+        '007_products',
       ]),
     ).toEqual({
       ok: true,

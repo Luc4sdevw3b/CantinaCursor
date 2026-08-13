@@ -9,6 +9,11 @@ import {
   GUARDIANS_SHEET,
   OPERATION_REQUESTS_MIGRATION_ID,
   OPERATION_REQUESTS_SHEET,
+  PRODUCTS_MIGRATION_ID,
+  PRODUCTS_SHEET,
+  PRODUCT_CATEGORIES_SHEET,
+  PRODUCT_PRICE_HISTORY_SHEET,
+  AD_HOC_ITEMS_SHEET,
   SCHOOL_YEARS_SHEET,
   SESSIONS_SHEET,
   SETTINGS_SHEET,
@@ -76,6 +81,17 @@ export const GUARDIANS_MIGRATION: Migration = {
   ]),
 };
 
+export const PRODUCTS_MIGRATION: Migration = {
+  id: PRODUCTS_MIGRATION_ID,
+  description: 'Cria categorias, produtos, histórico de preço e itens avulsos',
+  checksum: checksumHeaders([
+    ...PRODUCT_CATEGORIES_SHEET.headers,
+    ...PRODUCTS_SHEET.headers,
+    ...PRODUCT_PRICE_HISTORY_SHEET.headers,
+    ...AD_HOC_ITEMS_SHEET.headers,
+  ]),
+};
+
 export const MIGRATION_CATALOG: readonly Migration[] = [
   FOUNDATION_MIGRATION,
   OPERATION_REQUESTS_MIGRATION,
@@ -83,6 +99,7 @@ export const MIGRATION_CATALOG: readonly Migration[] = [
   USERS_MIGRATION,
   STUDENTS_MIGRATION,
   GUARDIANS_MIGRATION,
+  PRODUCTS_MIGRATION,
 ];
 
 export function pendingMigrations(
