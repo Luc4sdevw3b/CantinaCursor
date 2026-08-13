@@ -81,9 +81,9 @@ scripts/
 
 Definir `AppApi` com funções específicas do domínio, nunca ranges/SQL/Sheets genéricos.
 
-Até a Fase 2 o contrato permanece mínimo (`getHealth` e dados técnicos de ambiente). Não antecipar alunos, produtos, vendas, estoque, fiado, crédito, caixa, reservas ou WhatsApp.
+Até a Fase 3 o contrato permanece mínimo (`getHealth`). Não antecipar alunos, produtos, vendas, estoque, fiado, crédito, caixa, reservas ou WhatsApp.
 
-Produção usará adapter de `google.script.run` quando a Fase 2 existir neste repositório. **E2E local usa somente `FakeAppApi`.** Isso permite Playwright desde o início sem Google.
+O adapter `google.script.run` é usado no Web App Apps Script (ambiente E2E isolado nesta fase). **E2E local usa somente `FakeAppApi`.** Isso permite Playwright desde o início sem Google.
 
 ## Escritas críticas
 

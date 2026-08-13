@@ -81,12 +81,15 @@ Não confundir com o ambiente Google E2E da Fase 3.
 
 ### Remoto
 
-Quando deployment E2E existir:
+Quando o deployment E2E da Fase 3 existir:
 
-- URL Apps Script real;
-- Spreadsheet E2E;
-- reset/seed antes da suíte;
-- integração completa.
+- URL Apps Script real em `E2E_BASE_URL` (nunca PROD);
+- Spreadsheet E2E isolada;
+- `resetE2E` / `seedE2E` abortam se `ENVIRONMENT !== E2E` e nunca em PROD;
+- dados somente fictícios;
+- smoke Playwright: `npm run test:e2e:remote`.
+
+Sem `E2E_BASE_URL` os testes remotos são ignorados. O CI da fundação não executa E2E remoto e não usa secrets.
 
 ## Casos E2E finais obrigatórios
 
@@ -156,11 +159,12 @@ npm run test:integration
 npm run build
 npm run preview
 npm run test:e2e:local
+npm run test:e2e:remote
 npm run version:check
 npm run validate:skill
 ```
 
-`test:e2e:remote` existe como placeholder e permanece ignorado até a Fase 3.
+`test:e2e:remote` existe; sem `E2E_BASE_URL` os casos são ignorados até o deployment E2E da Fase 3. Nunca apontar para PROD.
 
 ## GitHub Actions
 

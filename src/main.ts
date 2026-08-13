@@ -48,9 +48,9 @@ app.innerHTML = `
       <p class="step-number">01</p>
       <div>
         <h2 id="next-step-title">Fundação da interface</h2>
-        <p>Preview local, temas e adapter fake para testes E2E.</p>
+        <p>Preview local com API fake e ambiente E2E isolado no Google.</p>
       </div>
-      <span class="phase-badge">Fase 1</span>
+      <span class="phase-badge">Fase 3</span>
     </section>
 
     <footer>
@@ -102,8 +102,15 @@ void api
     const detail = document.querySelector('#health-detail');
     const card = document.querySelector('#health-card');
     if (status && detail && card instanceof HTMLElement) {
-      status.textContent = 'Ambiente local funcionando';
-      detail.textContent = `${health.environment} • ${health.version} • API fake pronta`;
+      const isFake = health.adapter === 'fake';
+      status.textContent = isFake
+        ? 'Ambiente local funcionando'
+        : health.environment === 'E2E'
+          ? 'Ambiente E2E funcionando'
+          : 'Web App funcionando';
+      detail.textContent = isFake
+        ? `${health.environment} • ${health.version} • API fake pronta`
+        : `${health.environment} • ${health.version} • Planilha configurada`;
       card.dataset.appAdapter = health.adapter;
     }
   })
@@ -111,7 +118,7 @@ void api
     const status = document.querySelector('#health-status');
     const detail = document.querySelector('#health-detail');
     if (status && detail) {
-      status.textContent = 'Ambiente local indisponível';
-      detail.textContent = 'Não foi possível carregar a API fake.';
+      status.textContent = 'Ambiente indisponível';
+      detail.textContent = 'Não foi possível carregar o healthcheck.';
     }
   });

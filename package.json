@@ -10,7 +10,9 @@
   "scripts": {
     "dev": "vite",
     "preview": "vite preview",
-    "build": "tsc -b && vite build",
+    "build": "npm run build:web && npm run build:apps-script",
+    "build:web": "tsc -b && vite build",
+    "build:apps-script": "node scripts/build-apps-script.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -22,6 +24,7 @@
     "test:integration": "vitest run tests/integration",
     "test:e2e:local": "playwright test --config playwright.config.ts",
     "test:e2e:remote": "playwright test --config playwright.remote.config.ts",
+    "clasp:push": "npm run build && clasp push",
     "version:check": "node scripts/check-version.mjs",
     "validate:skill": "node scripts/validate-skill.mjs"
   },

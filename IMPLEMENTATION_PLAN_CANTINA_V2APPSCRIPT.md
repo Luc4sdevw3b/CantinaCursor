@@ -63,14 +63,14 @@ E2E: smoke no deployment DEV (não é o E2E local, que usa preview + FakeAppApi)
 
 ## Fase 3 — Ambiente E2E isolado
 
-Ainda não iniciada. Este ambiente Google isolado é distinto do E2E local da Fase 1.
-
 - Apps Script E2E;
 - Spreadsheet E2E;
-- config separada;
-- seed/reset;
+- config separada (`ENVIRONMENT=E2E`, `.env.example`);
+- seed/reset fictícios;
 - proteção contra reset PROD;
-- Playwright remote.
+- Playwright remote (`E2E_BASE_URL`).
+
+Este ambiente Google isolado é distinto do E2E local da Fase 1.
 
 # Marco B — Banco Sheets confiável
 

@@ -9,6 +9,62 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-13 12:16 — Iniciada a Fase 3 com ambiente E2E isolado
+
+**Origem:** Pedido do usuário
+**Status:** Parcial
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 3
+
+### Pedido / objetivo
+
+- Iniciar a Fase 3: Apps Script E2E, planilha E2E, config separada, seed/reset, proteção contra reset PROD e Playwright remoto.
+
+### Tentativa / implementação
+
+- Criados `assertE2EEnvironment`, `resetE2EState` e `seedE2EState` no domínio, com recusa explícita de PROD/DEV/LOCAL.
+- Criado Apps Script E2E (`doGet`, `getHealth`, `configureE2EEnvironment`, `resetE2E`, `seedE2E`) e bundle HTML Service.
+- Frontend passa a usar `google.script.run` só quando o host Apps Script existe; o E2E local continua na `FakeAppApi`.
+- Playwright remoto lê `E2E_BASE_URL` e ignora a suíte se a URL não existir. CI não executa remoto e não usa secrets.
+- Criados na conta Google um projeto Apps Script E2E e uma planilha vinculada. `.clasp.json` permanece fora do Git.
+- `clasp push` e um deployment Web App E2E versionado foram feitos.
+- `clasp run configureE2EEnvironment` falhou por permissão da Execution API; as Script Properties ainda precisam de autorização interativa no editor.
+
+### Resultado
+
+- Código, testes e projeto Google E2E isolado existem.
+- A Fase 3 permanece parcial até executar `configureE2EEnvironment` no editor e o smoke autenticado com `E2E_BASE_URL`.
+- Nenhum ID Google, token ou dado de planilha foi versionado. Nenhum reset/seed foi executado contra PROD.
+
+### Diferenças do pedido
+
+- Este repositório não tinha a Fase 2 (Web App DEV). O Web App mínimo necessário para o ambiente E2E foi criado como projeto E2E, sem completar o fluxo DEV da Fase 2.
+- O smoke Playwright remoto não foi afirmado como executado: o Web App está restrito à conta proprietária e o healthcheck ainda não foi configurado no editor.
+
+### Impacto técnico
+
+- `src/domain/environment.ts`, `src/domain/e2e-lifecycle.ts`
+- `apps-script/src/Code.gs`, `apps-script/src/appsscript.json`
+- adapter `GoogleScriptAppApi`, build `scripts/build-apps-script.mjs`
+- `tests/unit/*`, `tests/integration/apps-script-e2e-server.test.ts`, `tests/e2e/remote/`
+- README, plano, referências de arquitetura/testes, `.env.example`, `.clasp.json.example`
+
+### Testes
+
+- `npm run format:check` / `lint` / `typecheck`: passou.
+- `npm test`: 30 testes passaram.
+- `npm run build`: passou e gerou os três arquivos Apps Script.
+- `npm run test:e2e:local`: 9 testes Chromium passaram.
+- `npm run test:e2e:remote`: 1 teste ignorado (sem `E2E_BASE_URL`).
+- `clasp push`: enviou manifesto, `Code.gs` e `Index.html`.
+- `clasp run configureE2EEnvironment`: falhou por permissão da Execution API.
+
+### Pendências / próxima versão
+
+- No editor (`clasp open-script`), executar `configureE2EEnvironment` uma vez e aceitar a autorização Google.
+- Rodar o smoke com `E2E_BASE_URL` apontando para o deployment E2E, nunca para PROD.
+- Não iniciar a Fase 4 antes de concluir essas duas pendências.
+
 ## 2026-08-13 12:10 — Revisão técnica pós-Fase 1 (hardening de convenções)
 
 **Origem:** Pedido do usuário

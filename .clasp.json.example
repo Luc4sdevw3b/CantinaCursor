@@ -1,0 +1,4 @@
+{
+  "scriptId": "YOUR_E2E_SCRIPT_ID",
+  "rootDir": "apps-script/dist"
+}

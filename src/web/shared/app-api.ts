@@ -1,6 +1,8 @@
-export type Environment = 'LOCAL' | 'DEV' | 'E2E' | 'PROD';
+import type { Environment } from '../../domain/environment';
 
-export type AppApiAdapter = 'fake';
+export type { Environment };
+
+export type AppApiAdapter = 'fake' | 'google-script';
 
 export interface AppHealth {
   appName: string;
@@ -12,7 +14,7 @@ export interface AppHealth {
 }
 
 /**
- * Contrato técnico mínimo até a Fase 2.
+ * Contrato técnico mínimo.
  * Sem alunos, produtos, vendas, estoque, fiado, crédito, caixa, reservas ou WhatsApp.
  */
 export interface AppApi {
