@@ -84,6 +84,8 @@ function runnerWith(
     getDueDateShortcuts() {},
     createPayment() {},
     listPayments() {},
+    addReceivableInterest() {},
+    renegotiateReceivable() {},
     ...extra,
   };
   return runner;

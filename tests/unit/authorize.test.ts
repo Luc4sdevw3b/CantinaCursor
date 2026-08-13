@@ -16,6 +16,7 @@ describe('authorize', () => {
     expect(authorize('staff', 'sales.write').ok).toBe(true);
     expect(authorize('staff', 'receivables.read').ok).toBe(true);
     expect(authorize('staff', 'payments.write').ok).toBe(true);
+    expect(authorize('owner', 'receivables.adjust').ok).toBe(true);
   });
 
   it('rejects missing role and staff on owner-only actions', () => {
@@ -26,6 +27,7 @@ describe('authorize', () => {
     const staffAdHoc = authorize('staff', 'ad_hoc.create');
     const staffOpen = authorize('staff', 'inventory.open');
     const staffAdjust = authorize('staff', 'inventory.adjust');
+    const staffReceivableAdjust = authorize('staff', 'receivables.adjust');
 
     expect(anonymous.ok).toBe(false);
     if (!anonymous.ok) {
@@ -54,6 +56,10 @@ describe('authorize', () => {
     expect(staffAdjust.ok).toBe(false);
     if (!staffAdjust.ok) {
       expect(staffAdjust.error.code).toBe('FORBIDDEN');
+    }
+    expect(staffReceivableAdjust.ok).toBe(false);
+    if (!staffReceivableAdjust.ok) {
+      expect(staffReceivableAdjust.error.code).toBe('FORBIDDEN');
     }
   });
 });

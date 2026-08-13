@@ -16,10 +16,15 @@ import {
 } from '../../domain/payment';
 import {
   dueDateLabelForDates,
+  dueDateHistoryLabel,
   FIADO_STUDENT_REQUIRED_ERROR,
+  planDueDateChange,
   planFiadoInstallments,
+  planInterestCharge,
   RECEIVABLE_CHARGE_PRINCIPAL,
+  RECEIVABLE_NOT_FOUND_ERROR,
   RECEIVABLE_REASON_SALE,
+  RECEIVABLE_SETTLED_ERROR,
   RECEIVABLE_STATUS_OPEN,
   receivableSummaryLabel,
   type FiadoInstallmentInput,
@@ -109,10 +114,22 @@ export interface PaymentView {
   createdAt: string;
 }
 
+export interface DueDateHistoryView {
+  receivableId: string;
+  studentLabel: string;
+  oldDueDate: string;
+  oldDueDateLabel: string;
+  newDueDate: string;
+  newDueDateLabel: string;
+  reason: string;
+  summaryLabel: string;
+}
+
 export interface ReceivableAgendaView {
   overdue: ReceivableView[];
   today: ReceivableView[];
   upcoming: ReceivableView[];
+  dueDateHistory: DueDateHistoryView[];
 }
 
 interface SaleRecord {
@@ -193,6 +210,15 @@ interface PaymentAllocationRecord {
   amount_cents: string;
 }
 
+interface DueDateHistoryRecord {
+  receivable_id: string;
+  old_due_date: string;
+  new_due_date: string;
+  reason: string;
+  changed_by: string;
+  changed_at: string;
+}
+
 function fail(error: AppError): never {
   throw new Error(`${error.code}: ${error.message}`);
 }
@@ -212,6 +238,7 @@ export class MemorySales {
   private charges: ReceivableChargeRecord[] = [];
   private payments: PaymentRecord[] = [];
   private allocations: PaymentAllocationRecord[] = [];
+  private dueDateHistory: DueDateHistoryRecord[] = [];
 
   constructor(
     private readonly catalog: MemoryCatalog,
@@ -264,7 +291,15 @@ export class MemorySales {
     overdue.sort((left, right) => left.dueDate.localeCompare(right.dueDate));
     dueToday.sort((left, right) => left.dueDate.localeCompare(right.dueDate));
     upcoming.sort((left, right) => left.dueDate.localeCompare(right.dueDate));
-    return ok({ overdue, today: dueToday, upcoming });
+    return ok({
+      overdue,
+      today: dueToday,
+      upcoming,
+      dueDateHistory: this.dueDateHistory
+        .slice()
+        .reverse()
+        .map((item) => this.toDueDateHistory(item)),
+    });
   }
 
   listPayments(): Result<PaymentView[]> {
@@ -335,6 +370,76 @@ export class MemorySales {
       });
     }
     return ok(this.toPayment(payment));
+  }
+
+  addReceivableInterest(input: {
+    receivableId?: string | null;
+    kind: unknown;
+    amountCents?: unknown;
+    percent?: unknown;
+    reason: unknown;
+  }): Result<ReceivableView> {
+    const receivable = this.findOpenReceivable(input.receivableId);
+    if (!receivable.ok) {
+      return err(receivable.error);
+    }
+    const planned = planInterestCharge({
+      remainingCents: this.remainingCents(receivable.data.id),
+      kind: input.kind,
+      amountCents: input.amountCents,
+      percent: input.percent,
+      reason: input.reason,
+    });
+    if (!planned.ok) {
+      return err(planned.error);
+    }
+    const now = this.nowIso();
+    this.charges.push({
+      id: this.createId(),
+      receivable_id: receivable.data.id,
+      kind: planned.data.kind,
+      amount_cents: planned.data.amount_cents,
+      reason_code: planned.data.reason_code,
+      note: planned.data.note,
+      created_by: LOCAL_ACTOR_ID,
+      created_at: now,
+      reversal_id: '',
+    });
+    return ok(
+      this.toReceivable(receivable.data, todayCivilSaoPaulo(this.nowIso())),
+    );
+  }
+
+  renegotiateReceivable(input: {
+    receivableId?: string | null;
+    dueDate: unknown;
+    reason: unknown;
+  }): Result<ReceivableView> {
+    const receivable = this.findOpenReceivable(input.receivableId);
+    if (!receivable.ok) {
+      return err(receivable.error);
+    }
+    const planned = planDueDateChange({
+      oldDueDate: receivable.data.due_date,
+      newDueDate: input.dueDate,
+      reason: input.reason,
+    });
+    if (!planned.ok) {
+      return err(planned.error);
+    }
+    const now = this.nowIso();
+    this.dueDateHistory.push({
+      receivable_id: receivable.data.id,
+      old_due_date: planned.data.old_due_date,
+      new_due_date: planned.data.new_due_date,
+      reason: planned.data.reason,
+      changed_by: LOCAL_ACTOR_ID,
+      changed_at: now,
+    });
+    receivable.data.due_date = planned.data.new_due_date;
+    return ok(
+      this.toReceivable(receivable.data, todayCivilSaoPaulo(this.nowIso())),
+    );
   }
 
   createSale(input: {
@@ -522,6 +627,55 @@ export class MemorySales {
       .filter((item) => item.receivable_id === receivableId)
       .reduce((total, item) => total + Number(item.amount_cents), 0);
     return charged - allocated;
+  }
+
+  private findOpenReceivable(
+    receivableId: string | null | undefined,
+  ): Result<ReceivableRecord> {
+    if (!receivableId) {
+      return err(RECEIVABLE_NOT_FOUND_ERROR);
+    }
+    const receivable = this.receivables.find(
+      (item) => item.id === receivableId,
+    );
+    if (!receivable) {
+      return err(RECEIVABLE_NOT_FOUND_ERROR);
+    }
+    if (this.remainingCents(receivable.id) <= 0) {
+      return err(RECEIVABLE_SETTLED_ERROR);
+    }
+    return ok(receivable);
+  }
+
+  private studentLabel(studentId: string): string {
+    const student = unwrap(this.roster.getStudent(studentId));
+    return `${student.fullName} • ${student.ageLabel}`;
+  }
+
+  private toDueDateHistory(item: DueDateHistoryRecord): DueDateHistoryView {
+    const receivable = this.receivables.find(
+      (entry) => entry.id === item.receivable_id,
+    );
+    const studentLabel = receivable
+      ? this.studentLabel(receivable.charged_student_id)
+      : '';
+    const oldDueDateLabel = formatCivilDisplay(item.old_due_date);
+    const newDueDateLabel = formatCivilDisplay(item.new_due_date);
+    return {
+      receivableId: item.receivable_id,
+      studentLabel,
+      oldDueDate: item.old_due_date,
+      oldDueDateLabel,
+      newDueDate: item.new_due_date,
+      newDueDateLabel,
+      reason: item.reason,
+      summaryLabel: dueDateHistoryLabel({
+        studentLabel,
+        oldDueDateLabel,
+        newDueDateLabel,
+        reason: item.reason,
+      }),
+    };
   }
 
   private toReceivable(

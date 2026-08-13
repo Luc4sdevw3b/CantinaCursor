@@ -2,7 +2,7 @@
 
 Aplicação web da cantina, planejada para Google Apps Script + Google Sheets + Google Drive.
 
-O projeto está na Fase 15 (`0.1.0-dev`): pagamento parcial (dívida mais antiga, selecionadas ou alocação manual). Juros e renegociação ficam na Fase 16. O caixa físico fica na Fase 21.
+O projeto está na Fase 16 (`0.1.0-dev`): juros em cobrança específica e renegociação de vencimento, só pela dona. Crédito pessoal fica na Fase 17. O caixa físico fica na Fase 21.
 
 Consulte:
 

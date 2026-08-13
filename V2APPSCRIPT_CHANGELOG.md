@@ -9,6 +9,46 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-13 15:25 — Implementada a Fase 16: juros e renegociação
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 16
+
+### Pedido / objetivo
+
+- Iniciar a Fase 16: juros em valor ou porcento, motivo obrigatório, cobrança específica e histórico de vencimento.
+
+### Tentativa / implementação
+
+- Sem nova migration: juros entra como charge `interest` em `_receivable_charges`; a renegociação atualiza `due_date` e grava `_receivable_due_date_history` (já criada na 010). Schema continua 11.
+- Só a dona (`receivables.adjust`). Valor fixo ou porcento do restante. Motivo obrigatório. Nunca automático por atraso. Funcionário lê a agenda e registra pagamento, mas não lança juros nem troca data.
+- Preview local: fiado da Ana para 14/08; juros `R$ 1,00` vira `Ana Souza • ~8 • R$ 6,50 • Sexta-feira • 14/08/26`; +7 dias com motivo vira `Quinta-feira • 20/08/26` e o histórico `14/08/26 → 20/08/26`. PIX/dinheiro/fiado/parcial e o health smoke permanecem iguais.
+
+### Resultado
+
+- Fase 16 concluída sobre o ambiente E2E isolado e o preview local.
+- Crédito pessoal é a Fase 17. Caixa, reservas reais e WhatsApp permanecem nas fases seguintes.
+- Nenhum ID Google, token, telefone real ou dado de planilha foi versionado.
+
+### Diferenças do pedido
+
+- Porcento incide sobre o restante da cobrança escolhida, não sobre o principal original.
+
+### Impacto técnico
+
+- `addReceivableInterest` e `renegotiateReceivable` entram no `AppApi`. Botões **Lançar juros** e **Renegociar vencimento**. Confirmar venda e Registrar pagamento não mudam.
+
+### Testes
+
+- Unit, integração, typecheck, lint, format, build, version:check, validate:skill e E2E local passaram.
+- E2E remoto: smoke de health no deployment novo após `clasp push` + `clasp deploy`.
+
+### Pendências / próxima versão
+
+- Não iniciar a Fase 17 (crédito pessoal) sem pedido explícito.
+
 ## 2026-08-13 15:10 — Implementada a Fase 15: pagamento parcial
 
 **Origem:** Pedido do usuário

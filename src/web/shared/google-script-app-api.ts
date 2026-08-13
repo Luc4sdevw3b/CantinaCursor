@@ -24,12 +24,15 @@ import type {
   AdjustInventoryInput,
   Payment,
   CreatePaymentInput,
+  AddReceivableInterestInput,
+  RenegotiateReceivableInput,
   Product,
   ProductCategory,
   ProductFields,
   ProductPriceHistory,
   ReactivateStudentInput,
   ReceivableAgenda,
+  Receivable,
   Sale,
   SchoolYear,
   SiblingAuthorization,
@@ -101,6 +104,8 @@ export interface GoogleScriptRunner {
   getDueDateShortcuts(token: string): void;
   createPayment(token: string, payload: unknown): void;
   listPayments(token: string): void;
+  addReceivableInterest(token: string, payload: unknown): void;
+  renegotiateReceivable(token: string, payload: unknown): void;
 }
 
 export type SessionTokenStorage = Pick<
@@ -562,6 +567,22 @@ export class GoogleScriptAppApi implements AppApi {
 
   listPayments(): Promise<Payment[]> {
     return this.callWithToken((runner, token) => runner.listPayments(token));
+  }
+
+  addReceivableInterest(
+    input: AddReceivableInterestInput,
+  ): Promise<Receivable> {
+    return this.callWithToken((runner, token) =>
+      runner.addReceivableInterest(token, input),
+    );
+  }
+
+  renegotiateReceivable(
+    input: RenegotiateReceivableInput,
+  ): Promise<Receivable> {
+    return this.callWithToken((runner, token) =>
+      runner.renegotiateReceivable(token, input),
+    );
   }
 
   private callWithToken<T>(

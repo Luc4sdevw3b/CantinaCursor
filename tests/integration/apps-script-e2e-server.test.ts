@@ -271,12 +271,21 @@ interface ServerContext {
     overdue: Array<{ id: string; summaryLabel: string }>;
     today: Array<{ id: string; summaryLabel: string }>;
     upcoming: Array<{ id: string; summaryLabel: string }>;
+    dueDateHistory: Array<{ summaryLabel: string }>;
   };
   createPayment(
     sessionToken: string,
     payload: Record<string, unknown>,
   ): { summaryLabel: string };
   listPayments(sessionToken: string): Array<{ summaryLabel: string }>;
+  addReceivableInterest(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): { summaryLabel: string };
+  renegotiateReceivable(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): { summaryLabel: string };
 }
 
 interface DriveMockFile {
@@ -1741,6 +1750,75 @@ describe('Apps Script E2E server', () => {
     );
     expect(server.listReceivables(owner).upcoming[0]?.summaryLabel).toBe(
       `Ana Souza • ~8 • R$ 3,00 • ${upcomingLabel}`,
+    );
+  });
+
+  it('adds owner-only interest and renegotiates the due date', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const staff = server.loginE2E('staff').token;
+    const coxinha = server
+      .listProducts(owner)
+      .find((item) => item.name === 'Coxinha');
+    const ana = server
+      .listStudents(owner)
+      .find(
+        (student) =>
+          student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+      );
+    if (!coxinha || !ana) {
+      throw new Error('juros E2E incompleto');
+    }
+    const shortcuts = server.getDueDateShortcuts(owner);
+    const firstLabel = formatCivilDisplay(shortcuts.tomorrow);
+    const nextLabel = formatCivilDisplay(shortcuts.plus7);
+
+    server.createSale(owner, {
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: shortcuts.tomorrow }],
+    });
+    const receivable = server.listReceivables(owner).upcoming[0];
+    if (!receivable) {
+      throw new Error('recebível futuro ausente');
+    }
+
+    expect(() =>
+      server.addReceivableInterest(staff, {
+        receivableId: receivable.id,
+        kind: 'amount',
+        amountCents: 100,
+        reason: 'Combinado na cantina',
+      }),
+    ).toThrow('FORBIDDEN');
+
+    server.addReceivableInterest(owner, {
+      receivableId: receivable.id,
+      kind: 'amount',
+      amountCents: 100,
+      reason: 'Combinado na cantina',
+    });
+    expect(server.listReceivables(owner).upcoming[0]?.summaryLabel).toBe(
+      `Ana Souza • ~8 • R$ 6,50 • ${firstLabel}`,
+    );
+
+    server.renegotiateReceivable(owner, {
+      receivableId: receivable.id,
+      dueDate: shortcuts.plus7,
+      reason: 'Pedido da responsável',
+    });
+    const agenda = server.listReceivables(owner);
+    expect(agenda.upcoming[0]?.summaryLabel).toBe(
+      `Ana Souza • ~8 • R$ 6,50 • ${nextLabel}`,
+    );
+    expect(agenda.dueDateHistory[0]?.summaryLabel).toBe(
+      `Ana Souza • ~8 • ${firstLabel} → ${nextLabel} • Pedido da responsável`,
     );
   });
 });

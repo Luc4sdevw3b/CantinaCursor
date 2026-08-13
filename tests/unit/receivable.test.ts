@@ -9,7 +9,10 @@ import {
 } from '../../src/domain/civil-date';
 import {
   agendaBucketLabel,
+  dueDateHistoryLabel,
+  planDueDateChange,
   planFiadoInstallments,
+  planInterestCharge,
 } from '../../src/domain/receivable';
 
 describe('civil date display and shortcuts', () => {
@@ -69,5 +72,103 @@ describe('fiado installments', () => {
         ],
       }).ok,
     ).toBe(false);
+  });
+});
+
+describe('interest and renegotiation', () => {
+  it('adds a fixed charge and a percent of the remaining balance', () => {
+    expect(
+      planInterestCharge({
+        remainingCents: 550,
+        kind: 'amount',
+        amountCents: 100,
+        reason: 'Combinado na cantina',
+      }),
+    ).toEqual({
+      ok: true,
+      data: {
+        kind: 'interest',
+        amount_cents: '100',
+        reason_code: 'amount',
+        note: 'Combinado na cantina',
+      },
+    });
+    expect(
+      planInterestCharge({
+        remainingCents: 550,
+        kind: 'percent',
+        percent: 10,
+        reason: 'Atraso combinado',
+      }),
+    ).toEqual({
+      ok: true,
+      data: {
+        kind: 'interest',
+        amount_cents: '55',
+        reason_code: 'percent',
+        note: 'Atraso combinado',
+      },
+    });
+  });
+
+  it('refuses interest without reason, on a settled debt, or with a bad amount', () => {
+    expect(
+      planInterestCharge({
+        remainingCents: 550,
+        kind: 'amount',
+        amountCents: 100,
+        reason: ' ',
+      }).ok,
+    ).toBe(false);
+    expect(
+      planInterestCharge({
+        remainingCents: 0,
+        kind: 'amount',
+        amountCents: 100,
+        reason: 'Combinado na cantina',
+      }).ok,
+    ).toBe(false);
+    expect(
+      planInterestCharge({
+        remainingCents: 550,
+        kind: 'percent',
+        percent: 0,
+        reason: 'Combinado na cantina',
+      }).ok,
+    ).toBe(false);
+  });
+
+  it('records a due date change with reason and refuses the same date', () => {
+    expect(
+      planDueDateChange({
+        oldDueDate: '2026-08-14',
+        newDueDate: '2026-08-20',
+        reason: 'Pedido da responsável',
+      }),
+    ).toEqual({
+      ok: true,
+      data: {
+        old_due_date: '2026-08-14',
+        new_due_date: '2026-08-20',
+        reason: 'Pedido da responsável',
+      },
+    });
+    expect(
+      planDueDateChange({
+        oldDueDate: '2026-08-14',
+        newDueDate: '2026-08-14',
+        reason: 'Pedido da responsável',
+      }).ok,
+    ).toBe(false);
+    expect(
+      dueDateHistoryLabel({
+        studentLabel: 'Ana Souza • ~8',
+        oldDueDateLabel: 'Sexta-feira • 14/08/26',
+        newDueDateLabel: 'Quinta-feira • 20/08/26',
+        reason: 'Pedido da responsável',
+      }),
+    ).toBe(
+      'Ana Souza • ~8 • Sexta-feira • 14/08/26 → Quinta-feira • 20/08/26 • Pedido da responsável',
+    );
   });
 });

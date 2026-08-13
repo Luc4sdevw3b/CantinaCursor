@@ -324,6 +324,32 @@ export interface ReceivableAgenda {
   overdue: Receivable[];
   today: Receivable[];
   upcoming: Receivable[];
+  dueDateHistory: DueDateHistoryEntry[];
+}
+
+export interface DueDateHistoryEntry {
+  receivableId: string;
+  studentLabel: string;
+  oldDueDate: string;
+  oldDueDateLabel: string;
+  newDueDate: string;
+  newDueDateLabel: string;
+  reason: string;
+  summaryLabel: string;
+}
+
+export interface AddReceivableInterestInput {
+  receivableId: string;
+  kind: 'amount' | 'percent';
+  amountCents?: number;
+  percent?: number;
+  reason: string;
+}
+
+export interface RenegotiateReceivableInput {
+  receivableId: string;
+  dueDate: string;
+  reason: string;
 }
 
 export interface CreatePaymentInput {
@@ -348,8 +374,8 @@ export interface Payment {
 }
 
 /**
- * Contrato técnico da Fase 15.
- * Sem juros, crédito como movimento, pagamento familiar, caixa físico, reservas reais ou envio de WhatsApp.
+ * Contrato técnico da Fase 16.
+ * Sem crédito como movimento, pagamento familiar, caixa físico, reservas reais ou envio de WhatsApp.
  */
 export interface AppApi {
   getHealth(): Promise<AppHealth>;
@@ -426,4 +452,6 @@ export interface AppApi {
   getDueDateShortcuts(): Promise<DueDateShortcuts>;
   createPayment(input: CreatePaymentInput): Promise<Payment>;
   listPayments(): Promise<Payment[]>;
+  addReceivableInterest(input: AddReceivableInterestInput): Promise<Receivable>;
+  renegotiateReceivable(input: RenegotiateReceivableInput): Promise<Receivable>;
 }

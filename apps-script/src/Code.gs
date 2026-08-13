@@ -320,6 +320,9 @@ const PAYMENT_FIADO = 'fiado';
 const RECEIVABLE_STATUS_OPEN = 'open';
 const RECEIVABLE_CHARGE_PRINCIPAL = 'principal';
 const RECEIVABLE_REASON_SALE = 'sale';
+const RECEIVABLE_CHARGE_INTEREST = 'interest';
+const INTEREST_KIND_AMOUNT = 'amount';
+const INTEREST_KIND_PERCENT = 'percent';
 const PAYMENT_STATUS_COMPLETED = 'completed';
 const PAYMENT_METHOD_PIX = 'pix';
 const PAYMENT_METHOD_CASH = 'cash';
@@ -370,6 +373,7 @@ const ACTION_ROLES = {
   'sales.write': ['owner', 'staff'],
   'receivables.read': ['owner', 'staff'],
   'payments.write': ['owner', 'staff'],
+  'receivables.adjust': ['owner'],
 };
 const BACKUP_FILE_PREFIX = 'cantina-backup';
 const BACKUP_FOLDER_NAME = 'Cantina V2 AppScript E2E backups';
@@ -3716,6 +3720,16 @@ function listReceivableChargeRecords() {
   );
 }
 
+function listDueDateHistoryRecords() {
+  return listSheetRecords(
+    openNamedSheet(
+      RECEIVABLE_DUE_DATE_HISTORY_SHEET,
+      RECEIVABLE_DUE_DATE_HISTORY_HEADERS,
+    ),
+    RECEIVABLE_DUE_DATE_HISTORY_HEADERS,
+  );
+}
+
 function listPaymentRecords() {
   return listSheetRecords(
     openNamedSheet(PAYMENTS_SHEET, PAYMENTS_HEADERS),
@@ -4301,7 +4315,18 @@ function listReceivables(sessionToken) {
         ? 1
         : 0;
   });
-  return { overdue: overdue, today: dueToday, upcoming: upcoming };
+  const dueDateHistory = listDueDateHistoryRecords()
+    .slice()
+    .reverse()
+    .map(function (item) {
+      return toDueDateHistoryViewGs(item);
+    });
+  return {
+    overdue: overdue,
+    today: dueToday,
+    upcoming: upcoming,
+    dueDateHistory: dueDateHistory,
+  };
 }
 
 function parsePaymentMethodGs(value) {
@@ -4593,4 +4618,232 @@ function listPayments(sessionToken) {
     .map(function (payment) {
       return toPaymentViewGs(payment);
     });
+}
+
+function parseRequiredReasonGs(value, errorCode, errorMessage) {
+  if (typeof value !== 'string') {
+    throw new Error(errorCode + ': ' + errorMessage);
+  }
+  const trimmed = String(value).trim().replace(/\s+/g, ' ');
+  if (trimmed.length < 2) {
+    throw new Error(errorCode + ': ' + errorMessage);
+  }
+  return trimmed;
+}
+
+function parseInterestKindGs(value) {
+  if (value === INTEREST_KIND_AMOUNT || value === INTEREST_KIND_PERCENT) {
+    return value;
+  }
+  throw new Error('INTEREST_KIND_UNSUPPORTED: Use valor fixo ou porcento.');
+}
+
+function planInterestChargeGs(
+  remainingCents,
+  kind,
+  amountCents,
+  percent,
+  reason,
+) {
+  if (!Number.isInteger(remainingCents) || remainingCents <= 0) {
+    throw new Error('RECEIVABLE_SETTLED: Esta dívida já foi quitada.');
+  }
+  const parsedKind = parseInterestKindGs(kind);
+  const note = parseRequiredReasonGs(
+    reason,
+    'INTEREST_REASON_REQUIRED',
+    'Informe o motivo do juros.',
+  );
+  let amount = 0;
+  if (parsedKind === INTEREST_KIND_AMOUNT) {
+    amount = parseCentsGs(amountCents);
+    if (amount <= 0) {
+      throw new Error(
+        'INTEREST_AMOUNT_INVALID: O juros precisa ser um valor maior que zero.',
+      );
+    }
+  } else {
+    const parsedPercent = parseCentsGs(percent);
+    if (parsedPercent <= 0 || parsedPercent > 100) {
+      throw new Error(
+        'INTEREST_AMOUNT_INVALID: O juros precisa ser um valor maior que zero.',
+      );
+    }
+    amount = percentAmountGs(remainingCents, parsedPercent);
+    if (amount <= 0) {
+      throw new Error(
+        'INTEREST_AMOUNT_INVALID: O juros precisa ser um valor maior que zero.',
+      );
+    }
+  }
+  return {
+    kind: RECEIVABLE_CHARGE_INTEREST,
+    amount_cents: String(amount),
+    reason_code: parsedKind,
+    note: note,
+  };
+}
+
+function dueDateHistoryLabelGs(
+  studentLabel,
+  oldDueDateLabel,
+  newDueDateLabel,
+  reason,
+) {
+  return (
+    studentLabel +
+    ' • ' +
+    oldDueDateLabel +
+    ' → ' +
+    newDueDateLabel +
+    ' • ' +
+    reason
+  );
+}
+
+function toDueDateHistoryViewGs(item) {
+  const receivable = listReceivableRecords().filter(function (entry) {
+    return entry.id === item.receivable_id;
+  })[0];
+  const studentLabel = receivable
+    ? saleConsumerLabelGs(receivable.charged_student_id)
+    : '';
+  const oldDueDateLabel = formatCivilDisplayGs(item.old_due_date);
+  const newDueDateLabel = formatCivilDisplayGs(item.new_due_date);
+  return {
+    receivableId: item.receivable_id,
+    studentLabel: studentLabel,
+    oldDueDate: item.old_due_date,
+    oldDueDateLabel: oldDueDateLabel,
+    newDueDate: item.new_due_date,
+    newDueDateLabel: newDueDateLabel,
+    reason: item.reason,
+    summaryLabel: dueDateHistoryLabelGs(
+      studentLabel,
+      oldDueDateLabel,
+      newDueDateLabel,
+      item.reason,
+    ),
+  };
+}
+
+function findReceivableByIdGs(receivableId) {
+  if (!receivableId) {
+    throw new Error(
+      'RECEIVABLE_NOT_FOUND: Dívida não encontrada para este aluno.',
+    );
+  }
+  const receivable = listReceivableRecords().filter(function (item) {
+    return item.id === String(receivableId);
+  })[0];
+  if (!receivable) {
+    throw new Error(
+      'RECEIVABLE_NOT_FOUND: Dívida não encontrada para este aluno.',
+    );
+  }
+  if (remainingCentsGs(receivable.id) <= 0) {
+    throw new Error('RECEIVABLE_SETTLED: Esta dívida já foi quitada.');
+  }
+  return receivable;
+}
+
+function updateReceivableDueDateGs(receivableId, newDueDate) {
+  const sheet = openNamedSheet(RECEIVABLES_SHEET, RECEIVABLES_HEADERS);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    throw new Error(
+      'RECEIVABLE_NOT_FOUND: Dívida não encontrada para este aluno.',
+    );
+  }
+  const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  for (let index = 0; index < ids.length; index += 1) {
+    if (String(ids[index][0] || '') === receivableId) {
+      sheet.getRange(index + 2, 4, 1, 1).setValues([[newDueDate]]);
+      return;
+    }
+  }
+  throw new Error(
+    'RECEIVABLE_NOT_FOUND: Dívida não encontrada para este aluno.',
+  );
+}
+
+function addReceivableInterestUnlocked(userId, payload) {
+  const receivable = findReceivableByIdGs(payload && payload.receivableId);
+  const planned = planInterestChargeGs(
+    remainingCentsGs(receivable.id),
+    payload && payload.kind,
+    payload && payload.amountCents,
+    payload && payload.percent,
+    payload && payload.reason,
+  );
+  const now = new Date().toISOString();
+  openNamedSheet(
+    RECEIVABLE_CHARGES_SHEET,
+    RECEIVABLE_CHARGES_HEADERS,
+  ).appendRow([
+    Utilities.getUuid(),
+    receivable.id,
+    planned.kind,
+    planned.amount_cents,
+    planned.reason_code,
+    planned.note,
+    userId,
+    now,
+    '',
+  ]);
+  return toReceivableViewGs(
+    receivable,
+    todayCivil(),
+    remainingCentsGs(receivable.id),
+  );
+}
+
+function addReceivableInterest(sessionToken, payload) {
+  const session = requireAction(sessionToken, 'receivables.adjust');
+  return withScriptLock(function () {
+    setupSchema();
+    return addReceivableInterestUnlocked(session.user_id, payload || {});
+  });
+}
+
+function renegotiateReceivableUnlocked(userId, payload) {
+  const receivable = findReceivableByIdGs(payload && payload.receivableId);
+  const reason = parseRequiredReasonGs(
+    payload && payload.reason,
+    'RENEGOTIATE_REASON_REQUIRED',
+    'Informe o motivo da renegociação.',
+  );
+  const newDueDate = parseCivilDateGs(payload && payload.dueDate);
+  if (newDueDate === receivable.due_date) {
+    throw new Error(
+      'RENEGOTIATE_SAME_DATE: Escolha um vencimento diferente do atual.',
+    );
+  }
+  const now = new Date().toISOString();
+  openNamedSheet(
+    RECEIVABLE_DUE_DATE_HISTORY_SHEET,
+    RECEIVABLE_DUE_DATE_HISTORY_HEADERS,
+  ).appendRow([
+    receivable.id,
+    receivable.due_date,
+    newDueDate,
+    reason,
+    userId,
+    now,
+  ]);
+  updateReceivableDueDateGs(receivable.id, newDueDate);
+  receivable.due_date = newDueDate;
+  return toReceivableViewGs(
+    receivable,
+    todayCivil(),
+    remainingCentsGs(receivable.id),
+  );
+}
+
+function renegotiateReceivable(sessionToken, payload) {
+  const session = requireAction(sessionToken, 'receivables.adjust');
+  return withScriptLock(function () {
+    setupSchema();
+    return renegotiateReceivableUnlocked(session.user_id, payload || {});
+  });
 }

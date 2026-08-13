@@ -29,12 +29,15 @@ import type {
   AdjustInventoryInput,
   Payment,
   CreatePaymentInput,
+  AddReceivableInterestInput,
+  RenegotiateReceivableInput,
   Product,
   ProductCategory,
   ProductFields,
   ProductPriceHistory,
   ReactivateStudentInput,
   ReceivableAgenda,
+  Receivable,
   Sale,
   SchoolYear,
   SiblingAuthorization,
@@ -373,6 +376,20 @@ export class FakeAppApi implements AppApi {
   async listPayments(): Promise<Payment[]> {
     this.assertAction('receivables.read');
     return throwResult(this.sales.listPayments());
+  }
+
+  async addReceivableInterest(
+    input: AddReceivableInterestInput,
+  ): Promise<Receivable> {
+    this.assertAction('receivables.adjust');
+    return throwResult(this.sales.addReceivableInterest(input));
+  }
+
+  async renegotiateReceivable(
+    input: RenegotiateReceivableInput,
+  ): Promise<Receivable> {
+    this.assertAction('receivables.adjust');
+    return throwResult(this.sales.renegotiateReceivable(input));
   }
 
   private assertSession(): void {

@@ -529,4 +529,67 @@ describe('FakeAppApi', () => {
       'Ana Souza • ~8 • R$ 3,00 • Sexta-feira • 14/08/26',
     );
   });
+
+  it('adds owner-only interest and renegotiates the due date', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const coxinha = (await api.listProducts()).find(
+      (item) => item.name === 'Coxinha',
+    );
+    const ana = (await api.listStudents()).find(
+      (student) =>
+        student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+    );
+    if (!coxinha || !ana) {
+      throw new Error('juros local incompleto');
+    }
+
+    const sale = await api.createSale({
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: '2026-08-14' }],
+    });
+    const receivable = (await api.listReceivables()).upcoming[0];
+    if (!receivable) {
+      throw new Error('recebível futuro ausente');
+    }
+
+    await api.logout();
+    await api.loginE2E('staff');
+    await expect(
+      api.addReceivableInterest({
+        receivableId: receivable.id,
+        kind: 'amount',
+        amountCents: 100,
+        reason: 'Combinado na cantina',
+      }),
+    ).rejects.toThrow('FORBIDDEN');
+
+    await api.logout();
+    await api.loginE2E('owner');
+    await api.addReceivableInterest({
+      receivableId: receivable.id,
+      kind: 'amount',
+      amountCents: 100,
+      reason: 'Combinado na cantina',
+    });
+    expect((await api.listReceivables()).upcoming[0]?.summaryLabel).toBe(
+      'Ana Souza • ~8 • R$ 6,50 • Sexta-feira • 14/08/26',
+    );
+
+    await api.renegotiateReceivable({
+      receivableId: receivable.id,
+      dueDate: '2026-08-20',
+      reason: 'Pedido da responsável',
+    });
+    const agenda = await api.listReceivables();
+    expect(agenda.upcoming[0]?.summaryLabel).toBe(
+      'Ana Souza • ~8 • R$ 6,50 • Quinta-feira • 20/08/26',
+    );
+    expect(agenda.dueDateHistory[0]?.summaryLabel).toBe(
+      'Ana Souza • ~8 • Sexta-feira • 14/08/26 → Quinta-feira • 20/08/26 • Pedido da responsável',
+    );
+    expect(sale.paymentKind).toBe('fiado');
+  });
 });

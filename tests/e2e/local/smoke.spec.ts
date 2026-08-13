@@ -277,7 +277,7 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
       .locator('#sale-student')
       .selectOption({ label: 'Ana Souza • ~8' });
     await page.locator('#sale-payment-kind').selectOption('fiado');
-    await page.getByRole('button', { name: 'Amanhã' }).click();
+    await page.locator('#sale-due-tomorrow').click();
     await page.getByRole('button', { name: 'Confirmar venda' }).click();
     await expect(
       page.getByText(
@@ -289,9 +289,11 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
       page.getByRole('heading', { name: 'Próximos', exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByText('Ana Souza • ~8 • R$ 5,50 • Sexta-feira • 14/08/26', {
-        exact: true,
-      }),
+      page
+        .locator('#agenda-upcoming')
+        .getByText('Ana Souza • ~8 • R$ 5,50 • Sexta-feira • 14/08/26', {
+          exact: true,
+        }),
     ).toBeVisible();
     await expect(page.getByText('Coxinha • 9')).toBeVisible();
   });
@@ -312,9 +314,11 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await page.locator('#sale-due-date').fill('2026-08-12');
     await page.getByRole('button', { name: 'Confirmar venda' }).click();
     await expect(
-      page.getByText('Ana Souza • ~8 • R$ 5,50 • Quarta-feira • 12/08/26', {
-        exact: true,
-      }),
+      page
+        .locator('#agenda-overdue')
+        .getByText('Ana Souza • ~8 • R$ 5,50 • Quarta-feira • 12/08/26', {
+          exact: true,
+        }),
     ).toBeVisible();
 
     await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click();
@@ -322,12 +326,14 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
       .locator('#sale-student')
       .selectOption({ label: 'Ana Souza • ~8' });
     await page.locator('#sale-payment-kind').selectOption('fiado');
-    await page.getByRole('button', { name: 'Amanhã' }).click();
+    await page.locator('#sale-due-tomorrow').click();
     await page.getByRole('button', { name: 'Confirmar venda' }).click();
     await expect(
-      page.getByText('Ana Souza • ~8 • R$ 5,50 • Sexta-feira • 14/08/26', {
-        exact: true,
-      }),
+      page
+        .locator('#agenda-upcoming')
+        .getByText('Ana Souza • ~8 • R$ 5,50 • Sexta-feira • 14/08/26', {
+          exact: true,
+        }),
     ).toBeVisible();
     await expect(page.getByText('Coxinha • 8')).toBeVisible();
 
@@ -380,12 +386,14 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
       .locator('#sale-student')
       .selectOption({ label: 'Ana Souza • ~8' });
     await page.locator('#sale-payment-kind').selectOption('fiado');
-    await page.getByRole('button', { name: 'Amanhã' }).click();
+    await page.locator('#sale-due-tomorrow').click();
     await page.getByRole('button', { name: 'Confirmar venda' }).click();
     await expect(
-      page.getByText('Ana Souza • ~8 • R$ 5,50 • Sexta-feira • 14/08/26', {
-        exact: true,
-      }),
+      page
+        .locator('#agenda-upcoming')
+        .getByText('Ana Souza • ~8 • R$ 5,50 • Sexta-feira • 14/08/26', {
+          exact: true,
+        }),
     ).toBeVisible();
 
     await page
@@ -420,5 +428,74 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
           exact: true,
         }),
     ).toBeVisible();
+  });
+
+  test('adds owner-only interest and renegotiates a fiado due date', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await expect(
+      page.getByRole('button', { name: 'Lançar juros' }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click();
+    await page
+      .locator('#sale-student')
+      .selectOption({ label: 'Ana Souza • ~8' });
+    await page.locator('#sale-payment-kind').selectOption('fiado');
+    await page.locator('#sale-due-tomorrow').click();
+    await page.getByRole('button', { name: 'Confirmar venda' }).click();
+    await expect(
+      page
+        .locator('#agenda-upcoming')
+        .getByText('Ana Souza • ~8 • R$ 5,50 • Sexta-feira • 14/08/26', {
+          exact: true,
+        }),
+    ).toBeVisible();
+
+    await page.locator('#adjust-receivable').selectOption({
+      label: 'Ana Souza • ~8 • R$ 5,50 • Sexta-feira • 14/08/26',
+    });
+    await page.locator('#interest-amount').fill('1,00');
+    await page.locator('#interest-reason').fill('Combinado na cantina');
+    await page.getByRole('button', { name: 'Lançar juros' }).click();
+    await expect(
+      page
+        .locator('#agenda-upcoming')
+        .getByText('Ana Souza • ~8 • R$ 6,50 • Sexta-feira • 14/08/26', {
+          exact: true,
+        }),
+    ).toBeVisible();
+
+    await page.locator('#renegotiate-due-plus7').click();
+    await page.locator('#renegotiate-reason').fill('Pedido da responsável');
+    await page.getByRole('button', { name: 'Renegociar vencimento' }).click();
+    await expect(
+      page
+        .locator('#agenda-upcoming')
+        .getByText('Ana Souza • ~8 • R$ 6,50 • Quinta-feira • 20/08/26', {
+          exact: true,
+        }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        'Ana Souza • ~8 • Sexta-feira • 14/08/26 → Quinta-feira • 20/08/26 • Pedido da responsável',
+        { exact: true },
+      ),
+    ).toBeVisible();
+  });
+
+  test('hides interest and renegotiation from staff', async ({ page }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como funcionário' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Vendas', exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Lançar juros' }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: 'Renegociar vencimento' }),
+    ).toHaveCount(0);
   });
 });

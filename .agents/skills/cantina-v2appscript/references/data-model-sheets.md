@@ -123,7 +123,7 @@ Invariante: soma settlements = net_total. Kinds desta fase: `pix`, `cash` (valor
 
 `_receivable_due_date_history`: receivable_id, old_due_date, new_due_date, reason, changed_by, changed_at.
 
-Saldo é derivado de charges, pagamentos e reversões; não de um campo editável. A venda fiado cria recebível `open` com charge `principal`/`sale`. Pagamento parcial (Fase 15) grava alocações; o restante some da agenda quando chega a zero. O histórico de vencimento fica vazio até a Fase 16. Schema version 11 (`011_payments`). A 010 continua gravando a versão 10.
+Saldo é derivado de charges, pagamentos e reversões; não de um campo editável. A venda fiado cria recebível `open` com charge `principal`/`sale`. Pagamento parcial grava alocações; o restante some da agenda quando chega a zero. Juros (Fase 16) é charge `interest` na cobrança escolhida, com motivo. Renegociação atualiza `due_date` e grava `_receivable_due_date_history`. Schema version continua 11 (`011_payments`).
 
 ## Pagamentos
 

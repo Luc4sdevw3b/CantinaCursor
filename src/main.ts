@@ -67,10 +67,10 @@ app.innerHTML = `
     <section class="next-step" aria-labelledby="next-step-title">
       <p class="step-number">01</p>
       <div>
-        <h2 id="next-step-title">Pagamento parcial</h2>
-        <p>Quita a dívida mais antiga primeiro, ou escolhe dívidas e aloca o valor na mão.</p>
+        <h2 id="next-step-title">Juros e renegociação</h2>
+        <p>A dona lança juros em uma cobrança e troca o vencimento com motivo e histórico.</p>
       </div>
-      <span class="phase-badge">Fase 15</span>
+      <span class="phase-badge">Fase 16</span>
     </section>
 
     <section class="students-panel" id="students-panel" hidden>
@@ -324,6 +324,57 @@ app.innerHTML = `
       <ul id="payments-list"></ul>
     </section>
 
+    <section class="students-panel" id="adjust-panel" hidden>
+      <h2>Juros e renegociação</h2>
+      <p id="adjust-status">Só a dona lança juros e troca vencimento.</p>
+      <label>
+        Dívida
+        <select id="adjust-receivable">
+          <option value="">Escolha a dívida</option>
+        </select>
+      </label>
+      <form id="interest-form">
+        <label>
+          Juros
+          <select id="interest-kind">
+            <option value="amount">Valor (R$)</option>
+            <option value="percent">Porcento</option>
+          </select>
+        </label>
+        <label id="interest-amount-label">
+          Valor (R$)
+          <input id="interest-amount" inputmode="decimal" placeholder="1,00" />
+        </label>
+        <label id="interest-percent-label" hidden>
+          Porcento
+          <input id="interest-percent" type="number" min="1" max="100" />
+        </label>
+        <label>
+          Motivo
+          <input id="interest-reason" required />
+        </label>
+        <button type="submit">Lançar juros</button>
+      </form>
+      <form id="renegotiate-form">
+        <label>
+          Novo vencimento
+          <input id="renegotiate-due-date" type="date" />
+        </label>
+        <div>
+          <button type="button" id="renegotiate-due-tomorrow">Amanhã</button>
+          <button type="button" id="renegotiate-due-friday">Próxima sexta</button>
+          <button type="button" id="renegotiate-due-plus7">+7 dias</button>
+        </div>
+        <label>
+          Motivo
+          <input id="renegotiate-reason" required />
+        </label>
+        <button type="submit">Renegociar vencimento</button>
+      </form>
+      <h3>Histórico de vencimento</h3>
+      <ul id="due-date-history"></ul>
+    </section>
+
     <footer>
       <span>Versão ${APP_VERSION}</span>
       <span>Apps Script + Sheets + Drive</span>
@@ -403,6 +454,7 @@ async function showAuthenticated(session: AppSession | null): Promise<void> {
   await renderSales(session);
   await renderAgenda(session);
   await renderPayments(session);
+  await renderAdjust(session);
 }
 
 document.querySelector('#login-owner')?.addEventListener('click', () => {
@@ -748,6 +800,7 @@ interface CartLine {
 const cart: CartLine[] = [];
 let dueDateShortcuts: DueDateShortcuts | null = null;
 let openReceivables: Receivable[] = [];
+let dueDateHistoryLabels: string[] = [];
 
 function applyDueDateShortcut(civilDate: string): void {
   const dueDate = document.querySelector('#sale-due-date');
@@ -891,11 +944,15 @@ async function renderAgenda(session: AppSession | null): Promise<void> {
   if (!session) {
     status.textContent = 'Entre para ver os vencimentos.';
     openReceivables = [];
+    dueDateHistoryLabels = [];
     return;
   }
   try {
     const agenda = await api.listReceivables();
     openReceivables = [...agenda.overdue, ...agenda.today, ...agenda.upcoming];
+    dueDateHistoryLabels = agenda.dueDateHistory.map(
+      (item) => item.summaryLabel,
+    );
     const total = openReceivables.length;
     status.textContent =
       total === 0 ? 'Nenhum recebível.' : `${total} recebível(is).`;
@@ -1036,6 +1093,73 @@ async function renderPayments(session: AppSession | null): Promise<void> {
         ? error.message.replace(/^[A-Z_]+:\s*/, '')
         : 'Não foi possível carregar os pagamentos.';
   }
+}
+
+function syncInterestFields(): void {
+  const kind = document.querySelector('#interest-kind');
+  const amountLabel = document.querySelector('#interest-amount-label');
+  const percentLabel = document.querySelector('#interest-percent-label');
+  const value = kind instanceof HTMLSelectElement ? kind.value : 'amount';
+  if (amountLabel instanceof HTMLElement) {
+    amountLabel.hidden = value !== 'amount';
+  }
+  if (percentLabel instanceof HTMLElement) {
+    percentLabel.hidden = value !== 'percent';
+  }
+}
+
+function applyRenegotiateDueDate(civilDate: string): void {
+  const dueDate = document.querySelector('#renegotiate-due-date');
+  if (dueDate instanceof HTMLInputElement) {
+    dueDate.value = civilDate;
+  }
+}
+
+async function renderAdjust(session: AppSession | null): Promise<void> {
+  const panel = document.querySelector('#adjust-panel');
+  const status = document.querySelector('#adjust-status');
+  const select = document.querySelector('#adjust-receivable');
+  const history = document.querySelector('#due-date-history');
+  if (
+    !(panel instanceof HTMLElement) ||
+    !status ||
+    !(select instanceof HTMLSelectElement) ||
+    !(history instanceof HTMLElement)
+  ) {
+    return;
+  }
+  const isOwner = session?.role === 'owner';
+  panel.hidden = !isOwner;
+  history.replaceChildren();
+  const current = select.value;
+  select.replaceChildren();
+  const empty = document.createElement('option');
+  empty.value = '';
+  empty.textContent = 'Escolha a dívida';
+  select.append(empty);
+  if (!isOwner) {
+    status.textContent = 'Só a dona lança juros e troca vencimento.';
+    return;
+  }
+  for (const item of openReceivables) {
+    const option = document.createElement('option');
+    option.value = item.id;
+    option.textContent = item.summaryLabel;
+    select.append(option);
+  }
+  if (current && openReceivables.some((item) => item.id === current)) {
+    select.value = current;
+  }
+  status.textContent =
+    openReceivables.length === 0
+      ? 'Nenhuma dívida em aberto.'
+      : `${openReceivables.length} dívida(s) em aberto.`;
+  for (const label of dueDateHistoryLabels) {
+    const row = document.createElement('li');
+    row.textContent = label;
+    history.append(row);
+  }
+  syncInterestFields();
 }
 
 document
@@ -1198,7 +1322,9 @@ document
           renderSales(session),
           renderInventory(session),
           renderAgenda(session),
-        ]).then(() => renderPayments(session)),
+        ]).then(() =>
+          renderPayments(session).then(() => renderAdjust(session)),
+        ),
       )
       .catch((error: unknown) => {
         if (salesStatus) {
@@ -1307,7 +1433,9 @@ document.querySelector('#payment-form')?.addEventListener('submit', (event) => {
       return api.getSession();
     })
     .then((session) =>
-      renderAgenda(session).then(() => renderPayments(session)),
+      renderAgenda(session).then(() =>
+        renderPayments(session).then(() => renderAdjust(session)),
+      ),
     )
     .catch((error: unknown) => {
       if (status) {
@@ -1318,6 +1446,154 @@ document.querySelector('#payment-form')?.addEventListener('submit', (event) => {
       }
     });
 });
+
+document
+  .querySelector('#interest-kind')
+  ?.addEventListener('change', syncInterestFields);
+
+document
+  .querySelector('#renegotiate-due-tomorrow')
+  ?.addEventListener('click', () => {
+    if (dueDateShortcuts) {
+      applyRenegotiateDueDate(dueDateShortcuts.tomorrow);
+    }
+  });
+document
+  .querySelector('#renegotiate-due-friday')
+  ?.addEventListener('click', () => {
+    if (dueDateShortcuts) {
+      applyRenegotiateDueDate(dueDateShortcuts.nextFriday);
+    }
+  });
+document
+  .querySelector('#renegotiate-due-plus7')
+  ?.addEventListener('click', () => {
+    if (dueDateShortcuts) {
+      applyRenegotiateDueDate(dueDateShortcuts.plus7);
+    }
+  });
+
+document
+  .querySelector('#interest-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const status = document.querySelector('#adjust-status');
+    const receivable = document.querySelector('#adjust-receivable');
+    const kindSelect = document.querySelector('#interest-kind');
+    const amountInput = document.querySelector('#interest-amount');
+    const percentInput = document.querySelector('#interest-percent');
+    const reasonInput = document.querySelector('#interest-reason');
+    if (
+      !(receivable instanceof HTMLSelectElement) ||
+      !(kindSelect instanceof HTMLSelectElement) ||
+      !(amountInput instanceof HTMLInputElement) ||
+      !(percentInput instanceof HTMLInputElement) ||
+      !(reasonInput instanceof HTMLInputElement)
+    ) {
+      return;
+    }
+    const receivableId = receivable.value;
+    if (!receivableId) {
+      if (status) {
+        status.textContent = 'Escolha a dívida.';
+      }
+      return;
+    }
+    const kind = kindSelect.value;
+    if (kind !== 'amount' && kind !== 'percent') {
+      return;
+    }
+    let amountCents: number | undefined;
+    let percent: number | undefined;
+    if (kind === 'amount') {
+      const parsed = parseReaisToCents(amountInput.value);
+      if (!parsed.ok) {
+        if (status) {
+          status.textContent = parsed.error.message;
+        }
+        return;
+      }
+      amountCents = parsed.data;
+    } else {
+      percent = Number(percentInput.value);
+    }
+    void api
+      .addReceivableInterest({
+        receivableId,
+        kind,
+        amountCents,
+        percent,
+        reason: reasonInput.value,
+      })
+      .then(() => {
+        amountInput.value = '';
+        percentInput.value = '';
+        reasonInput.value = '';
+        return api.getSession();
+      })
+      .then((session) =>
+        renderAgenda(session).then(() => renderAdjust(session)),
+      )
+      .catch((error: unknown) => {
+        if (status) {
+          status.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível lançar o juros.';
+        }
+      });
+  });
+
+document
+  .querySelector('#renegotiate-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const status = document.querySelector('#adjust-status');
+    const receivable = document.querySelector('#adjust-receivable');
+    const dueDate = document.querySelector('#renegotiate-due-date');
+    const reasonInput = document.querySelector('#renegotiate-reason');
+    if (
+      !(receivable instanceof HTMLSelectElement) ||
+      !(dueDate instanceof HTMLInputElement) ||
+      !(reasonInput instanceof HTMLInputElement)
+    ) {
+      return;
+    }
+    const receivableId = receivable.value;
+    if (!receivableId) {
+      if (status) {
+        status.textContent = 'Escolha a dívida.';
+      }
+      return;
+    }
+    if (!dueDate.value) {
+      if (status) {
+        status.textContent = 'Informe o novo vencimento.';
+      }
+      return;
+    }
+    void api
+      .renegotiateReceivable({
+        receivableId,
+        dueDate: dueDate.value,
+        reason: reasonInput.value,
+      })
+      .then(() => {
+        reasonInput.value = '';
+        return api.getSession();
+      })
+      .then((session) =>
+        renderAgenda(session).then(() => renderAdjust(session)),
+      )
+      .catch((error: unknown) => {
+        if (status) {
+          status.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível renegociar o vencimento.';
+        }
+      });
+  });
 
 document.querySelector('#student-form')?.addEventListener('submit', (event) => {
   event.preventDefault();
@@ -1583,6 +1859,7 @@ void api
     await renderSales(session);
     await renderAgenda(session);
     await renderPayments(session);
+    await renderAdjust(session);
   })
   .catch(() => {
     const status = document.querySelector('#health-status');
