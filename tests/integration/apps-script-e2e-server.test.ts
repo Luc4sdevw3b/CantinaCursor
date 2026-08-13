@@ -249,6 +249,12 @@ interface ServerContext {
     reason: string;
     kind: string;
   }>;
+  createSale(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): { summaryLabel: string };
+  listSales(sessionToken: string): Array<{ summaryLabel: string }>;
+  getPixCopyText(sessionToken: string): { text: string };
 }
 
 interface DriveMockFile {
@@ -556,7 +562,7 @@ describe('Apps Script E2E server', () => {
     expect(health.status).toBe('ready');
     expect(health.adapter).toBe('google-script');
     expect(health.spreadsheetConfigured).toBe(true);
-    expect(health.schemaVersion).toBe(8);
+    expect(health.schemaVersion).toBe(9);
     expect(health.backupConfigured).toBe(true);
     expect(health.lastBackupAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(JSON.stringify(health)).not.toContain('private-e2e-sheet-id');
@@ -639,7 +645,7 @@ describe('Apps Script E2E server', () => {
     const second = server.setupSchema();
 
     expect(first).toEqual(second);
-    expect(first.schemaVersion).toBe(8);
+    expect(first.schemaVersion).toBe(9);
     expect(first.appliedMigrations).toEqual([
       '001_foundation',
       '002_operation_requests',
@@ -649,6 +655,7 @@ describe('Apps Script E2E server', () => {
       '006_guardians',
       '007_products',
       '008_inventory',
+      '009_sales',
     ]);
     expect(sheets.get('_meta')?.rows[0]).toEqual(['key', 'value']);
     expect(sheets.get('_schema_migrations')?.rows[0]).toEqual([
@@ -721,6 +728,33 @@ describe('Apps Script E2E server', () => {
       sheets
         .get('_schema_migrations')
         ?.rows.filter((row) => row[0] === '006_guardians'),
+    ).toHaveLength(1);
+    expect(sheets.get('_sales')?.rows[0]).toEqual([
+      'id',
+      'consumer_student_id',
+      'charged_student_id',
+      'status',
+      'gross_total_cents',
+      'discount_total_cents',
+      'net_total_cents',
+      'source_reservation_id',
+      'created_by',
+      'created_at',
+      'reversal_id',
+    ]);
+    expect(sheets.get('_sale_items')?.rows[0]?.[0]).toBe('id');
+    expect(sheets.get('_sale_settlements')?.rows[0]).toEqual([
+      'id',
+      'sale_id',
+      'kind',
+      'amount_cents',
+      'related_entity_id',
+      'created_at',
+    ]);
+    expect(
+      sheets
+        .get('_schema_migrations')
+        ?.rows.filter((row) => row[0] === '009_sales'),
     ).toHaveLength(1);
   });
 
@@ -863,7 +897,7 @@ describe('Apps Script E2E server', () => {
     const backup = server.runBackup(token, 'manual');
 
     expect(backup.reason).toBe('manual');
-    expect(backup.schemaVersion).toBe(8);
+    expect(backup.schemaVersion).toBe(9);
     expect(JSON.stringify(backup)).not.toContain('e2e-sheet-id');
     expect(JSON.stringify(backup)).not.toContain('e2e-backup-folder');
     expect(projectTriggers).toEqual(['runScheduledBackup']);
@@ -1298,5 +1332,85 @@ describe('Apps Script E2E server', () => {
         ),
     ).toBe(true);
     expect(() => server.listInventoryBalances('')).toThrow('UNAUTHENTICATED');
+  });
+
+  it('records an anonymous PIX sale, lowers stock and refuses staff discount', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const products = server.listProducts(owner);
+    const coxinha = products.find((item) => item.name === 'Coxinha');
+    const suco = products.find((item) => item.name === 'Suco de uva');
+    const ana = server
+      .listStudents(owner)
+      .find(
+        (student) =>
+          student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+      );
+
+    if (!coxinha || !suco || !ana) {
+      throw new Error('venda E2E incompleta');
+    }
+
+    expect(server.getPixCopyText(owner).text).toBe(
+      'Chave PIX de teste: cantina-e2e@example.test',
+    );
+    const sale = server.createSale(owner, {
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'pix',
+    });
+    expect(sale.summaryLabel).toBe('Anônima • Coxinha • R$ 5,50');
+    expect(
+      server
+        .listInventoryBalances(owner)
+        .items.find((item) => item.productName === 'Coxinha')?.physicalQuantity,
+    ).toBe(9);
+    expect(
+      server
+        .listInventoryMovements(owner)
+        .some(
+          (item) =>
+            item.productName === 'Coxinha' &&
+            item.kind === 'sale' &&
+            item.quantityDelta === -1,
+        ),
+    ).toBe(true);
+
+    expect(() =>
+      server.createSale(owner, {
+        items: [{ productId: suco.id, quantity: 1 }],
+        paymentKind: 'pix',
+      }),
+    ).toThrow('INSUFFICIENT_STOCK');
+
+    const named = server.createSale(owner, {
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'pix',
+    });
+    expect(named.summaryLabel).toBe('Ana Souza • ~8 • Coxinha • R$ 5,50');
+
+    const staff = server.loginE2E('staff').token;
+    expect(server.listSales(staff)[0]?.summaryLabel).toBe(
+      'Ana Souza • ~8 • Coxinha • R$ 5,50',
+    );
+    expect(() =>
+      server.createSale(staff, {
+        items: [
+          {
+            productId: coxinha.id,
+            quantity: 1,
+            discountKind: 'amount',
+            discountInput: 50,
+          },
+        ],
+        paymentKind: 'pix',
+      }),
+    ).toThrow('FORBIDDEN');
+    expect(() => server.listSales('')).toThrow('UNAUTHENTICATED');
   });
 });

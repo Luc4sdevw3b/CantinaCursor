@@ -9,6 +9,48 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-13 14:15 — Implementada a Fase 12: carrinho e PIX
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 12
+
+### Pedido / objetivo
+
+- Rodar a Fase 12: múltiplos itens, snapshot de preço, desconto por item, venda anônima ou de aluno, PIX e baixa atômica no estoque.
+
+### Tentativa / implementação
+
+- Migration `009_sales` cria `_sales`, `_sale_items` e `_sale_settlements` (schema version 9). A 008 continua gravando a versão 8. Setting `pix_copy_text` usa só a chave PIX de teste, sem API bancária.
+- Carrinho grava snapshot de descrição/preço/desconto. Desconto e item avulso são só da dona. Settlement único `pix` igual ao líquido. Venda anônima ou com aluno; `charged_student_id` = consumidor nesta fase.
+- Produto que controla estoque gera movimento `kind=sale` (delta negativo, motivo `venda`). Suco em `ACABOU` recusa `INSUFFICIENT_STOCK`. Brigadeiro não mexe no estoque.
+- Preview local e E2E mostram `Anônima • Coxinha • R$ 5,50` após PIX de 1 Coxinha e estoque `Coxinha • 9`. Health smoke permanece igual.
+
+### Resultado
+
+- Fase 12 concluída sobre o ambiente E2E isolado e o preview local.
+- Dinheiro, PIX+dinheiro, fiado, crédito, caixa, reservas reais e WhatsApp permanecem na Fase 13 em diante.
+- Nenhum ID Google, token, telefone real ou dado de planilha foi versionado.
+
+### Diferenças do pedido
+
+- Sem dinheiro/troco e sem settlements mistos (Fase 13). Sem fiado, crédito, caixa, reservas ou envio de WhatsApp.
+
+### Impacto técnico
+
+- Auth: `sales.read` / `sales.write` para dona e funcionário; desconto e avulso continuam só da dona.
+- `createSale` usa `LockService`. Quantidade inteira ≥ 1. Percentual half-up em centavos.
+
+### Testes
+
+- Unit, integração, typecheck, lint, format, build, version:check, validate:skill e E2E local passaram.
+- E2E remoto: smoke de health no deployment novo após `clasp push` + `clasp deploy`.
+
+### Pendências / próxima versão
+
+- Não iniciar a Fase 13 (dinheiro e settlements) sem pedido explícito.
+
 ## 2026-08-13 14:05 — Implementada a Fase 11: estoque diário
 
 **Origem:** Pedido do usuário

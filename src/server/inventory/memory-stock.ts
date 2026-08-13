@@ -249,6 +249,57 @@ export class MemoryStock {
     return this.listBalances(day.data.business_date);
   }
 
+  recordSourceMovement(input: {
+    productId: string;
+    quantityDelta: number;
+    kind: string;
+    sourceType: string;
+    sourceId: string;
+    reason: string;
+    businessDate?: string;
+  }): Result<void> {
+    const day = this.requireDay(this.resolveDate(input.businessDate));
+    if (!day.ok) {
+      return err(day.error);
+    }
+    const product = this.findProduct(input.productId);
+    if (!product.ok) {
+      return err(product.error);
+    }
+    if (!product.data.stockTracked) {
+      return ok(undefined);
+    }
+    const current = this.physicalFor(day.data.id, product.data.id);
+    if (current + input.quantityDelta < 0) {
+      return err({
+        code: 'INSUFFICIENT_STOCK',
+        message: 'O estoque não pode ficar negativo.',
+        retryable: false,
+      });
+    }
+    this.movements.push({
+      id: this.createId(),
+      inventory_day_id: day.data.id,
+      product_id: product.data.id,
+      kind: input.kind,
+      quantity_delta: String(input.quantityDelta),
+      source_type: input.sourceType,
+      source_id: input.sourceId,
+      created_by: LOCAL_ACTOR_ID,
+      created_at: this.nowIso(),
+      reason: input.reason,
+    });
+    return ok(undefined);
+  }
+
+  availableQuantity(productId: string, businessDate?: string): Result<number> {
+    const day = this.requireDay(this.resolveDate(businessDate));
+    if (!day.ok) {
+      return err(day.error);
+    }
+    return ok(this.physicalFor(day.data.id, productId));
+  }
+
   listMovements(businessDate?: string): Result<InventoryMovementView[]> {
     const day = this.requireDay(this.resolveDate(businessDate));
     if (!day.ok) {

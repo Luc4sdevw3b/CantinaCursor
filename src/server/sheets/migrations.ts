@@ -18,6 +18,10 @@ import {
   INVENTORY_DAYS_SHEET,
   INVENTORY_OPENING_ITEMS_SHEET,
   INVENTORY_MOVEMENTS_SHEET,
+  SALES_MIGRATION_ID,
+  SALES_SHEET,
+  SALE_ITEMS_SHEET,
+  SALE_SETTLEMENTS_SHEET,
   SCHOOL_YEARS_SHEET,
   SESSIONS_SHEET,
   SETTINGS_SHEET,
@@ -106,6 +110,16 @@ export const INVENTORY_MIGRATION: Migration = {
   ]),
 };
 
+export const SALES_MIGRATION: Migration = {
+  id: SALES_MIGRATION_ID,
+  description: 'Cria vendas, itens com snapshot e settlements PIX',
+  checksum: checksumHeaders([
+    ...SALES_SHEET.headers,
+    ...SALE_ITEMS_SHEET.headers,
+    ...SALE_SETTLEMENTS_SHEET.headers,
+  ]),
+};
+
 export const MIGRATION_CATALOG: readonly Migration[] = [
   FOUNDATION_MIGRATION,
   OPERATION_REQUESTS_MIGRATION,
@@ -115,6 +129,7 @@ export const MIGRATION_CATALOG: readonly Migration[] = [
   GUARDIANS_MIGRATION,
   PRODUCTS_MIGRATION,
   INVENTORY_MIGRATION,
+  SALES_MIGRATION,
 ];
 
 export function pendingMigrations(

@@ -77,6 +77,9 @@ function runnerWith(
     listInventoryBalances() {},
     adjustInventory() {},
     listInventoryMovements() {},
+    createSale() {},
+    listSales() {},
+    getPixCopyText() {},
     ...extra,
   };
   return runner;

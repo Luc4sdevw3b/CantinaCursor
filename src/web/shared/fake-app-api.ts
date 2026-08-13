@@ -3,6 +3,7 @@ import { isUserRole, type AuthAction, type UserRole } from '../../domain/auth';
 import { authorize } from '../../domain/authorize';
 import type { AppError } from '../../domain/result';
 import { MemoryCatalog } from '../../server/products/memory-catalog';
+import { MemorySales } from '../../server/sales/memory-sales';
 import { MemoryStock } from '../../server/inventory/memory-stock';
 import { MemoryRoster } from '../../server/students/memory-roster';
 import type {
@@ -14,6 +15,7 @@ import type {
   Classroom,
   CreateClassroomInput,
   CreateSchoolYearInput,
+  CreateSaleInput,
   CreateStudentInput,
   Guardian,
   GuardianProfileFields,
@@ -29,6 +31,7 @@ import type {
   ProductFields,
   ProductPriceHistory,
   ReactivateStudentInput,
+  Sale,
   SchoolYear,
   SiblingAuthorization,
   StudentDetail,
@@ -66,6 +69,12 @@ export class FakeAppApi implements AppApi {
   );
   private readonly stock = new MemoryStock(
     this.catalog,
+    () => '2026-08-13T16:00:00.000Z',
+  );
+  private readonly sales = new MemorySales(
+    this.catalog,
+    this.stock,
+    this.roster,
     () => '2026-08-13T16:00:00.000Z',
   );
 
@@ -320,6 +329,26 @@ export class FakeAppApi implements AppApi {
   ): Promise<InventoryMovement[]> {
     this.assertAction('inventory.read');
     return throwResult(this.stock.listMovements(businessDate));
+  }
+
+  async createSale(input: CreateSaleInput): Promise<Sale> {
+    this.assertAction('sales.write');
+    return throwResult(
+      this.sales.createSale({
+        ...input,
+        actorIsOwner: this.session?.role === 'owner',
+      }),
+    );
+  }
+
+  async listSales(): Promise<Sale[]> {
+    this.assertAction('sales.read');
+    return throwResult(this.sales.listSales());
+  }
+
+  async getPixCopyText(): Promise<{ text: string }> {
+    this.assertAction('sales.read');
+    return throwResult(this.sales.getPixCopyText());
   }
 
   private assertSession(): void {

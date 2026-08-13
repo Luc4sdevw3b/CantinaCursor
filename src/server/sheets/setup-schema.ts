@@ -1,6 +1,7 @@
 import { DEFAULT_REQUIRE_GUARDIAN_BELOW_AGE } from '../../domain/age';
 import { RESET_PROD_FORBIDDEN_ERROR } from '../../domain/e2e-lifecycle';
 import { REQUIRE_GUARDIAN_BELOW_AGE_KEY } from '../../domain/guardian-setting';
+import { DEFAULT_PIX_COPY_TEXT, PIX_COPY_TEXT_KEY } from '../../domain/sale';
 import { err, ok, type Result } from '../../domain/result';
 import { pendingMigrations } from './migrations';
 import {
@@ -35,6 +36,10 @@ import {
   INVENTORY_DAYS_SHEET,
   INVENTORY_OPENING_ITEMS_SHEET,
   INVENTORY_MOVEMENTS_SHEET,
+  SALES_MIGRATION_ID,
+  SALES_SHEET,
+  SALE_ITEMS_SHEET,
+  SALE_SETTLEMENTS_SHEET,
 } from './schema';
 import { deserializeRecord, serializeRecord } from './serialize';
 import { ensureSheet } from './ensure-sheet';
@@ -276,6 +281,40 @@ export function setupSchema(
       if (!movements.ok) {
         return err(movements.error);
       }
+      meta.data.appendRow(
+        serializeRecord(META_SHEET.headers, {
+          key: 'schema_version',
+          value: '8',
+        }),
+      );
+    }
+
+    if (migration.id === SALES_MIGRATION_ID) {
+      const sales = ensureSheet(input.spreadsheet, SALES_SHEET);
+      if (!sales.ok) {
+        return err(sales.error);
+      }
+      const saleItems = ensureSheet(input.spreadsheet, SALE_ITEMS_SHEET);
+      if (!saleItems.ok) {
+        return err(saleItems.error);
+      }
+      const settlements = ensureSheet(
+        input.spreadsheet,
+        SALE_SETTLEMENTS_SHEET,
+      );
+      if (!settlements.ok) {
+        return err(settlements.error);
+      }
+      const settings = ensureSheet(input.spreadsheet, SETTINGS_SHEET);
+      if (!settings.ok) {
+        return err(settings.error);
+      }
+      settings.data.appendRow(
+        serializeRecord(SETTINGS_SHEET.headers, {
+          key: PIX_COPY_TEXT_KEY,
+          value: DEFAULT_PIX_COPY_TEXT,
+        }),
+      );
       meta.data.appendRow(
         serializeRecord(META_SHEET.headers, {
           key: 'schema_version',

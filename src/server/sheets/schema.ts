@@ -56,8 +56,9 @@ export const STUDENTS_MIGRATION_ID = '005_students';
 export const GUARDIANS_MIGRATION_ID = '006_guardians';
 export const PRODUCTS_MIGRATION_ID = '007_products';
 export const INVENTORY_MIGRATION_ID = '008_inventory';
+export const SALES_MIGRATION_ID = '009_sales';
 export const FOUNDATION_SCHEMA_VERSION = 1;
-export const CURRENT_SCHEMA_VERSION = 8;
+export const CURRENT_SCHEMA_VERSION = 9;
 
 export const USERS_SHEET: SheetSchema = {
   name: '_users',
@@ -219,5 +220,51 @@ export const INVENTORY_MOVEMENTS_SHEET: SheetSchema = {
     'created_by',
     'created_at',
     'reason',
+  ],
+};
+
+export const SALES_SHEET: SheetSchema = {
+  name: '_sales',
+  headers: [
+    'id',
+    'consumer_student_id',
+    'charged_student_id',
+    'status',
+    'gross_total_cents',
+    'discount_total_cents',
+    'net_total_cents',
+    'source_reservation_id',
+    'created_by',
+    'created_at',
+    'reversal_id',
+  ],
+};
+
+export const SALE_ITEMS_SHEET: SheetSchema = {
+  name: '_sale_items',
+  headers: [
+    'id',
+    'sale_id',
+    'product_id',
+    'item_kind',
+    'description_snapshot',
+    'quantity',
+    'unit_price_cents',
+    'discount_kind',
+    'discount_input',
+    'discount_amount_cents',
+    'line_net_total_cents',
+  ],
+};
+
+export const SALE_SETTLEMENTS_SHEET: SheetSchema = {
+  name: '_sale_settlements',
+  headers: [
+    'id',
+    'sale_id',
+    'kind',
+    'amount_cents',
+    'related_entity_id',
+    'created_at',
   ],
 };

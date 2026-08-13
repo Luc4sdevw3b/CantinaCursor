@@ -6,6 +6,7 @@ import { err, ok, type Result } from './result';
 export const SOLD_OUT_LABEL = 'ACABOU';
 export const INVENTORY_DAY_OPEN = 'open';
 export const INVENTORY_ADJUSTMENT_KIND = 'adjustment';
+export const INVENTORY_SALE_KIND = 'sale';
 
 export const INVALID_ID_ERROR = {
   code: 'INVALID_ID',

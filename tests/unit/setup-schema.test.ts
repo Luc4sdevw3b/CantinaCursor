@@ -10,6 +10,7 @@ import {
   STUDENTS_MIGRATION_ID,
   PRODUCTS_MIGRATION_ID,
   INVENTORY_MIGRATION_ID,
+  SALES_MIGRATION_ID,
 } from '../../src/server/sheets/schema';
 
 describe('setupSchema', () => {
@@ -28,7 +29,7 @@ describe('setupSchema', () => {
     expect(first).toEqual({
       ok: true,
       data: {
-        schemaVersion: 8,
+        schemaVersion: 9,
         appliedMigrations: [
           FOUNDATION_MIGRATION_ID,
           OPERATION_REQUESTS_MIGRATION_ID,
@@ -38,11 +39,12 @@ describe('setupSchema', () => {
           GUARDIANS_MIGRATION_ID,
           PRODUCTS_MIGRATION_ID,
           INVENTORY_MIGRATION_ID,
+          SALES_MIGRATION_ID,
         ],
       },
     });
     expect(second).toEqual(first);
-    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(8);
+    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(9);
     expect(sheets.get('_meta')?.getHeaders()).toEqual(['key', 'value']);
     expect(sheets.get('_operation_requests')?.getHeaders()).toEqual([
       'request_id',
@@ -146,6 +148,40 @@ describe('setupSchema', () => {
       'created_at',
       'reason',
     ]);
+    expect(sheets.get('_sales')?.getHeaders()).toEqual([
+      'id',
+      'consumer_student_id',
+      'charged_student_id',
+      'status',
+      'gross_total_cents',
+      'discount_total_cents',
+      'net_total_cents',
+      'source_reservation_id',
+      'created_by',
+      'created_at',
+      'reversal_id',
+    ]);
+    expect(sheets.get('_sale_items')?.getHeaders()).toEqual([
+      'id',
+      'sale_id',
+      'product_id',
+      'item_kind',
+      'description_snapshot',
+      'quantity',
+      'unit_price_cents',
+      'discount_kind',
+      'discount_input',
+      'discount_amount_cents',
+      'line_net_total_cents',
+    ]);
+    expect(sheets.get('_sale_settlements')?.getHeaders()).toEqual([
+      'id',
+      'sale_id',
+      'kind',
+      'amount_cents',
+      'related_entity_id',
+      'created_at',
+    ]);
   });
 
   it('applies only the operation-requests migration when foundation already exists', () => {
@@ -186,9 +222,10 @@ describe('setupSchema', () => {
         GUARDIANS_MIGRATION_ID,
         PRODUCTS_MIGRATION_ID,
         INVENTORY_MIGRATION_ID,
+        SALES_MIGRATION_ID,
       ]);
     }
-    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(8);
+    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(9);
   });
 
   it('refuses PROD', () => {

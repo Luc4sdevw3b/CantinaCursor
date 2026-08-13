@@ -26,7 +26,7 @@ const FOUNDATION_MIGRATION_CHECKSUM = 'meta|schema_migrations';
 const OPERATION_REQUESTS_MIGRATION_ID = '002_operation_requests';
 const OPERATION_REQUESTS_MIGRATION_CHECKSUM =
   'request_id|operation_type|result_entity_id|status|created_at';
-const CURRENT_SCHEMA_VERSION = 8;
+const CURRENT_SCHEMA_VERSION = 9;
 const BACKUPS_SHEET = '_backups';
 const BACKUPS_HEADERS = [
   'id',
@@ -210,6 +210,56 @@ const INVENTORY_MOVEMENTS_HEADERS = [
 const INVENTORY_MIGRATION_ID = '008_inventory';
 const INVENTORY_MIGRATION_CHECKSUM =
   'id|business_date|status|opened_by|opened_at|id|inventory_day_id|product_id|opening_quantity|id|inventory_day_id|product_id|kind|quantity_delta|source_type|source_id|created_by|created_at|reason';
+const SALES_SHEET = '_sales';
+const SALES_HEADERS = [
+  'id',
+  'consumer_student_id',
+  'charged_student_id',
+  'status',
+  'gross_total_cents',
+  'discount_total_cents',
+  'net_total_cents',
+  'source_reservation_id',
+  'created_by',
+  'created_at',
+  'reversal_id',
+];
+const SALE_ITEMS_SHEET = '_sale_items';
+const SALE_ITEMS_HEADERS = [
+  'id',
+  'sale_id',
+  'product_id',
+  'item_kind',
+  'description_snapshot',
+  'quantity',
+  'unit_price_cents',
+  'discount_kind',
+  'discount_input',
+  'discount_amount_cents',
+  'line_net_total_cents',
+];
+const SALE_SETTLEMENTS_SHEET = '_sale_settlements';
+const SALE_SETTLEMENTS_HEADERS = [
+  'id',
+  'sale_id',
+  'kind',
+  'amount_cents',
+  'related_entity_id',
+  'created_at',
+];
+const SALES_MIGRATION_ID = '009_sales';
+const SALES_MIGRATION_CHECKSUM =
+  'id|consumer_student_id|charged_student_id|status|gross_total_cents|discount_total_cents|net_total_cents|source_reservation_id|created_by|created_at|reversal_id|id|sale_id|product_id|item_kind|description_snapshot|quantity|unit_price_cents|discount_kind|discount_input|discount_amount_cents|line_net_total_cents|id|sale_id|kind|amount_cents|related_entity_id|created_at';
+const PIX_COPY_TEXT_KEY = 'pix_copy_text';
+const DEFAULT_PIX_COPY_TEXT = 'Chave PIX de teste: cantina-e2e@example.test';
+const SALE_STATUS_PAID = 'paid';
+const SALE_ITEM_PRODUCT = 'product';
+const SALE_ITEM_AD_HOC = 'ad_hoc';
+const SETTLEMENT_PIX = 'pix';
+const DISCOUNT_NONE = 'none';
+const DISCOUNT_AMOUNT = 'amount';
+const DISCOUNT_PERCENT = 'percent';
+const ANONYMOUS_SALE_LABEL = 'Anônima';
 const SOLD_OUT_LABEL = 'ACABOU';
 const INVENTORY_DAY_OPEN = 'open';
 const REQUIRE_GUARDIAN_BELOW_AGE_KEY = 'require_guardian_below_age';
@@ -237,6 +287,8 @@ const ACTION_ROLES = {
   'inventory.read': ['owner', 'staff'],
   'inventory.open': ['owner'],
   'inventory.adjust': ['owner'],
+  'sales.read': ['owner', 'staff'],
+  'sales.write': ['owner', 'staff'],
 };
 const BACKUP_FILE_PREFIX = 'cantina-backup';
 const BACKUP_FOLDER_NAME = 'Cantina V2 AppScript E2E backups';
@@ -629,6 +681,9 @@ function resetE2EUnlocked() {
     INVENTORY_DAYS_SHEET,
     INVENTORY_OPENING_ITEMS_SHEET,
     INVENTORY_MOVEMENTS_SHEET,
+    SALES_SHEET,
+    SALE_ITEMS_SHEET,
+    SALE_SETTLEMENTS_SHEET,
   ].forEach(function (name) {
     const sheet = spreadsheet.getSheetByName(name);
     if (sheet) {
@@ -659,6 +714,7 @@ function seedE2E(sessionToken) {
     seedE2EGuardiansUnlocked();
     seedE2EProductsUnlocked();
     seedE2EInventoryUnlocked();
+    ensurePixCopySettingUnlocked();
     return {
       marker: E2E_SEED_MARKER,
       seeded: true,
@@ -691,6 +747,7 @@ function assertKnownMigrations(applied) {
     GUARDIANS_MIGRATION_ID,
     PRODUCTS_MIGRATION_ID,
     INVENTORY_MIGRATION_ID,
+    SALES_MIGRATION_ID,
   ];
   applied.forEach(function (id) {
     if (catalog.indexOf(id) === -1) {
@@ -720,7 +777,8 @@ function setupSchema() {
     applied.indexOf(STUDENTS_MIGRATION_ID) === -1 ||
     applied.indexOf(GUARDIANS_MIGRATION_ID) === -1 ||
     applied.indexOf(PRODUCTS_MIGRATION_ID) === -1 ||
-    applied.indexOf(INVENTORY_MIGRATION_ID) === -1;
+    applied.indexOf(INVENTORY_MIGRATION_ID) === -1 ||
+    applied.indexOf(SALES_MIGRATION_ID) === -1;
   let pendingCopy = null;
   if (pending) {
     try {
@@ -863,13 +921,34 @@ function setupSchema() {
       INVENTORY_MOVEMENTS_SHEET,
       INVENTORY_MOVEMENTS_HEADERS,
     );
-    meta.appendRow(['schema_version', String(CURRENT_SCHEMA_VERSION)]);
+    meta.appendRow(['schema_version', '8']);
     migrations.appendRow([
       INVENTORY_MIGRATION_ID,
       createdAt,
       CANTINA_APP_VERSION,
       INVENTORY_MIGRATION_CHECKSUM,
       'Cria estoque diário, abertura e movimentos',
+    ]);
+  }
+  if (applied.indexOf(SALES_MIGRATION_ID) === -1) {
+    getOrCreateSheet(spreadsheet, SALES_SHEET, SALES_HEADERS);
+    getOrCreateSheet(spreadsheet, SALE_ITEMS_SHEET, SALE_ITEMS_HEADERS);
+    getOrCreateSheet(
+      spreadsheet,
+      SALE_SETTLEMENTS_SHEET,
+      SALE_SETTLEMENTS_HEADERS,
+    );
+    getOrCreateSheet(spreadsheet, SETTINGS_SHEET, SETTINGS_HEADERS).appendRow([
+      PIX_COPY_TEXT_KEY,
+      DEFAULT_PIX_COPY_TEXT,
+    ]);
+    meta.appendRow(['schema_version', String(CURRENT_SCHEMA_VERSION)]);
+    migrations.appendRow([
+      SALES_MIGRATION_ID,
+      createdAt,
+      CANTINA_APP_VERSION,
+      SALES_MIGRATION_CHECKSUM,
+      'Cria vendas, itens com snapshot e settlements PIX',
     ]);
   }
   if (pendingCopy) {
@@ -3198,4 +3277,399 @@ function listInventoryMovements(sessionToken, businessDate) {
         createdAt: item.created_at,
       };
     });
+}
+
+function percentAmountGs(cents, percent) {
+  if (!Number.isInteger(cents) || cents < 0 || !Number.isInteger(percent)) {
+    return 0;
+  }
+  return Math.floor((cents * percent + 50) / 100);
+}
+
+function parseSaleQuantityGs(value) {
+  var parsed = null;
+  if (typeof value === 'number' && Number.isInteger(value)) {
+    parsed = value;
+  } else if (
+    typeof value === 'string' &&
+    /^-?\d+$/.test(String(value).trim())
+  ) {
+    parsed = Number(String(value).trim());
+  }
+  if (parsed === null || parsed < 1) {
+    throw new Error(
+      'INVALID_SALE_QUANTITY: A quantidade da venda precisa ser um número inteiro maior que zero.',
+    );
+  }
+  return parsed;
+}
+
+function parseDiscountKindGs(value) {
+  if (value === DISCOUNT_AMOUNT || value === DISCOUNT_PERCENT) {
+    return value;
+  }
+  return DISCOUNT_NONE;
+}
+
+function computeLineDiscountGs(
+  lineGrossCents,
+  kind,
+  discountInput,
+  discountAllowed,
+  actorIsOwner,
+) {
+  if (kind === DISCOUNT_NONE) {
+    return { kind: kind, input: 0, amountCents: 0 };
+  }
+  if (!actorIsOwner) {
+    throw new Error('FORBIDDEN: Só a dona aplica desconto.');
+  }
+  if (!discountAllowed) {
+    throw new Error('DISCOUNT_NOT_ALLOWED: Este produto não permite desconto.');
+  }
+  if (kind === DISCOUNT_PERCENT) {
+    const percent = parseCentsGs(discountInput);
+    if (percent < 1 || percent > 100) {
+      throw new Error(
+        'INVALID_DISCOUNT: O desconto precisa ser um valor válido e menor que o item.',
+      );
+    }
+    const amountCents = percentAmountGs(lineGrossCents, percent);
+    if (amountCents <= 0 || amountCents >= lineGrossCents) {
+      throw new Error(
+        'INVALID_DISCOUNT: O desconto precisa ser um valor válido e menor que o item.',
+      );
+    }
+    return { kind: kind, input: percent, amountCents: amountCents };
+  }
+  const amount = parseCentsGs(discountInput);
+  if (amount <= 0 || amount >= lineGrossCents) {
+    throw new Error(
+      'INVALID_DISCOUNT: O desconto precisa ser um valor válido e menor que o item.',
+    );
+  }
+  return { kind: kind, input: amount, amountCents: amount };
+}
+
+function planSaleLineGs(item, product, actorIsOwner) {
+  const quantity = parseSaleQuantityGs(item && item.quantity);
+  const adHocName = String((item && item.adHocName) || '').trim();
+  if (adHocName) {
+    if (!actorIsOwner) {
+      throw new Error('FORBIDDEN: Só a dona vende item avulso.');
+    }
+    const price = parseCentsGs(item && item.adHocPriceCents);
+    const lineGross = quantity * price;
+    const discount = computeLineDiscountGs(
+      lineGross,
+      parseDiscountKindGs(item && item.discountKind),
+      item && item.discountInput,
+      true,
+      actorIsOwner,
+    );
+    return {
+      product_id: '',
+      item_kind: SALE_ITEM_AD_HOC,
+      description_snapshot: adHocName,
+      quantity: String(quantity),
+      unit_price_cents: String(price),
+      discount_kind: discount.kind,
+      discount_input: String(discount.input),
+      discount_amount_cents: String(discount.amountCents),
+      line_gross_cents: lineGross,
+      line_net_total_cents: String(lineGross - discount.amountCents),
+      stock_tracked: false,
+    };
+  }
+  if (!product) {
+    throw new Error('PRODUCT_NOT_FOUND: Produto não encontrado.');
+  }
+  if (product.active !== 'true') {
+    throw new Error(
+      'PRODUCT_INACTIVE: Produto inativo não entra em venda nova.',
+    );
+  }
+  const unitPrice = Number(product.price_cents);
+  const lineGross = quantity * unitPrice;
+  const discount = computeLineDiscountGs(
+    lineGross,
+    parseDiscountKindGs(item && item.discountKind),
+    item && item.discountInput,
+    product.discount_allowed === 'true',
+    actorIsOwner,
+  );
+  return {
+    product_id: product.id,
+    item_kind: SALE_ITEM_PRODUCT,
+    description_snapshot: product.name,
+    quantity: String(quantity),
+    unit_price_cents: String(unitPrice),
+    discount_kind: discount.kind,
+    discount_input: String(discount.input),
+    discount_amount_cents: String(discount.amountCents),
+    line_gross_cents: lineGross,
+    line_net_total_cents: String(lineGross - discount.amountCents),
+    stock_tracked: product.stock_tracked === 'true',
+  };
+}
+
+function planSaleTotalsGs(lines) {
+  let gross = 0;
+  let net = 0;
+  lines.forEach(function (line) {
+    gross += line.line_gross_cents;
+    net += Number(line.line_net_total_cents);
+  });
+  return {
+    gross_total_cents: String(gross),
+    discount_total_cents: String(gross - net),
+    net_total_cents: String(net),
+  };
+}
+
+function listSaleRecords() {
+  return listSheetRecords(
+    openNamedSheet(SALES_SHEET, SALES_HEADERS),
+    SALES_HEADERS,
+  );
+}
+
+function listSaleItemRecords() {
+  return listSheetRecords(
+    openNamedSheet(SALE_ITEMS_SHEET, SALE_ITEMS_HEADERS),
+    SALE_ITEMS_HEADERS,
+  );
+}
+
+function listSettlementRecords() {
+  return listSheetRecords(
+    openNamedSheet(SALE_SETTLEMENTS_SHEET, SALE_SETTLEMENTS_HEADERS),
+    SALE_SETTLEMENTS_HEADERS,
+  );
+}
+
+function saleConsumerLabelGs(consumerStudentId) {
+  if (!consumerStudentId) {
+    return ANONYMOUS_SALE_LABEL;
+  }
+  const student = latestStudentById(consumerStudentId);
+  return student.full_name + ' • ' + studentAgeLabelGs(student);
+}
+
+function toSaleViewGs(sale) {
+  const items = listSaleItemRecords()
+    .filter(function (item) {
+      return item.sale_id === sale.id;
+    })
+    .map(function (item) {
+      return {
+        id: item.id,
+        description: item.description_snapshot,
+        quantity: Number(item.quantity),
+        unitPriceCents: Number(item.unit_price_cents),
+        discountAmountCents: Number(item.discount_amount_cents),
+        lineNetCents: Number(item.line_net_total_cents),
+      };
+    });
+  const netTotalCents = Number(sale.net_total_cents);
+  const consumerLabel = saleConsumerLabelGs(sale.consumer_student_id);
+  const netLabel = formatBrlGs(netTotalCents);
+  const descriptions = items.map(function (item) {
+    return item.description;
+  });
+  return {
+    id: sale.id,
+    consumerStudentId: sale.consumer_student_id || null,
+    consumerLabel: consumerLabel,
+    status: SALE_STATUS_PAID,
+    paymentKind: SETTLEMENT_PIX,
+    grossTotalCents: Number(sale.gross_total_cents),
+    discountTotalCents: Number(sale.discount_total_cents),
+    netTotalCents: netTotalCents,
+    netLabel: netLabel,
+    items: items,
+    summaryLabel:
+      consumerLabel + ' • ' + descriptions.join(', ') + ' • ' + netLabel,
+    createdAt: sale.created_at,
+  };
+}
+
+function readPixCopyTextUnlocked() {
+  const records = listSheetRecords(
+    openNamedSheet(SETTINGS_SHEET, SETTINGS_HEADERS),
+    SETTINGS_HEADERS,
+  );
+  let text = DEFAULT_PIX_COPY_TEXT;
+  records.forEach(function (row) {
+    if (row.key === PIX_COPY_TEXT_KEY && row.value) {
+      text = row.value;
+    }
+  });
+  return { text: text };
+}
+
+function ensurePixCopySettingUnlocked() {
+  setupSchema();
+  const settings = openNamedSheet(SETTINGS_SHEET, SETTINGS_HEADERS);
+  const records = listSheetRecords(settings, SETTINGS_HEADERS);
+  const exists = records.some(function (row) {
+    return row.key === PIX_COPY_TEXT_KEY;
+  });
+  if (!exists) {
+    settings.appendRow([PIX_COPY_TEXT_KEY, DEFAULT_PIX_COPY_TEXT]);
+  }
+}
+
+function createSaleUnlocked(userId, payload, actorIsOwner) {
+  if (!payload || payload.paymentKind !== SETTLEMENT_PIX) {
+    throw new Error(
+      'PAYMENT_KIND_UNSUPPORTED: Nesta fase a venda é somente PIX.',
+    );
+  }
+  const items = payload.items || [];
+  if (!items.length) {
+    throw new Error(
+      'SALE_ITEMS_REQUIRED: Inclua pelo menos um item no carrinho.',
+    );
+  }
+  const products = latestRecordsById(listProductRecords());
+  const planned = [];
+  items.forEach(function (item) {
+    const productId = item && item.productId ? String(item.productId) : '';
+    const product = productId
+      ? products.filter(function (entry) {
+          return entry.id === productId;
+        })[0] || null
+      : null;
+    planned.push(planSaleLineGs(item, product, actorIsOwner));
+  });
+  const needed = {};
+  planned.forEach(function (line) {
+    if (!line.stock_tracked || !line.product_id) {
+      return;
+    }
+    needed[line.product_id] =
+      (needed[line.product_id] || 0) + Number(line.quantity);
+  });
+  const businessDate = todayCivil();
+  Object.keys(needed).forEach(function (productId) {
+    const day = requireInventoryDayGs(businessDate);
+    const available = physicalForGs(day.id, productId);
+    if (available < needed[productId]) {
+      throw new Error(
+        'INSUFFICIENT_STOCK: Não há estoque suficiente para esta venda.',
+      );
+    }
+  });
+  let consumerId = '';
+  if (payload.consumerStudentId) {
+    const student = latestStudentById(String(payload.consumerStudentId));
+    if (student.active !== 'true') {
+      throw new Error(
+        'STUDENT_INACTIVE: Aluno inativo não entra em venda nova.',
+      );
+    }
+    consumerId = student.id;
+  }
+  const totals = planSaleTotalsGs(planned);
+  const now = new Date().toISOString();
+  const saleId = Utilities.getUuid();
+  openNamedSheet(SALES_SHEET, SALES_HEADERS).appendRow([
+    saleId,
+    consumerId,
+    consumerId,
+    SALE_STATUS_PAID,
+    totals.gross_total_cents,
+    totals.discount_total_cents,
+    totals.net_total_cents,
+    '',
+    userId,
+    now,
+    '',
+  ]);
+  const itemsSheet = openNamedSheet(SALE_ITEMS_SHEET, SALE_ITEMS_HEADERS);
+  planned.forEach(function (line) {
+    itemsSheet.appendRow([
+      Utilities.getUuid(),
+      saleId,
+      line.product_id,
+      line.item_kind,
+      line.description_snapshot,
+      line.quantity,
+      line.unit_price_cents,
+      line.discount_kind,
+      line.discount_input,
+      line.discount_amount_cents,
+      line.line_net_total_cents,
+    ]);
+  });
+  openNamedSheet(SALE_SETTLEMENTS_SHEET, SALE_SETTLEMENTS_HEADERS).appendRow([
+    Utilities.getUuid(),
+    saleId,
+    SETTLEMENT_PIX,
+    totals.net_total_cents,
+    '',
+    now,
+  ]);
+  const day = Object.keys(needed).length
+    ? requireInventoryDayGs(businessDate)
+    : null;
+  const movements = openNamedSheet(
+    INVENTORY_MOVEMENTS_SHEET,
+    INVENTORY_MOVEMENTS_HEADERS,
+  );
+  Object.keys(needed).forEach(function (productId) {
+    movements.appendRow([
+      Utilities.getUuid(),
+      day.id,
+      productId,
+      'sale',
+      String(-needed[productId]),
+      'sale',
+      saleId,
+      userId,
+      now,
+      'venda',
+    ]);
+  });
+  return toSaleViewGs({
+    id: saleId,
+    consumer_student_id: consumerId,
+    charged_student_id: consumerId,
+    status: SALE_STATUS_PAID,
+    gross_total_cents: totals.gross_total_cents,
+    discount_total_cents: totals.discount_total_cents,
+    net_total_cents: totals.net_total_cents,
+    source_reservation_id: '',
+    created_by: userId,
+    created_at: now,
+    reversal_id: '',
+  });
+}
+
+function createSale(sessionToken, payload) {
+  const session = requireAction(sessionToken, 'sales.write');
+  return withScriptLock(function () {
+    setupSchema();
+    return createSaleUnlocked(
+      session.user_id,
+      payload || {},
+      session.role === 'owner',
+    );
+  });
+}
+
+function listSales(sessionToken) {
+  requireAction(sessionToken, 'sales.read');
+  return listSaleRecords()
+    .slice()
+    .reverse()
+    .map(function (sale) {
+      return toSaleViewGs(sale);
+    });
+}
+
+function getPixCopyText(sessionToken) {
+  requireAction(sessionToken, 'sales.read');
+  return readPixCopyTextUnlocked();
 }

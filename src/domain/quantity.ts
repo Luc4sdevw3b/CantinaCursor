@@ -36,6 +36,21 @@ export function parseOpeningQuantity(value: unknown): Result<number> {
   return ok(parsed);
 }
 
+export const INVALID_SALE_QUANTITY_ERROR = {
+  code: 'INVALID_SALE_QUANTITY',
+  message:
+    'A quantidade da venda precisa ser um número inteiro maior que zero.',
+  retryable: false,
+} as const;
+
+export function parseSaleQuantity(value: unknown): Result<number> {
+  const parsed = parseInteger(value);
+  if (parsed === null || parsed < 1) {
+    return err(INVALID_SALE_QUANTITY_ERROR);
+  }
+  return ok(parsed);
+}
+
 export function parseQuantityDelta(value: unknown): Result<number> {
   const parsed = parseInteger(value);
   if (parsed === null || parsed === 0) {

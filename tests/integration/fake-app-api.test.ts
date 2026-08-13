@@ -267,4 +267,63 @@ describe('FakeAppApi', () => {
       ),
     ).toBe(true);
   });
+
+  it('records an anonymous PIX sale, lowers stock and refuses staff discount', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const products = await api.listProducts();
+    const coxinha = products.find((item) => item.name === 'Coxinha');
+    const suco = products.find((item) => item.name === 'Suco de uva');
+    const ana = (await api.listStudents()).find(
+      (student) =>
+        student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+    );
+
+    if (!coxinha || !suco || !ana) {
+      throw new Error('venda local incompleta');
+    }
+
+    expect((await api.getPixCopyText()).text).toBe(
+      'Chave PIX de teste: cantina-e2e@example.test',
+    );
+    const sale = await api.createSale({
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'pix',
+    });
+    expect(sale.summaryLabel).toBe('Anônima • Coxinha • R$ 5,50');
+    expect(
+      (await api.listInventoryBalances()).items.find(
+        (item) => item.productName === 'Coxinha',
+      )?.physicalQuantity,
+    ).toBe(9);
+
+    await expect(
+      api.createSale({
+        items: [{ productId: suco.id, quantity: 1 }],
+        paymentKind: 'pix',
+      }),
+    ).rejects.toThrow('INSUFFICIENT_STOCK');
+
+    const named = await api.createSale({
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'pix',
+    });
+    expect(named.summaryLabel).toBe('Ana Souza • ~8 • Coxinha • R$ 5,50');
+
+    await api.loginE2E('staff');
+    await expect(
+      api.createSale({
+        items: [
+          {
+            productId: coxinha.id,
+            quantity: 1,
+            discountKind: 'amount',
+            discountInput: 50,
+          },
+        ],
+        paymentKind: 'pix',
+      }),
+    ).rejects.toThrow('FORBIDDEN');
+  });
 });

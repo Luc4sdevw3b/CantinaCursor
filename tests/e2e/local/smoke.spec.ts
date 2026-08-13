@@ -226,4 +226,21 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await expect(page.getByText('Suco de uva • ACABOU')).toBeVisible();
     await expect(page.locator('#inventory-adjust-form')).toBeHidden();
   });
+
+  test('records an anonymous PIX sale after login and lowers Coxinha stock', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Vendas', exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Chave PIX de teste: cantina-e2e@example.test'),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click();
+    await page.getByRole('button', { name: 'Confirmar PIX' }).click();
+    await expect(page.getByText('Anônima • Coxinha • R$ 5,50')).toBeVisible();
+    await expect(page.getByText('Coxinha • 9')).toBeVisible();
+  });
 });

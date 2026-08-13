@@ -81,7 +81,7 @@ scripts/
 
 Definir `AppApi` com funções específicas do domínio, nunca ranges/SQL/Sheets genéricos.
 
-Até a Fase 11 o contrato `AppApi` inclui sessão, cadastro, cardápio e estoque diário (abertura, quantidade física por ledger, ajuste da dona e `ACABOU` no zero). Reservado ativo ainda não existe, então disponível = físico. Sem vendas, fiado, crédito como movimento, caixa, reservas reais ou envio de WhatsApp.
+Até a Fase 12 o contrato `AppApi` inclui sessão, cadastro, cardápio, estoque diário e vendas PIX (carrinho com snapshot, desconto só da dona, venda anônima ou de aluno e baixa atômica `kind=sale`). Sem dinheiro, fiado, crédito como movimento, caixa, reservas reais ou envio de WhatsApp.
 
 O adapter `google.script.run` é usado no Web App Apps Script (ambiente E2E isolado nesta fase). **E2E local usa somente `FakeAppApi`.** Isso permite Playwright desde o início sem Google.
 

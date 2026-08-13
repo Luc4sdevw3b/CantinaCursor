@@ -10,6 +10,7 @@ import type {
   Classroom,
   CreateClassroomInput,
   CreateSchoolYearInput,
+  CreateSaleInput,
   CreateStudentInput,
   Guardian,
   GuardianProfileFields,
@@ -25,6 +26,7 @@ import type {
   ProductFields,
   ProductPriceHistory,
   ReactivateStudentInput,
+  Sale,
   SchoolYear,
   SiblingAuthorization,
   StudentDetail,
@@ -88,6 +90,9 @@ export interface GoogleScriptRunner {
   listInventoryBalances(token: string, businessDate?: string): void;
   adjustInventory(token: string, payload: unknown): void;
   listInventoryMovements(token: string, businessDate?: string): void;
+  createSale(token: string, payload: unknown): void;
+  listSales(token: string): void;
+  getPixCopyText(token: string): void;
 }
 
 export type SessionTokenStorage = Pick<
@@ -512,6 +517,23 @@ export class GoogleScriptAppApi implements AppApi {
     return this.callWithToken((runner, token) =>
       runner.listInventoryMovements(token, businessDate),
     );
+  }
+
+  createSale(input: CreateSaleInput): Promise<Sale> {
+    return this.callWithToken((runner, token) =>
+      runner.createSale(token, {
+        ...input,
+        requestId: crypto.randomUUID(),
+      }),
+    );
+  }
+
+  listSales(): Promise<Sale[]> {
+    return this.callWithToken((runner, token) => runner.listSales(token));
+  }
+
+  getPixCopyText(): Promise<{ text: string }> {
+    return this.callWithToken((runner, token) => runner.getPixCopyText(token));
   }
 
   private callWithToken<T>(

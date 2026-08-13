@@ -2,7 +2,7 @@
 
 Aplicação web da cantina, planejada para Google Apps Script + Google Sheets + Google Drive.
 
-O projeto está na Fase 11 (`0.1.0-dev`): estoque diário com abertura, ledger, ajuste da dona e `ACABOU` quando zera. O cardápio, responsáveis e alunos já estão no cadastro.
+O projeto está na Fase 12 (`0.1.0-dev`): carrinho com snapshot de preço, venda anônima ou de aluno, PIX e baixa atômica no estoque. Dinheiro e settlements mistos ficam na Fase 13.
 
 Consulte:
 

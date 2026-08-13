@@ -323,7 +323,8 @@ footer {
 }
 
 .students-panel form[hidden],
-.family-panel form[hidden] {
+.family-panel form[hidden],
+.students-panel #sale-discount-fields[hidden] {
   display: none;
 }
 

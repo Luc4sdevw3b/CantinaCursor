@@ -247,9 +247,46 @@ export interface InventoryMovement {
   createdAt: string;
 }
 
+export interface CreateSaleInput {
+  consumerStudentId?: string | null;
+  items: Array<{
+    productId?: string | null;
+    adHocName?: string | null;
+    adHocPriceCents?: number | null;
+    quantity: number;
+    discountKind?: string | null;
+    discountInput?: unknown;
+  }>;
+  paymentKind: 'pix';
+}
+
+export interface SaleItem {
+  id: string;
+  description: string;
+  quantity: number;
+  unitPriceCents: number;
+  discountAmountCents: number;
+  lineNetCents: number;
+}
+
+export interface Sale {
+  id: string;
+  consumerStudentId: string | null;
+  consumerLabel: string;
+  status: 'paid';
+  paymentKind: 'pix';
+  grossTotalCents: number;
+  discountTotalCents: number;
+  netTotalCents: number;
+  netLabel: string;
+  items: SaleItem[];
+  summaryLabel: string;
+  createdAt: string;
+}
+
 /**
- * Contrato técnico da Fase 11.
- * Sem vendas, fiado, crédito como movimento, caixa, reservas reais ou envio de WhatsApp.
+ * Contrato técnico da Fase 12.
+ * Sem dinheiro, fiado, crédito como movimento, caixa, reservas reais ou envio de WhatsApp.
  */
 export interface AppApi {
   getHealth(): Promise<AppHealth>;
@@ -319,4 +356,7 @@ export interface AppApi {
   listInventoryBalances(businessDate?: string): Promise<InventoryBalances>;
   adjustInventory(input: AdjustInventoryInput): Promise<InventoryBalances>;
   listInventoryMovements(businessDate?: string): Promise<InventoryMovement[]>;
+  createSale(input: CreateSaleInput): Promise<Sale>;
+  listSales(): Promise<Sale[]>;
+  getPixCopyText(): Promise<{ text: string }>;
 }

@@ -65,10 +65,10 @@ app.innerHTML = `
     <section class="next-step" aria-labelledby="next-step-title">
       <p class="step-number">01</p>
       <div>
-        <h2 id="next-step-title">Estoque diário</h2>
-        <p>Abertura, quantidade atual, ajuste da dona e ACABOU quando zera.</p>
+        <h2 id="next-step-title">Carrinho e PIX</h2>
+        <p>Venda com snapshot de preço, desconto da dona e baixa atômica no estoque.</p>
       </div>
-      <span class="phase-badge">Fase 11</span>
+      <span class="phase-badge">Fase 12</span>
     </section>
 
     <section class="students-panel" id="students-panel" hidden>
@@ -205,6 +205,48 @@ app.innerHTML = `
       </form>
     </section>
 
+    <section class="students-panel" id="sales-panel" hidden>
+      <h2>Vendas</h2>
+      <p id="sales-status">Entre para vender.</p>
+      <p id="pix-copy-text"></p>
+      <form id="sale-cart-form">
+        <label>
+          Produto
+          <select id="sale-product"></select>
+        </label>
+        <label>
+          Quantidade
+          <input id="sale-quantity" type="number" min="1" value="1" required />
+        </label>
+        <div id="sale-discount-fields">
+          <label>
+            Desconto
+            <select id="sale-discount-kind">
+              <option value="none">Sem desconto</option>
+              <option value="amount">Valor (centavos)</option>
+              <option value="percent">Porcento</option>
+            </select>
+          </label>
+          <label>
+            Valor do desconto
+            <input id="sale-discount-input" inputmode="numeric" />
+          </label>
+        </div>
+        <button type="submit">Adicionar ao carrinho</button>
+      </form>
+      <ul id="sale-cart-list"></ul>
+      <form id="sale-confirm-form">
+        <label>
+          Aluno
+          <select id="sale-student">
+            <option value="">Venda anônima</option>
+          </select>
+        </label>
+        <button type="submit">Confirmar PIX</button>
+      </form>
+      <ul id="sales-list"></ul>
+    </section>
+
     <footer>
       <span>Versão ${APP_VERSION}</span>
       <span>Apps Script + Sheets + Drive</span>
@@ -281,6 +323,7 @@ async function showAuthenticated(session: AppSession | null): Promise<void> {
   await renderFamily(session);
   await renderProducts(session);
   await renderInventory(session);
+  await renderSales(session);
 }
 
 document.querySelector('#login-owner')?.addEventListener('click', () => {
@@ -606,6 +649,196 @@ async function renderInventory(session: AppSession | null): Promise<void> {
   }
 }
 
+const salesPanel = document.querySelector('#sales-panel');
+const salesStatus = document.querySelector('#sales-status');
+const salesList = document.querySelector('#sales-list');
+const saleCartList = document.querySelector('#sale-cart-list');
+const saleProductSelect = document.querySelector('#sale-product');
+const saleStudentSelect = document.querySelector('#sale-student');
+const saleDiscountFields = document.querySelector('#sale-discount-fields');
+const pixCopyText = document.querySelector('#pix-copy-text');
+
+interface CartLine {
+  productId: string;
+  name: string;
+  quantity: number;
+  discountKind: string;
+  discountInput: number | null;
+}
+
+const cart: CartLine[] = [];
+
+function renderCart(): void {
+  if (!(saleCartList instanceof HTMLElement)) {
+    return;
+  }
+  saleCartList.replaceChildren();
+  for (const line of cart) {
+    const item = document.createElement('li');
+    item.textContent = `${line.name} • ${line.quantity}`;
+    saleCartList.append(item);
+  }
+}
+
+async function renderSales(session: AppSession | null): Promise<void> {
+  if (
+    !(salesPanel instanceof HTMLElement) ||
+    !salesStatus ||
+    !(salesList instanceof HTMLElement)
+  ) {
+    return;
+  }
+  salesPanel.hidden = !session;
+  salesList.replaceChildren();
+  if (saleDiscountFields instanceof HTMLElement) {
+    saleDiscountFields.hidden = session?.role !== 'owner';
+  }
+  if (!session) {
+    salesStatus.textContent = 'Entre para vender.';
+    if (pixCopyText) {
+      pixCopyText.textContent = '';
+    }
+    cart.length = 0;
+    renderCart();
+    return;
+  }
+
+  try {
+    const [products, students, sales, pix] = await Promise.all([
+      api.listProducts(),
+      api.listStudents(),
+      api.listSales(),
+      api.getPixCopyText(),
+    ]);
+    if (pixCopyText) {
+      pixCopyText.textContent = pix.text;
+    }
+    if (saleProductSelect instanceof HTMLSelectElement) {
+      saleProductSelect.replaceChildren();
+      for (const product of products.filter((item) => item.active)) {
+        const option = document.createElement('option');
+        option.value = product.id;
+        option.textContent = `${product.name} • ${product.priceLabel}`;
+        saleProductSelect.append(option);
+      }
+    }
+    if (saleStudentSelect instanceof HTMLSelectElement) {
+      saleStudentSelect.replaceChildren();
+      const anonymous = document.createElement('option');
+      anonymous.value = '';
+      anonymous.textContent = 'Venda anônima';
+      saleStudentSelect.append(anonymous);
+      for (const student of students.filter((item) => item.active)) {
+        const option = document.createElement('option');
+        option.value = student.id;
+        option.textContent = `${student.fullName} • ${student.ageLabel}`;
+        saleStudentSelect.append(option);
+      }
+    }
+    salesStatus.textContent =
+      sales.length === 0
+        ? 'Nenhuma venda registrada ainda.'
+        : `${sales.length} venda(s).`;
+    for (const sale of sales) {
+      const item = document.createElement('li');
+      item.textContent = sale.summaryLabel;
+      salesList.append(item);
+    }
+    renderCart();
+  } catch (error: unknown) {
+    salesStatus.textContent =
+      error instanceof Error
+        ? error.message.replace(/^[A-Z_]+:\s*/, '')
+        : 'Não foi possível carregar as vendas.';
+  }
+}
+
+document
+  .querySelector('#sale-cart-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const quantity = document.querySelector('#sale-quantity');
+    const discountKind = document.querySelector('#sale-discount-kind');
+    const discountInput = document.querySelector('#sale-discount-input');
+    if (
+      !(saleProductSelect instanceof HTMLSelectElement) ||
+      !(quantity instanceof HTMLInputElement)
+    ) {
+      return;
+    }
+    const selected = saleProductSelect.selectedOptions[0];
+    if (!selected) {
+      return;
+    }
+    const kind =
+      discountKind instanceof HTMLSelectElement &&
+      saleDiscountFields instanceof HTMLElement &&
+      !saleDiscountFields.hidden
+        ? discountKind.value
+        : 'none';
+    const inputValue =
+      discountInput instanceof HTMLInputElement && kind !== 'none'
+        ? Number(discountInput.value)
+        : null;
+    cart.push({
+      productId: saleProductSelect.value,
+      name: selected.textContent?.split(' • ')[0] ?? selected.textContent ?? '',
+      quantity: Number(quantity.value),
+      discountKind: kind,
+      discountInput: inputValue,
+    });
+    quantity.value = '1';
+    if (discountKind instanceof HTMLSelectElement) {
+      discountKind.value = 'none';
+    }
+    if (discountInput instanceof HTMLInputElement) {
+      discountInput.value = '';
+    }
+    renderCart();
+  });
+
+document
+  .querySelector('#sale-confirm-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!cart.length) {
+      if (salesStatus) {
+        salesStatus.textContent = 'Inclua pelo menos um item no carrinho.';
+      }
+      return;
+    }
+    const consumerStudentId =
+      saleStudentSelect instanceof HTMLSelectElement
+        ? saleStudentSelect.value || null
+        : null;
+    void api
+      .createSale({
+        consumerStudentId,
+        items: cart.map((line) => ({
+          productId: line.productId,
+          quantity: line.quantity,
+          discountKind: line.discountKind,
+          discountInput: line.discountInput,
+        })),
+        paymentKind: 'pix',
+      })
+      .then(() => {
+        cart.length = 0;
+        return api.getSession();
+      })
+      .then((session) =>
+        Promise.all([renderSales(session), renderInventory(session)]),
+      )
+      .catch((error: unknown) => {
+        if (salesStatus) {
+          salesStatus.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível confirmar a venda.';
+        }
+      });
+  });
+
 document.querySelector('#student-form')?.addEventListener('submit', (event) => {
   event.preventDefault();
   const name = document.querySelector('#student-name');
@@ -867,6 +1100,7 @@ void api
     await renderFamily(session);
     await renderProducts(session);
     await renderInventory(session);
+    await renderSales(session);
   })
   .catch(() => {
     const status = document.querySelector('#health-status');

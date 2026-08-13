@@ -93,7 +93,7 @@ Turmas pertencem a um ano letivo. Histórico de matrícula fica em `_student_enr
 
 `_student_account_authorizations`: id, consumer_student_id, account_student_id, can_charge_account, can_use_account_credit, active, authorized_at, revoked_at, created_by, note. IDs são UUID; atualizações são append.
 
-`_settings`: key, value. A Fase 9 usa `require_guardian_below_age` (padrão 18), idade operacional para pedir responsável, não regra jurídica.
+`_settings`: key, value. A Fase 9 usa `require_guardian_below_age` (padrão 18), idade operacional para pedir responsável, não regra jurídica. A Fase 12 usa `pix_copy_text` (chave PIX de teste, sem API bancária).
 
 ## Produtos
 
@@ -101,7 +101,7 @@ Turmas pertencem a um ano letivo. Histórico de matrícula fica em `_student_enr
 
 `_products`: id, category_id, name, price_cents, discount_allowed, stock_tracked, reservable, active, created_at, updated_at. Preço em centavos inteiros. Inativo preserva histórico. Só `stock_tracked=true` entra na abertura do dia.
 
-`_product_price_history`: id, product_id, price_cents, started_at, ended_at, created_by. Append-oriented; troca de preço fecha o período anterior e abre um id novo. Não reescreve venda antiga (vendas ainda não existem).
+`_product_price_history`: id, product_id, price_cents, started_at, ended_at, created_by. Append-oriented; troca de preço fecha o período anterior e abre um id novo. Não reescreve venda antiga: o item guarda snapshot de descrição/preço/desconto.
 
 `_ad_hoc_items`: id, name, price_cents, created_by, created_at. Só a dona registra. Item avulso não vira produto automaticamente.
 
@@ -113,7 +113,7 @@ Turmas pertencem a um ano letivo. Histórico de matrícula fica em `_student_enr
 
 `_sale_settlements`: id, sale_id, kind, amount_cents, related_entity_id, created_at.
 
-Invariante: soma settlements = net_total.
+Invariante: soma settlements = net_total. Nesta fase só existe settlement `pix` igual ao líquido. `consumer_student_id` vazio é venda anônima; `charged_student_id` = consumidor quando há aluno.
 
 ## Recebíveis
 

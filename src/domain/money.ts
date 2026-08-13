@@ -33,6 +33,13 @@ export function parseReaisToCents(value: unknown): Result<number> {
   return ok(reais * 100 + Number(fraction));
 }
 
+export function percentAmount(cents: number, percent: number): number {
+  if (!Number.isInteger(cents) || cents < 0 || !Number.isInteger(percent)) {
+    return 0;
+  }
+  return Math.trunc((cents * percent + 50) / 100);
+}
+
 export function formatBrl(cents: number): string {
   const safe = Number.isInteger(cents) && cents >= 0 ? cents : 0;
   const reais = Math.floor(safe / 100);

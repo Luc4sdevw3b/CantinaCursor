@@ -180,6 +180,8 @@ Carrinho e PIX são a Fase 12.
 - PIX;
 - baixa atômica.
 
+Dinheiro e settlements são a Fase 13.
+
 ## Fase 13 — Dinheiro e settlements
 
 - dinheiro;
