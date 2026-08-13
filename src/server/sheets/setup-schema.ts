@@ -52,6 +52,9 @@ import {
   CREDIT_ACCOUNT_STUDENTS_SHEET,
   CREDIT_MOVEMENTS_SHEET,
   PAYMENT_CREDIT_ALLOCATIONS_SHEET,
+  CASH_MIGRATION_ID,
+  CASH_SESSIONS_SHEET,
+  CASH_MOVEMENTS_SHEET,
 } from './schema';
 import { deserializeRecord, serializeRecord } from './serialize';
 import { ensureSheet } from './ensure-sheet';
@@ -401,6 +404,26 @@ export function setupSchema(
       );
       if (!creditAllocations.ok) {
         return err(creditAllocations.error);
+      }
+      meta.data.appendRow(
+        serializeRecord(META_SHEET.headers, {
+          key: 'schema_version',
+          value: '12',
+        }),
+      );
+    }
+
+    if (migration.id === CASH_MIGRATION_ID) {
+      const sessions = ensureSheet(input.spreadsheet, CASH_SESSIONS_SHEET);
+      if (!sessions.ok) {
+        return err(sessions.error);
+      }
+      const cashMovements = ensureSheet(
+        input.spreadsheet,
+        CASH_MOVEMENTS_SHEET,
+      );
+      if (!cashMovements.ok) {
+        return err(cashMovements.error);
       }
       meta.data.appendRow(
         serializeRecord(META_SHEET.headers, {

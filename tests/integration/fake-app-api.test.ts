@@ -345,6 +345,16 @@ describe('FakeAppApi', () => {
       }),
     ).rejects.toThrow('INSUFFICIENT_CASH');
 
+    await expect(
+      api.createSale({
+        items: [{ productId: coxinha.id, quantity: 1 }],
+        paymentKind: 'cash',
+        cashTenderedCents: 1000,
+      }),
+    ).rejects.toThrow('CASH_SESSION_REQUIRED');
+
+    await api.openCashSession({ openingFloatCents: 0 });
+
     const cash = await api.createSale({
       items: [{ productId: coxinha.id, quantity: 1 }],
       paymentKind: 'cash',
@@ -375,6 +385,16 @@ describe('FakeAppApi', () => {
       'Anônima • Coxinha • R$ 5,50 • PIX + dinheiro • Troco R$ 0,50',
     );
     expect(mixed.paymentKind).toBe('mixed');
+    const setup = await api.getCashSetup();
+    expect(setup.openSession?.expectedCents).toBe(800);
+    expect(
+      setup.openSession?.movements.map((item) => item.summaryLabel),
+    ).toEqual([
+      'troco R$ 0,50',
+      'entrada R$ 3,00',
+      'troco R$ 4,50',
+      'entrada R$ 10,00',
+    ]);
   });
 
   it('records student fiado with due date and refuses anonymous fiado', async () => {
@@ -1031,5 +1051,58 @@ describe('FakeAppApi', () => {
     expect(
       (await api.listCreditAccounts()).map((item) => item.summaryLabel),
     ).toContain('Ana Souza • ~8 • R$ 0,00');
+  });
+
+  it('records R$ 8,00 cash with R$ 10,00 tendered as +10/-2 and keeps PIX without a drawer', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const coxinha = (await api.listProducts()).find(
+      (item) => item.name === 'Coxinha',
+    );
+    const brigadeiro = (await api.listProducts()).find(
+      (item) => item.name === 'Brigadeiro',
+    );
+    if (!coxinha || !brigadeiro) {
+      throw new Error('caixa local incompleto');
+    }
+
+    const pix = await api.createSale({
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'pix',
+    });
+    expect(pix.summaryLabel).toBe('Anônima • Coxinha • R$ 5,50');
+    expect((await api.getCashSetup()).openSession).toBeNull();
+
+    await api.openCashSession({ openingFloatCents: 0 });
+    const sale = await api.createSale({
+      items: [
+        { productId: coxinha.id, quantity: 1 },
+        { productId: brigadeiro.id, quantity: 1 },
+      ],
+      paymentKind: 'cash',
+      cashTenderedCents: 1000,
+    });
+    expect(sale.summaryLabel).toBe(
+      'Anônima • Coxinha, Brigadeiro • R$ 8,00 • Dinheiro • Troco R$ 2,00',
+    );
+    const setup = await api.getCashSetup();
+    expect(setup.openSession?.expectedCents).toBe(800);
+    expect(
+      setup.openSession?.movements.map((item) => item.summaryLabel),
+    ).toEqual(['troco R$ 2,00', 'entrada R$ 10,00']);
+    expect(
+      (await api.listInventoryBalances()).items.find(
+        (item) => item.productName === 'Coxinha',
+      )?.physicalQuantity,
+    ).toBe(8);
+
+    const staff = new FakeAppApi();
+    await staff.loginE2E('staff');
+    await expect(
+      staff.openCashSession({ openingFloatCents: 0 }),
+    ).rejects.toThrow('FORBIDDEN');
+    await expect(staff.closeCashSession({ countedCents: 800 })).rejects.toThrow(
+      'FORBIDDEN',
+    );
   });
 });

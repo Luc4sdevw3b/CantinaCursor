@@ -312,6 +312,45 @@ interface ServerContext {
     sessionToken: string,
     payload: Record<string, unknown>,
   ): { summaryLabel: string };
+  getCashSetup(sessionToken: string): {
+    businessDate: string;
+    openSession: {
+      expectedCents: number;
+      summaryLabel: string;
+      movements: Array<{ kind: string; summaryLabel: string }>;
+    } | null;
+    recentSessions: Array<{ status: string; summaryLabel: string }>;
+  };
+  openCashSession(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): {
+    openSession: {
+      expectedCents: number;
+      movements: Array<{ kind: string; summaryLabel: string }>;
+    } | null;
+  };
+  addCashForChange(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): { openSession: { expectedCents: number } | null };
+  removeCash(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): { openSession: { expectedCents: number } | null };
+  closeCashSession(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): {
+    openSession: { expectedCents: number } | null;
+    recentSessions: Array<{
+      status: string;
+      expectedCents: number;
+      countedCents: number | null;
+      differenceCents: number | null;
+      closeNote: string;
+    }>;
+  };
 }
 
 interface DriveMockFile {
@@ -634,7 +673,7 @@ describe('Apps Script E2E server', () => {
     expect(health.status).toBe('ready');
     expect(health.adapter).toBe('google-script');
     expect(health.spreadsheetConfigured).toBe(true);
-    expect(health.schemaVersion).toBe(12);
+    expect(health.schemaVersion).toBe(13);
     expect(health.backupConfigured).toBe(true);
     expect(health.lastBackupAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(JSON.stringify(health)).not.toContain('private-e2e-sheet-id');
@@ -717,7 +756,7 @@ describe('Apps Script E2E server', () => {
     const second = server.setupSchema();
 
     expect(first).toEqual(second);
-    expect(first.schemaVersion).toBe(12);
+    expect(first.schemaVersion).toBe(13);
     expect(first.appliedMigrations).toEqual([
       '001_foundation',
       '002_operation_requests',
@@ -731,6 +770,7 @@ describe('Apps Script E2E server', () => {
       '010_receivables',
       '011_payments',
       '012_credits',
+      '013_cash',
     ]);
     expect(sheets.get('_meta')?.rows[0]).toEqual(['key', 'value']);
     expect(sheets.get('_schema_migrations')?.rows[0]).toEqual([
@@ -921,6 +961,36 @@ describe('Apps Script E2E server', () => {
         .get('_schema_migrations')
         ?.rows.filter((row) => row[0] === '012_credits'),
     ).toHaveLength(1);
+    expect(sheets.get('_cash_sessions')?.rows[0]).toEqual([
+      'id',
+      'business_date',
+      'status',
+      'opening_float_cents',
+      'opened_by',
+      'opened_at',
+      'closed_by',
+      'closed_at',
+      'expected_close_cents',
+      'counted_close_cents',
+      'difference_cents',
+      'close_note',
+    ]);
+    expect(sheets.get('_cash_movements')?.rows[0]).toEqual([
+      'id',
+      'cash_session_id',
+      'kind',
+      'amount_delta_cents',
+      'source_type',
+      'source_id',
+      'created_by',
+      'created_at',
+      'note',
+    ]);
+    expect(
+      sheets
+        .get('_schema_migrations')
+        ?.rows.filter((row) => row[0] === '013_cash'),
+    ).toHaveLength(1);
   });
 
   it('refuses schema setup on PROD', () => {
@@ -1062,7 +1132,7 @@ describe('Apps Script E2E server', () => {
     const backup = server.runBackup(token, 'manual');
 
     expect(backup.reason).toBe('manual');
-    expect(backup.schemaVersion).toBe(12);
+    expect(backup.schemaVersion).toBe(13);
     expect(JSON.stringify(backup)).not.toContain('e2e-sheet-id');
     expect(JSON.stringify(backup)).not.toContain('e2e-backup-folder');
     expect(projectTriggers).toEqual(['runScheduledBackup']);
@@ -1601,6 +1671,16 @@ describe('Apps Script E2E server', () => {
         cashTenderedCents: 400,
       }),
     ).toThrow('INSUFFICIENT_CASH');
+
+    expect(() =>
+      server.createSale(owner, {
+        items: [{ productId: coxinha.id, quantity: 1 }],
+        paymentKind: 'cash',
+        cashTenderedCents: 1000,
+      }),
+    ).toThrow('CASH_SESSION_REQUIRED');
+
+    server.openCashSession(owner, { openingFloatCents: 0 });
 
     const cash = server.createSale(owner, {
       items: [{ productId: coxinha.id, quantity: 1 }],
@@ -2376,5 +2456,71 @@ describe('Apps Script E2E server', () => {
     expect(
       server.listCreditAccounts(owner).map((item) => item.summaryLabel),
     ).toContain('Ana Souza • ~8 • R$ 0,00');
+  });
+
+  it('records R$ 8,00 cash with R$ 10,00 tendered as +10/-2 and keeps PIX without a drawer', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const staff = server.loginE2E('staff').token;
+    const coxinha = server
+      .listProducts(owner)
+      .find((item) => item.name === 'Coxinha');
+    const brigadeiro = server
+      .listProducts(owner)
+      .find((item) => item.name === 'Brigadeiro');
+    if (!coxinha || !brigadeiro) {
+      throw new Error('caixa E2E incompleto');
+    }
+
+    expect(
+      server.createSale(owner, {
+        items: [{ productId: coxinha.id, quantity: 1 }],
+        paymentKind: 'pix',
+      }).summaryLabel,
+    ).toBe('Anônima • Coxinha • R$ 5,50');
+    expect(server.getCashSetup(owner).openSession).toBeNull();
+
+    expect(() =>
+      server.openCashSession(staff, { openingFloatCents: 0 }),
+    ).toThrow('FORBIDDEN');
+    server.openCashSession(owner, { openingFloatCents: 0 });
+    const sale = server.createSale(owner, {
+      items: [
+        { productId: coxinha.id, quantity: 1 },
+        { productId: brigadeiro.id, quantity: 1 },
+      ],
+      paymentKind: 'cash',
+      cashTenderedCents: 1000,
+    });
+    expect(sale.summaryLabel).toBe(
+      'Anônima • Coxinha, Brigadeiro • R$ 8,00 • Dinheiro • Troco R$ 2,00',
+    );
+    const setup = server.getCashSetup(owner);
+    expect(setup.openSession?.expectedCents).toBe(800);
+    expect(
+      setup.openSession?.movements.map((item) => item.summaryLabel),
+    ).toEqual(['troco R$ 2,00', 'entrada R$ 10,00']);
+    expect(
+      server
+        .listInventoryBalances(owner)
+        .items.find((item) => item.productName === 'Coxinha')?.physicalQuantity,
+    ).toBe(8);
+
+    expect(() => server.closeCashSession(staff, { countedCents: 800 })).toThrow(
+      'FORBIDDEN',
+    );
+    const closed = server.closeCashSession(owner, { countedCents: 800 });
+    expect(closed.openSession).toBeNull();
+    expect(closed.recentSessions[0]).toMatchObject({
+      status: 'closed',
+      expectedCents: 800,
+      countedCents: 800,
+      differenceCents: 0,
+    });
   });
 });

@@ -34,6 +34,9 @@ import {
   CREDIT_ACCOUNT_STUDENTS_SHEET,
   CREDIT_MOVEMENTS_SHEET,
   PAYMENT_CREDIT_ALLOCATIONS_SHEET,
+  CASH_MIGRATION_ID,
+  CASH_SESSIONS_SHEET,
+  CASH_MOVEMENTS_SHEET,
   SCHOOL_YEARS_SHEET,
   SESSIONS_SHEET,
   SETTINGS_SHEET,
@@ -162,6 +165,15 @@ export const CREDITS_MIGRATION: Migration = {
   ]),
 };
 
+export const CASH_MIGRATION: Migration = {
+  id: CASH_MIGRATION_ID,
+  description: 'Cria sessões e movimentos de caixa físico',
+  checksum: checksumHeaders([
+    ...CASH_SESSIONS_SHEET.headers,
+    ...CASH_MOVEMENTS_SHEET.headers,
+  ]),
+};
+
 export const MIGRATION_CATALOG: readonly Migration[] = [
   FOUNDATION_MIGRATION,
   OPERATION_REQUESTS_MIGRATION,
@@ -175,6 +187,7 @@ export const MIGRATION_CATALOG: readonly Migration[] = [
   RECEIVABLES_MIGRATION,
   PAYMENTS_MIGRATION,
   CREDITS_MIGRATION,
+  CASH_MIGRATION,
 ];
 
 export function pendingMigrations(

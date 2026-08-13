@@ -5,6 +5,7 @@ import type { AppError } from '../../domain/result';
 import { MemoryCatalog } from '../../server/products/memory-catalog';
 import { MemorySales } from '../../server/sales/memory-sales';
 import { MemoryStock } from '../../server/inventory/memory-stock';
+import { MemoryCash } from '../../server/cash/memory-cash';
 import { MemoryRoster } from '../../server/students/memory-roster';
 import type {
   AdHocItem,
@@ -37,6 +38,7 @@ import type {
   RefundGuardianCreditInput,
   AddReceivableInterestInput,
   RenegotiateReceivableInput,
+  CashSetup,
   Product,
   ProductCategory,
   ProductFields,
@@ -84,10 +86,12 @@ export class FakeAppApi implements AppApi {
     this.catalog,
     () => '2026-08-13T16:00:00.000Z',
   );
+  private readonly cash = new MemoryCash(() => '2026-08-13T16:00:00.000Z');
   private readonly sales = new MemorySales(
     this.catalog,
     this.stock,
     this.roster,
+    this.cash,
     () => '2026-08-13T16:00:00.000Z',
   );
 
@@ -434,6 +438,42 @@ export class FakeAppApi implements AppApi {
   ): Promise<CreditAccount> {
     this.assertAction('credits.refund');
     return throwResult(this.sales.refundGuardianCredit(input));
+  }
+
+  async getCashSetup(): Promise<CashSetup> {
+    this.assertAction('cash.read');
+    return throwResult(this.cash.getSetup());
+  }
+
+  async openCashSession(input: {
+    openingFloatCents?: number;
+  }): Promise<CashSetup> {
+    this.assertAction('cash.open');
+    return throwResult(this.cash.open(input));
+  }
+
+  async addCashForChange(input: {
+    amountCents: number;
+    note: string;
+  }): Promise<CashSetup> {
+    this.assertAction('cash.add');
+    return throwResult(this.cash.addForChange(input));
+  }
+
+  async removeCash(input: {
+    amountCents: number;
+    note: string;
+  }): Promise<CashSetup> {
+    this.assertAction('cash.remove');
+    return throwResult(this.cash.remove(input));
+  }
+
+  async closeCashSession(input: {
+    countedCents: number;
+    note?: string;
+  }): Promise<CashSetup> {
+    this.assertAction('cash.close');
+    return throwResult(this.cash.close(input));
   }
 
   private assertSession(): void {

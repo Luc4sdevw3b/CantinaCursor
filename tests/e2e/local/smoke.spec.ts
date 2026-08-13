@@ -303,9 +303,10 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
   }) => {
     await openLocalApp(page);
     await page.getByRole('button', { name: 'Entrar como dona' }).click();
-    await expect(
-      page.getByRole('heading', { name: 'Vendas', exact: true }),
-    ).toBeVisible();
+    await goToArea(page, 'Caixa');
+    await page.getByRole('button', { name: 'Abrir caixa' }).click();
+    await expect(page.getByText(/Aberto •/)).toBeVisible();
+    await goToArea(page, 'Vendas');
     await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click();
     await page.locator('#sale-payment-kind').selectOption('cash');
     await page.locator('#sale-cash-amount').fill('10,00');
@@ -840,6 +841,51 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
         exact: false,
       }),
     ).toHaveCount(0);
+    await goToArea(page, 'Estoque');
+    await expect(page.getByText('Coxinha • 9', { exact: true })).toBeVisible();
+  });
+
+  test('opens cash and records R$ 8,00 received as R$ 10,00 with R$ 2,00 change', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await goToArea(page, 'Caixa');
+    await page.getByRole('button', { name: 'Abrir caixa' }).click();
+    await expect(
+      page.getByText(
+        'Aberto • Quinta-feira • 13/08/26 • troco inicial R$ 0,00 • esperado R$ 0,00',
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await goToArea(page, 'Vendas');
+    await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click();
+    await page
+      .locator('#sale-product')
+      .selectOption({ label: 'Brigadeiro • R$ 2,50' });
+    await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click();
+    await page.locator('#sale-payment-kind').selectOption('cash');
+    await page.locator('#sale-cash-amount').fill('10,00');
+    await page.getByRole('button', { name: 'Confirmar venda' }).click();
+    await expect(
+      page.getByText(
+        'Anônima • Coxinha, Brigadeiro • R$ 8,00 • Dinheiro • Troco R$ 2,00',
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await goToArea(page, 'Caixa');
+    await expect(
+      page.getByText('entrada R$ 10,00', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('troco R$ 2,00', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        'Aberto • Quinta-feira • 13/08/26 • troco inicial R$ 0,00 • esperado R$ 8,00',
+        { exact: true },
+      ),
+    ).toBeVisible();
     await goToArea(page, 'Estoque');
     await expect(page.getByText('Coxinha • 9', { exact: true })).toBeVisible();
   });

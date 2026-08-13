@@ -92,6 +92,11 @@ function runnerWith(
     refundPersonalCredit() {},
     depositGuardianCredit() {},
     refundGuardianCredit() {},
+    getCashSetup() {},
+    openCashSession() {},
+    addCashForChange() {},
+    removeCash() {},
+    closeCashSession() {},
     ...extra,
   };
   return runner;

@@ -2,7 +2,7 @@
 
 Aplicação web da cantina, planejada para Google Apps Script + Google Sheets + Google Drive.
 
-O projeto está na Fase 20 (`0.1.0-dev`): venda na conta do irmão, com autorização direcional e crédito separado. O caixa físico fica na Fase 21.
+O projeto está na Fase 21 (`0.1.0-dev`): caixa físico opcional, com dinheiro exigindo caixa aberto. Estornos ficam na Fase 22.
 
 Consulte:
 

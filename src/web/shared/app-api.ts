@@ -420,9 +420,43 @@ export interface RefundGuardianCreditInput {
   reason: string;
 }
 
+export interface CashMovement {
+  id: string;
+  kind: string;
+  amountDeltaCents: number;
+  amountLabel: string;
+  summaryLabel: string;
+  note: string;
+  createdAt: string;
+}
+
+export interface CashSession {
+  id: string;
+  businessDate: string;
+  status: 'open' | 'closed';
+  stale: boolean;
+  openingFloatCents: number;
+  openingFloatLabel: string;
+  expectedCents: number;
+  expectedLabel: string;
+  countedCents: number | null;
+  countedLabel: string | null;
+  differenceCents: number | null;
+  differenceLabel: string | null;
+  closeNote: string;
+  summaryLabel: string;
+  movements: CashMovement[];
+}
+
+export interface CashSetup {
+  businessDate: string;
+  openSession: CashSession | null;
+  recentSessions: CashSession[];
+}
+
 /**
- * Contrato técnico da Fase 20.
- * Sem caixa físico, reservas reais ou envio de WhatsApp.
+ * Contrato técnico da Fase 21.
+ * Sem reservas reais ou envio de WhatsApp.
  */
 export interface AppApi {
   getHealth(): Promise<AppHealth>;
@@ -515,4 +549,15 @@ export interface AppApi {
   refundGuardianCredit(
     input: RefundGuardianCreditInput,
   ): Promise<CreditAccount>;
+  getCashSetup(): Promise<CashSetup>;
+  openCashSession(input: { openingFloatCents?: number }): Promise<CashSetup>;
+  addCashForChange(input: {
+    amountCents: number;
+    note: string;
+  }): Promise<CashSetup>;
+  removeCash(input: { amountCents: number; note: string }): Promise<CashSetup>;
+  closeCashSession(input: {
+    countedCents: number;
+    note?: string;
+  }): Promise<CashSetup>;
 }

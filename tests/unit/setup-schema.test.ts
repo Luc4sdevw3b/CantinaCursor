@@ -14,6 +14,7 @@ import {
   RECEIVABLES_MIGRATION_ID,
   PAYMENTS_MIGRATION_ID,
   CREDITS_MIGRATION_ID,
+  CASH_MIGRATION_ID,
 } from '../../src/server/sheets/schema';
 
 describe('setupSchema', () => {
@@ -32,7 +33,7 @@ describe('setupSchema', () => {
     expect(first).toEqual({
       ok: true,
       data: {
-        schemaVersion: 12,
+        schemaVersion: 13,
         appliedMigrations: [
           FOUNDATION_MIGRATION_ID,
           OPERATION_REQUESTS_MIGRATION_ID,
@@ -46,11 +47,12 @@ describe('setupSchema', () => {
           RECEIVABLES_MIGRATION_ID,
           PAYMENTS_MIGRATION_ID,
           CREDITS_MIGRATION_ID,
+          CASH_MIGRATION_ID,
         ],
       },
     });
     expect(second).toEqual(first);
-    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(12);
+    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(13);
     expect(sheets.get('_meta')?.getHeaders()).toEqual(['key', 'value']);
     expect(sheets.get('_operation_requests')?.getHeaders()).toEqual([
       'request_id',
@@ -263,6 +265,31 @@ describe('setupSchema', () => {
       'credit_account_id',
       'amount_cents',
     ]);
+    expect(sheets.get('_cash_sessions')?.getHeaders()).toEqual([
+      'id',
+      'business_date',
+      'status',
+      'opening_float_cents',
+      'opened_by',
+      'opened_at',
+      'closed_by',
+      'closed_at',
+      'expected_close_cents',
+      'counted_close_cents',
+      'difference_cents',
+      'close_note',
+    ]);
+    expect(sheets.get('_cash_movements')?.getHeaders()).toEqual([
+      'id',
+      'cash_session_id',
+      'kind',
+      'amount_delta_cents',
+      'source_type',
+      'source_id',
+      'created_by',
+      'created_at',
+      'note',
+    ]);
   });
 
   it('applies only the operation-requests migration when foundation already exists', () => {
@@ -307,9 +334,10 @@ describe('setupSchema', () => {
         RECEIVABLES_MIGRATION_ID,
         PAYMENTS_MIGRATION_ID,
         CREDITS_MIGRATION_ID,
+        CASH_MIGRATION_ID,
       ]);
     }
-    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(12);
+    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(13);
   });
 
   it('refuses PROD', () => {

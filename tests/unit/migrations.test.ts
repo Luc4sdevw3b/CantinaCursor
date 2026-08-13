@@ -11,6 +11,7 @@ import {
   RECEIVABLES_MIGRATION,
   PAYMENTS_MIGRATION,
   CREDITS_MIGRATION,
+  CASH_MIGRATION,
   USERS_MIGRATION,
   pendingMigrations,
 } from '../../src/server/sheets/migrations';
@@ -32,6 +33,7 @@ describe('migration runner', () => {
         RECEIVABLES_MIGRATION,
         PAYMENTS_MIGRATION,
         CREDITS_MIGRATION,
+        CASH_MIGRATION,
       ],
     });
     expect(pendingMigrations(['001_foundation'])).toEqual({
@@ -48,6 +50,7 @@ describe('migration runner', () => {
         RECEIVABLES_MIGRATION,
         PAYMENTS_MIGRATION,
         CREDITS_MIGRATION,
+        CASH_MIGRATION,
       ],
     });
   });
@@ -67,6 +70,7 @@ describe('migration runner', () => {
         '010_receivables',
         '011_payments',
         '012_credits',
+        '013_cash',
       ]),
     ).toEqual({
       ok: true,

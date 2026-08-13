@@ -45,7 +45,7 @@ app.innerHTML = `
         <p class="eyebrow">Web App em preparação</p>
         <div class="hero-title-row">
           <h1 id="page-title">Cantina V2 AppScript</h1>
-          <span class="phase-badge">Fase 20</span>
+          <span class="phase-badge">Fase 21</span>
         </div>
         <p class="intro">
           Uma base simples e confiável para a operação diária da cantina.
@@ -76,6 +76,7 @@ app.innerHTML = `
         <button type="button" data-area="payments">Pagamentos</button>
         <button type="button" data-area="credits">Crédito</button>
         <button type="button" data-area="inventory">Estoque</button>
+        <button type="button" data-area="cash">Caixa</button>
         <button type="button" data-area="students">Alunos</button>
         <button type="button" data-area="family">Responsáveis</button>
         <button type="button" data-area="products">Cardápio</button>
@@ -265,6 +266,53 @@ app.innerHTML = `
         </label>
         <button type="submit">Ajustar estoque</button>
       </form>
+    </section>
+
+    <section class="students-panel" id="cash-panel" hidden>
+      <h2>Caixa</h2>
+      <p id="cash-status">Entre para ver o caixa.</p>
+      <p id="cash-session-label"></p>
+      <form id="cash-open-form">
+        <label>
+          Troco inicial
+          <input id="cash-opening-float" inputmode="decimal" placeholder="0,00" />
+        </label>
+        <button type="submit">Abrir caixa</button>
+      </form>
+      <form id="cash-add-form" hidden>
+        <label>
+          Adicionar troco
+          <input id="cash-add-amount" inputmode="decimal" placeholder="20,00" />
+        </label>
+        <label>
+          Origem
+          <input id="cash-add-note" required />
+        </label>
+        <button type="submit">Adicionar troco</button>
+      </form>
+      <form id="cash-remove-form" hidden>
+        <label>
+          Retirar dinheiro
+          <input id="cash-remove-amount" inputmode="decimal" placeholder="10,00" />
+        </label>
+        <label>
+          Motivo
+          <input id="cash-remove-note" required />
+        </label>
+        <button type="submit">Retirar dinheiro</button>
+      </form>
+      <form id="cash-close-form" hidden>
+        <label>
+          Valor contado
+          <input id="cash-counted" inputmode="decimal" placeholder="8,00" />
+        </label>
+        <label>
+          Nota
+          <input id="cash-close-note" />
+        </label>
+        <button type="submit">Fechar caixa</button>
+      </form>
+      <ul id="cash-movements"></ul>
     </section>
 
     <section class="students-panel" id="sales-panel" hidden>
@@ -576,6 +624,7 @@ type AppArea =
   | 'payments'
   | 'credits'
   | 'inventory'
+  | 'cash'
   | 'students'
   | 'family'
   | 'products'
@@ -587,6 +636,7 @@ const AREA_PANELS: Record<AppArea, string> = {
   payments: '#payments-panel',
   credits: '#credits-panel',
   inventory: '#inventory-panel',
+  cash: '#cash-panel',
   students: '#students-panel',
   family: '#family-panel',
   products: '#products-panel',
@@ -718,6 +768,7 @@ async function showAuthenticated(session: AppSession | null): Promise<void> {
   await renderFamily(session);
   await renderProducts(session);
   await renderInventory(session);
+  await renderCash(session);
   await renderSales(session);
   await renderAgenda(session);
   await renderPayments(session);
@@ -1236,6 +1287,89 @@ async function renderInventory(session: AppSession | null): Promise<void> {
       error instanceof Error
         ? error.message.replace(/^[A-Z_]+:\s*/, '')
         : 'Não foi possível carregar o estoque.';
+  }
+}
+
+const cashPanel = document.querySelector('#cash-panel');
+const cashStatus = document.querySelector('#cash-status');
+const cashSessionLabel = document.querySelector('#cash-session-label');
+const cashMovements = document.querySelector('#cash-movements');
+const cashOpenForm = document.querySelector('#cash-open-form');
+const cashAddForm = document.querySelector('#cash-add-form');
+const cashRemoveForm = document.querySelector('#cash-remove-form');
+const cashCloseForm = document.querySelector('#cash-close-form');
+
+async function renderCash(session: AppSession | null): Promise<void> {
+  if (
+    !(cashPanel instanceof HTMLElement) ||
+    !cashStatus ||
+    !cashSessionLabel ||
+    !(cashMovements instanceof HTMLElement)
+  ) {
+    return;
+  }
+  cashMovements.replaceChildren();
+  const hideForms = () => {
+    if (cashOpenForm instanceof HTMLElement) {
+      cashOpenForm.hidden = true;
+    }
+    if (cashAddForm instanceof HTMLElement) {
+      cashAddForm.hidden = true;
+    }
+    if (cashRemoveForm instanceof HTMLElement) {
+      cashRemoveForm.hidden = true;
+    }
+    if (cashCloseForm instanceof HTMLElement) {
+      cashCloseForm.hidden = true;
+    }
+  };
+  if (!session) {
+    hideForms();
+    cashSessionLabel.textContent = '';
+    cashStatus.textContent = 'Entre para ver o caixa.';
+    return;
+  }
+  try {
+    const setup = await api.getCashSetup();
+    const open = setup.openSession;
+    hideForms();
+    if (!open) {
+      cashStatus.textContent = 'Sem caixa aberto. PIX continua disponível.';
+      cashSessionLabel.textContent = '';
+      if (session.role === 'owner' && cashOpenForm instanceof HTMLElement) {
+        cashOpenForm.hidden = false;
+      }
+      return;
+    }
+    cashStatus.textContent = open.stale
+      ? 'Caixa antigo aberto. Feche antes de receber dinheiro.'
+      : `Caixa de ${open.businessDate}.`;
+    cashSessionLabel.textContent = open.summaryLabel;
+    if (!open.stale && cashAddForm instanceof HTMLElement) {
+      cashAddForm.hidden = false;
+    }
+    if (
+      session.role === 'owner' &&
+      !open.stale &&
+      cashRemoveForm instanceof HTMLElement
+    ) {
+      cashRemoveForm.hidden = false;
+    }
+    if (session.role === 'owner' && cashCloseForm instanceof HTMLElement) {
+      cashCloseForm.hidden = false;
+    }
+    for (const item of open.movements) {
+      const row = document.createElement('li');
+      row.textContent = item.summaryLabel;
+      cashMovements.append(row);
+    }
+  } catch (error: unknown) {
+    hideForms();
+    cashSessionLabel.textContent = '';
+    cashStatus.textContent =
+      error instanceof Error
+        ? error.message.replace(/^[A-Z_]+:\s*/, '')
+        : 'Não foi possível carregar o caixa.';
   }
 }
 
@@ -2078,6 +2212,7 @@ document
         Promise.all([
           renderSales(session),
           renderInventory(session),
+          renderCash(session),
           renderAgenda(session),
         ]).then(() =>
           renderPayments(session).then(() =>
@@ -3029,6 +3164,146 @@ document
             error instanceof Error
               ? error.message.replace(/^[A-Z_]+:\s*/, '')
               : 'Não foi possível ajustar o estoque.';
+        }
+      });
+  });
+
+document
+  .querySelector('#cash-open-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const amountInput = document.querySelector('#cash-opening-float');
+    const raw =
+      amountInput instanceof HTMLInputElement ? amountInput.value.trim() : '';
+    const parsed = raw
+      ? parseReaisToCents(raw)
+      : { ok: true as const, data: 0 };
+    if (!parsed.ok) {
+      if (cashStatus) {
+        cashStatus.textContent = parsed.error.message;
+      }
+      return;
+    }
+    void api
+      .openCashSession({ openingFloatCents: parsed.data })
+      .then(() => api.getSession().then(renderCash))
+      .catch((error: unknown) => {
+        if (cashStatus) {
+          cashStatus.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível abrir o caixa.';
+        }
+      });
+  });
+
+document
+  .querySelector('#cash-add-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const amountInput = document.querySelector('#cash-add-amount');
+    const noteInput = document.querySelector('#cash-add-note');
+    if (
+      !(amountInput instanceof HTMLInputElement) ||
+      !(noteInput instanceof HTMLInputElement)
+    ) {
+      return;
+    }
+    const parsed = parseReaisToCents(amountInput.value);
+    if (!parsed.ok) {
+      if (cashStatus) {
+        cashStatus.textContent = parsed.error.message;
+      }
+      return;
+    }
+    void api
+      .addCashForChange({ amountCents: parsed.data, note: noteInput.value })
+      .then(() => {
+        amountInput.value = '';
+        noteInput.value = '';
+        return api.getSession().then(renderCash);
+      })
+      .catch((error: unknown) => {
+        if (cashStatus) {
+          cashStatus.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível adicionar troco.';
+        }
+      });
+  });
+
+document
+  .querySelector('#cash-remove-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const amountInput = document.querySelector('#cash-remove-amount');
+    const noteInput = document.querySelector('#cash-remove-note');
+    if (
+      !(amountInput instanceof HTMLInputElement) ||
+      !(noteInput instanceof HTMLInputElement)
+    ) {
+      return;
+    }
+    const parsed = parseReaisToCents(amountInput.value);
+    if (!parsed.ok) {
+      if (cashStatus) {
+        cashStatus.textContent = parsed.error.message;
+      }
+      return;
+    }
+    void api
+      .removeCash({ amountCents: parsed.data, note: noteInput.value })
+      .then(() => {
+        amountInput.value = '';
+        noteInput.value = '';
+        return api.getSession().then(renderCash);
+      })
+      .catch((error: unknown) => {
+        if (cashStatus) {
+          cashStatus.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível retirar dinheiro.';
+        }
+      });
+  });
+
+document
+  .querySelector('#cash-close-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const countedInput = document.querySelector('#cash-counted');
+    const noteInput = document.querySelector('#cash-close-note');
+    if (
+      !(countedInput instanceof HTMLInputElement) ||
+      !(noteInput instanceof HTMLInputElement)
+    ) {
+      return;
+    }
+    const parsed = parseReaisToCents(countedInput.value);
+    if (!parsed.ok) {
+      if (cashStatus) {
+        cashStatus.textContent = parsed.error.message;
+      }
+      return;
+    }
+    void api
+      .closeCashSession({
+        countedCents: parsed.data,
+        note: noteInput.value,
+      })
+      .then(() => {
+        countedInput.value = '';
+        noteInput.value = '';
+        return api.getSession().then(renderCash);
+      })
+      .catch((error: unknown) => {
+        if (cashStatus) {
+          cashStatus.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível fechar o caixa.';
         }
       });
   });

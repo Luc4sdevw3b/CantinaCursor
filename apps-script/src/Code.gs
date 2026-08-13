@@ -26,7 +26,7 @@ const FOUNDATION_MIGRATION_CHECKSUM = 'meta|schema_migrations';
 const OPERATION_REQUESTS_MIGRATION_ID = '002_operation_requests';
 const OPERATION_REQUESTS_MIGRATION_CHECKSUM =
   'request_id|operation_type|result_entity_id|status|created_at';
-const CURRENT_SCHEMA_VERSION = 12;
+const CURRENT_SCHEMA_VERSION = 13;
 const BACKUPS_SHEET = '_backups';
 const BACKUPS_HEADERS = [
   'id',
@@ -343,6 +343,44 @@ const PAYMENT_CREDIT_ALLOCATIONS_HEADERS = [
 const CREDITS_MIGRATION_ID = '012_credits';
 const CREDITS_MIGRATION_CHECKSUM =
   'id|owner_type|owner_student_id|owner_guardian_id|active|created_at|credit_account_id|student_id|can_use|active|credit_account_id|kind|amount_delta_cents|source_type|source_id|student_id|created_by|created_at|note|payment_id|credit_account_id|amount_cents';
+const CASH_SESSIONS_SHEET = '_cash_sessions';
+const CASH_SESSIONS_HEADERS = [
+  'id',
+  'business_date',
+  'status',
+  'opening_float_cents',
+  'opened_by',
+  'opened_at',
+  'closed_by',
+  'closed_at',
+  'expected_close_cents',
+  'counted_close_cents',
+  'difference_cents',
+  'close_note',
+];
+const CASH_MOVEMENTS_SHEET = '_cash_movements';
+const CASH_MOVEMENTS_HEADERS = [
+  'id',
+  'cash_session_id',
+  'kind',
+  'amount_delta_cents',
+  'source_type',
+  'source_id',
+  'created_by',
+  'created_at',
+  'note',
+];
+const CASH_MIGRATION_ID = '013_cash';
+const CASH_MIGRATION_CHECKSUM =
+  'id|business_date|status|opening_float_cents|opened_by|opened_at|closed_by|closed_at|expected_close_cents|counted_close_cents|difference_cents|close_note|id|cash_session_id|kind|amount_delta_cents|source_type|source_id|created_by|created_at|note';
+const CASH_STATUS_OPEN = 'open';
+const CASH_STATUS_CLOSED = 'closed';
+const CASH_KIND_RECEIVED = 'cash_received';
+const CASH_KIND_CHANGE = 'change_given';
+const CASH_KIND_ADDED = 'cash_added_for_change';
+const CASH_KIND_REMOVED = 'cash_removed';
+const CASH_KIND_PAYMENT = 'debt_payment_received';
+const CASH_KIND_CREDIT_DEPOSIT = 'credit_deposit_received';
 const CREDIT_OWNER_STUDENT = 'student';
 const CREDIT_OWNER_GUARDIAN = 'guardian';
 const CREDIT_KIND_DEPOSIT = 'deposit';
@@ -426,6 +464,11 @@ const ACTION_ROLES = {
   'credits.read': ['owner', 'staff'],
   'credits.deposit': ['owner', 'staff'],
   'credits.refund': ['owner'],
+  'cash.read': ['owner', 'staff'],
+  'cash.open': ['owner'],
+  'cash.add': ['owner', 'staff'],
+  'cash.remove': ['owner'],
+  'cash.close': ['owner'],
 };
 const BACKUP_FILE_PREFIX = 'cantina-backup';
 const BACKUP_FOLDER_NAME = 'Cantina V2 AppScript E2E backups';
@@ -897,6 +940,7 @@ function assertKnownMigrations(applied) {
     RECEIVABLES_MIGRATION_ID,
     PAYMENTS_MIGRATION_ID,
     CREDITS_MIGRATION_ID,
+    CASH_MIGRATION_ID,
   ];
   applied.forEach(function (id) {
     if (catalog.indexOf(id) === -1) {
@@ -930,7 +974,8 @@ function setupSchema() {
     applied.indexOf(SALES_MIGRATION_ID) === -1 ||
     applied.indexOf(RECEIVABLES_MIGRATION_ID) === -1 ||
     applied.indexOf(PAYMENTS_MIGRATION_ID) === -1 ||
-    applied.indexOf(CREDITS_MIGRATION_ID) === -1;
+    applied.indexOf(CREDITS_MIGRATION_ID) === -1 ||
+    applied.indexOf(CASH_MIGRATION_ID) === -1;
   let pendingCopy = null;
   if (pending) {
     try {
@@ -1161,13 +1206,25 @@ function setupSchema() {
       PAYMENT_CREDIT_ALLOCATIONS_SHEET,
       PAYMENT_CREDIT_ALLOCATIONS_HEADERS,
     );
-    meta.appendRow(['schema_version', String(CURRENT_SCHEMA_VERSION)]);
+    meta.appendRow(['schema_version', '12']);
     migrations.appendRow([
       CREDITS_MIGRATION_ID,
       createdAt,
       CANTINA_APP_VERSION,
       CREDITS_MIGRATION_CHECKSUM,
       'Cria contas de crédito, movimentos e alocações em crédito',
+    ]);
+  }
+  if (applied.indexOf(CASH_MIGRATION_ID) === -1) {
+    getOrCreateSheet(spreadsheet, CASH_SESSIONS_SHEET, CASH_SESSIONS_HEADERS);
+    getOrCreateSheet(spreadsheet, CASH_MOVEMENTS_SHEET, CASH_MOVEMENTS_HEADERS);
+    meta.appendRow(['schema_version', String(CURRENT_SCHEMA_VERSION)]);
+    migrations.appendRow([
+      CASH_MIGRATION_ID,
+      createdAt,
+      CANTINA_APP_VERSION,
+      CASH_MIGRATION_CHECKSUM,
+      'Cria sessões e movimentos de caixa físico',
     ]);
   }
   if (pendingCopy) {
@@ -3645,6 +3702,421 @@ function listInventoryMovements(sessionToken, businessDate) {
     });
 }
 
+function listCashSessionRecords() {
+  return listSheetRecords(
+    openNamedSheet(CASH_SESSIONS_SHEET, CASH_SESSIONS_HEADERS),
+    CASH_SESSIONS_HEADERS,
+  );
+}
+
+function listCashMovementRecords() {
+  return listSheetRecords(
+    openNamedSheet(CASH_MOVEMENTS_SHEET, CASH_MOVEMENTS_HEADERS),
+    CASH_MOVEMENTS_HEADERS,
+  );
+}
+
+function parseOpeningFloatGs(value) {
+  if (value === null || value === undefined || value === '') {
+    return 0;
+  }
+  return parseCentsGs(value);
+}
+
+function parsePositiveCashCentsGs(value) {
+  const parsed = parseCentsGs(value);
+  if (parsed < 1) {
+    throw new Error(
+      'INVALID_CENTS: Informe um valor em dinheiro maior que zero.',
+    );
+  }
+  return parsed;
+}
+
+function parseCashNoteGs(value, message) {
+  const note = String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ');
+  if (note.length < 2) {
+    throw new Error('CASH_NOTE_REQUIRED: ' + message);
+  }
+  return note;
+}
+
+function cashMovementSummaryGs(kind, amountDeltaCents) {
+  if (kind === CASH_KIND_RECEIVED) {
+    return 'entrada ' + formatBrlGs(amountDeltaCents);
+  }
+  if (kind === CASH_KIND_CHANGE) {
+    return 'troco ' + formatBrlGs(-amountDeltaCents);
+  }
+  if (kind === CASH_KIND_ADDED) {
+    return 'troco extra ' + formatBrlGs(amountDeltaCents);
+  }
+  if (kind === CASH_KIND_REMOVED) {
+    return 'retirada ' + formatBrlGs(-amountDeltaCents);
+  }
+  if (kind === CASH_KIND_PAYMENT) {
+    return 'pagamento ' + formatBrlGs(amountDeltaCents);
+  }
+  if (kind === CASH_KIND_CREDIT_DEPOSIT) {
+    return 'crédito ' + formatBrlGs(amountDeltaCents);
+  }
+  return formatBrlGs(Math.abs(amountDeltaCents));
+}
+
+function expectedCashForSessionGs(session) {
+  if (
+    session.status === CASH_STATUS_CLOSED &&
+    session.expected_close_cents !== ''
+  ) {
+    return Number(session.expected_close_cents);
+  }
+  let expected = Number(session.opening_float_cents);
+  listCashMovementRecords()
+    .filter(function (item) {
+      return item.cash_session_id === session.id;
+    })
+    .forEach(function (item) {
+      expected += Number(item.amount_delta_cents);
+    });
+  return expected;
+}
+
+function findOpenCashSessionGs() {
+  const open = latestRecordsById(listCashSessionRecords()).filter(
+    function (item) {
+      return item.status === CASH_STATUS_OPEN;
+    },
+  );
+  return open.length ? open[open.length - 1] : null;
+}
+
+function findCashSessionByDateGs(businessDate) {
+  const found = latestRecordsById(listCashSessionRecords()).filter(
+    function (item) {
+      return item.business_date === businessDate;
+    },
+  );
+  return found.length ? found[found.length - 1] : null;
+}
+
+function assertCanMoveCashGs(amountDeltaCents) {
+  const today = todayCivil();
+  const open = findOpenCashSessionGs();
+  if (!open) {
+    throw new Error(
+      'CASH_SESSION_REQUIRED: Abra o caixa de hoje antes de movimentar dinheiro. PIX continua disponível sem caixa.',
+    );
+  }
+  if (open.business_date !== today) {
+    throw new Error(
+      'STALE_CASH_SESSION: O caixa de ' +
+        open.business_date +
+        ' precisa ser fechado antes de novas movimentações em dinheiro.',
+    );
+  }
+  if (expectedCashForSessionGs(open) + amountDeltaCents < 0) {
+    throw new Error(
+      'CASH_INSUFFICIENT_FLOAT: Não há dinheiro físico suficiente no caixa para esta saída.',
+    );
+  }
+  return open;
+}
+
+function appendCashMovementGs(
+  userId,
+  kind,
+  amountDeltaCents,
+  sourceType,
+  sourceId,
+  note,
+) {
+  const open = assertCanMoveCashGs(amountDeltaCents);
+  const movementId = Utilities.getUuid();
+  openNamedSheet(CASH_MOVEMENTS_SHEET, CASH_MOVEMENTS_HEADERS).appendRow([
+    movementId,
+    open.id,
+    kind,
+    String(amountDeltaCents),
+    sourceType,
+    sourceId || movementId,
+    userId,
+    new Date().toISOString(),
+    note || '',
+  ]);
+  return movementId;
+}
+
+function recordSaleCashGs(userId, saleId, tenderedCents, changeCents) {
+  if (tenderedCents <= 0 && changeCents <= 0) {
+    return;
+  }
+  assertCanMoveCashGs(tenderedCents - changeCents);
+  appendCashMovementGs(
+    userId,
+    CASH_KIND_RECEIVED,
+    tenderedCents,
+    'sale',
+    saleId,
+    '',
+  );
+  if (changeCents > 0) {
+    appendCashMovementGs(
+      userId,
+      CASH_KIND_CHANGE,
+      -changeCents,
+      'sale',
+      saleId,
+      '',
+    );
+  }
+}
+
+function toCashMovementGs(item) {
+  const delta = Number(item.amount_delta_cents);
+  return {
+    id: item.id,
+    kind: item.kind,
+    amountDeltaCents: delta,
+    amountLabel: formatBrlGs(Math.abs(delta)),
+    summaryLabel: cashMovementSummaryGs(item.kind, delta),
+    note: item.note,
+    createdAt: item.created_at,
+  };
+}
+
+function toCashSessionGs(session, today) {
+  const expected = expectedCashForSessionGs(session);
+  const counted =
+    session.counted_close_cents === ''
+      ? null
+      : Number(session.counted_close_cents);
+  const difference =
+    session.difference_cents === '' ? null : Number(session.difference_cents);
+  const opening = Number(session.opening_float_cents);
+  const dateLabel = formatCivilDisplayGs(session.business_date);
+  let summaryLabel = '';
+  if (session.status === CASH_STATUS_OPEN && session.business_date < today) {
+    summaryLabel = 'Caixa antigo • ' + dateLabel + ' • precisa ser fechado';
+  } else if (session.status === CASH_STATUS_OPEN) {
+    summaryLabel =
+      'Aberto • ' +
+      dateLabel +
+      ' • troco inicial ' +
+      formatBrlGs(opening) +
+      ' • esperado ' +
+      formatBrlGs(expected);
+  } else {
+    const countedValue = counted === null ? 0 : counted;
+    const differenceValue = difference === null ? 0 : difference;
+    const differenceLabel =
+      differenceValue === 0
+        ? formatBrlGs(0)
+        : (differenceValue > 0 ? '+' : '-') +
+          formatBrlGs(Math.abs(differenceValue));
+    summaryLabel =
+      'Fechado • ' +
+      dateLabel +
+      ' • esperado ' +
+      formatBrlGs(expected) +
+      ' • contado ' +
+      formatBrlGs(countedValue) +
+      ' • diferença ' +
+      differenceLabel;
+  }
+  const movements = listCashMovementRecords()
+    .filter(function (item) {
+      return item.cash_session_id === session.id;
+    })
+    .slice()
+    .reverse()
+    .map(toCashMovementGs);
+  return {
+    id: session.id,
+    businessDate: session.business_date,
+    status: session.status,
+    stale: session.status === CASH_STATUS_OPEN && session.business_date < today,
+    openingFloatCents: opening,
+    openingFloatLabel: formatBrlGs(opening),
+    expectedCents: expected,
+    expectedLabel: formatBrlGs(expected),
+    countedCents: counted,
+    countedLabel: counted === null ? null : formatBrlGs(counted),
+    differenceCents: difference,
+    differenceLabel:
+      difference === null
+        ? null
+        : difference === 0
+          ? formatBrlGs(0)
+          : (difference > 0 ? '+' : '-') + formatBrlGs(Math.abs(difference)),
+    closeNote: session.close_note,
+    summaryLabel: summaryLabel,
+    movements: movements,
+  };
+}
+
+function getCashSetupUnlocked() {
+  const today = todayCivil();
+  const sessions = latestRecordsById(listCashSessionRecords())
+    .slice()
+    .sort(function (left, right) {
+      return right.business_date.localeCompare(left.business_date);
+    });
+  const open = findOpenCashSessionGs();
+  return {
+    businessDate: today,
+    openSession: open ? toCashSessionGs(open, today) : null,
+    recentSessions: sessions.map(function (item) {
+      return toCashSessionGs(item, today);
+    }),
+  };
+}
+
+function openCashSessionUnlocked(userId, payload) {
+  const today = todayCivil();
+  const open = findOpenCashSessionGs();
+  if (open) {
+    if (open.business_date === today) {
+      throw new Error('CASH_ALREADY_OPEN: O caixa de hoje já está aberto.');
+    }
+    throw new Error(
+      'STALE_CASH_SESSION: O caixa de ' +
+        open.business_date +
+        ' precisa ser fechado antes de abrir outro.',
+    );
+  }
+  const todaySession = findCashSessionByDateGs(today);
+  if (todaySession && todaySession.status === CASH_STATUS_CLOSED) {
+    throw new Error(
+      'CASH_ALREADY_CLOSED: O caixa de hoje já foi fechado e não pode ser reaberto.',
+    );
+  }
+  const opening = parseOpeningFloatGs(payload && payload.openingFloatCents);
+  const now = new Date().toISOString();
+  openNamedSheet(CASH_SESSIONS_SHEET, CASH_SESSIONS_HEADERS).appendRow([
+    Utilities.getUuid(),
+    today,
+    CASH_STATUS_OPEN,
+    String(opening),
+    userId,
+    now,
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+  ]);
+  return getCashSetupUnlocked();
+}
+
+function addCashForChangeUnlocked(userId, payload) {
+  const amount = parsePositiveCashCentsGs(payload && payload.amountCents);
+  const note = parseCashNoteGs(
+    payload && payload.note,
+    'Informe a origem do dinheiro adicionado.',
+  );
+  appendCashMovementGs(
+    userId,
+    CASH_KIND_ADDED,
+    amount,
+    'cash_manual_addition',
+    '',
+    note,
+  );
+  return getCashSetupUnlocked();
+}
+
+function removeCashUnlocked(userId, payload) {
+  const amount = parsePositiveCashCentsGs(payload && payload.amountCents);
+  const note = parseCashNoteGs(
+    payload && payload.note,
+    'Informe o motivo da retirada.',
+  );
+  appendCashMovementGs(
+    userId,
+    CASH_KIND_REMOVED,
+    -amount,
+    'cash_manual_removal',
+    '',
+    note,
+  );
+  return getCashSetupUnlocked();
+}
+
+function closeCashSessionUnlocked(userId, payload) {
+  const open = findOpenCashSessionGs();
+  if (!open) {
+    throw new Error('CASH_NOT_OPEN: Não existe caixa aberto para fechar.');
+  }
+  const counted = parseCentsGs(payload && payload.countedCents);
+  const expected = expectedCashForSessionGs(open);
+  const difference = counted - expected;
+  const note = String((payload && payload.note) || '')
+    .trim()
+    .replace(/\s+/g, ' ');
+  if (difference !== 0 && note.length < 2) {
+    throw new Error(
+      'CASH_CLOSE_NOTE_REQUIRED: Informe o motivo da diferença no fechamento.',
+    );
+  }
+  const now = new Date().toISOString();
+  openNamedSheet(CASH_SESSIONS_SHEET, CASH_SESSIONS_HEADERS).appendRow([
+    open.id,
+    open.business_date,
+    CASH_STATUS_CLOSED,
+    open.opening_float_cents,
+    open.opened_by,
+    open.opened_at,
+    userId,
+    now,
+    String(expected),
+    String(counted),
+    String(difference),
+    note,
+  ]);
+  return getCashSetupUnlocked();
+}
+
+function getCashSetup(sessionToken) {
+  requireAction(sessionToken, 'cash.read');
+  setupSchema();
+  return getCashSetupUnlocked();
+}
+
+function openCashSession(sessionToken, payload) {
+  const session = requireAction(sessionToken, 'cash.open');
+  return withScriptLock(function () {
+    setupSchema();
+    return openCashSessionUnlocked(session.user_id, payload || {});
+  });
+}
+
+function addCashForChange(sessionToken, payload) {
+  const session = requireAction(sessionToken, 'cash.add');
+  return withScriptLock(function () {
+    setupSchema();
+    return addCashForChangeUnlocked(session.user_id, payload || {});
+  });
+}
+
+function removeCash(sessionToken, payload) {
+  const session = requireAction(sessionToken, 'cash.remove');
+  return withScriptLock(function () {
+    setupSchema();
+    return removeCashUnlocked(session.user_id, payload || {});
+  });
+}
+
+function closeCashSession(sessionToken, payload) {
+  const session = requireAction(sessionToken, 'cash.close');
+  return withScriptLock(function () {
+    setupSchema();
+    return closeCashSessionUnlocked(session.user_id, payload || {});
+  });
+}
+
 function percentAmountGs(cents, percent) {
   if (!Number.isInteger(cents) || cents < 0 || !Number.isInteger(percent)) {
     return 0;
@@ -4385,6 +4857,14 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
     creditBalance,
     guardianCreditBalance,
   );
+  if (
+    plannedSettlements.cashTenderedCents > 0 ||
+    plannedSettlements.changeCents > 0
+  ) {
+    assertCanMoveCashGs(
+      plannedSettlements.cashTenderedCents - plannedSettlements.changeCents,
+    );
+  }
   let installments = [];
   if (plannedSettlements.paymentKind === PAYMENT_FIADO) {
     if (!chargedId) {
@@ -4571,6 +5051,12 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
       'venda',
     ]);
   });
+  recordSaleCashGs(
+    userId,
+    saleId,
+    plannedSettlements.cashTenderedCents,
+    plannedSettlements.changeCents,
+  );
   return toSaleViewGs({
     id: saleId,
     consumer_student_id: consumerId,
@@ -5183,11 +5669,14 @@ function createPaymentUnlocked(userId, payload) {
     payload && payload.selectedReceivableIds,
     payload && payload.allocations,
   );
-  const now = new Date().toISOString();
-  const paymentId = Utilities.getUuid();
   const amountReceived = rows.reduce(function (total, row) {
     return total + Number(row.amount_cents);
   }, 0);
+  if (method === PAYMENT_METHOD_CASH) {
+    assertCanMoveCashGs(amountReceived);
+  }
+  const now = new Date().toISOString();
+  const paymentId = Utilities.getUuid();
   openNamedSheet(PAYMENTS_SHEET, PAYMENTS_HEADERS).appendRow([
     paymentId,
     '',
@@ -5211,6 +5700,16 @@ function createPaymentUnlocked(userId, payload) {
       row.amount_cents,
     ]);
   });
+  if (method === PAYMENT_METHOD_CASH) {
+    appendCashMovementGs(
+      userId,
+      CASH_KIND_PAYMENT,
+      amountReceived,
+      'payment',
+      paymentId,
+      '',
+    );
+  }
   return toPaymentViewGs({
     id: paymentId,
     payer_guardian_id: '',
@@ -5288,6 +5787,9 @@ function createFamilyPaymentUnlocked(userId, payload) {
     planned.allocations.reduce(function (total, row) {
       return total + Number(row.amount_cents);
     }, 0) + planned.creditCents;
+  if (method === PAYMENT_METHOD_CASH) {
+    assertCanMoveCashGs(receivedCents);
+  }
   const now = new Date().toISOString();
   const paymentId = Utilities.getUuid();
   openNamedSheet(PAYMENTS_SHEET, PAYMENTS_HEADERS).appendRow([
@@ -5330,6 +5832,16 @@ function createFamilyPaymentUnlocked(userId, payload) {
       PAYMENT_CREDIT_ALLOCATIONS_SHEET,
       PAYMENT_CREDIT_ALLOCATIONS_HEADERS,
     ).appendRow([paymentId, account.id, String(planned.creditCents)]);
+  }
+  if (method === PAYMENT_METHOD_CASH) {
+    appendCashMovementGs(
+      userId,
+      CASH_KIND_PAYMENT,
+      receivedCents,
+      'payment',
+      paymentId,
+      '',
+    );
   }
   return toPaymentViewGs({
     id: paymentId,
@@ -5830,6 +6342,9 @@ function depositPersonalCreditUnlocked(userId, payload) {
     payload && payload.amountCents,
     allocatableReceivablesGs(student.id),
   );
+  if (method === PAYMENT_METHOD_CASH) {
+    assertCanMoveCashGs(Number(payload.amountCents));
+  }
   const now = new Date().toISOString();
   const paymentId = Utilities.getUuid();
   openNamedSheet(PAYMENTS_SHEET, PAYMENTS_HEADERS).appendRow([
@@ -5872,6 +6387,16 @@ function depositPersonalCreditUnlocked(userId, payload) {
       PAYMENT_CREDIT_ALLOCATIONS_SHEET,
       PAYMENT_CREDIT_ALLOCATIONS_HEADERS,
     ).appendRow([paymentId, account.id, String(planned.creditCents)]);
+  }
+  if (method === PAYMENT_METHOD_CASH) {
+    appendCashMovementGs(
+      userId,
+      CASH_KIND_CREDIT_DEPOSIT,
+      Number(payload.amountCents),
+      'payment',
+      paymentId,
+      '',
+    );
   }
   return toCreditViewGs(account);
 }
@@ -5999,6 +6524,9 @@ function depositGuardianCreditUnlocked(userId, payload) {
     payload && payload.amountCents,
     receivables,
   );
+  if (method === PAYMENT_METHOD_CASH) {
+    assertCanMoveCashGs(Number(payload.amountCents));
+  }
   const now = new Date().toISOString();
   const paymentId = Utilities.getUuid();
   openNamedSheet(PAYMENTS_SHEET, PAYMENTS_HEADERS).appendRow([
@@ -6041,6 +6569,16 @@ function depositGuardianCreditUnlocked(userId, payload) {
       PAYMENT_CREDIT_ALLOCATIONS_SHEET,
       PAYMENT_CREDIT_ALLOCATIONS_HEADERS,
     ).appendRow([paymentId, account.id, String(planned.creditCents)]);
+  }
+  if (method === PAYMENT_METHOD_CASH) {
+    appendCashMovementGs(
+      userId,
+      CASH_KIND_CREDIT_DEPOSIT,
+      Number(payload.amountCents),
+      'payment',
+      paymentId,
+      '',
+    );
   }
   return toCreditViewGs(account);
 }

@@ -32,6 +32,7 @@ import type {
   RefundGuardianCreditInput,
   AddReceivableInterestInput,
   RenegotiateReceivableInput,
+  CashSetup,
   Product,
   ProductCategory,
   ProductFields,
@@ -118,6 +119,11 @@ export interface GoogleScriptRunner {
   refundPersonalCredit(token: string, payload: unknown): void;
   depositGuardianCredit(token: string, payload: unknown): void;
   refundGuardianCredit(token: string, payload: unknown): void;
+  getCashSetup(token: string): void;
+  openCashSession(token: string, payload: unknown): void;
+  addCashForChange(token: string, payload: unknown): void;
+  removeCash(token: string, payload: unknown): void;
+  closeCashSession(token: string, payload: unknown): void;
 }
 
 export type SessionTokenStorage = Pick<
@@ -638,6 +644,40 @@ export class GoogleScriptAppApi implements AppApi {
   ): Promise<CreditAccount> {
     return this.callWithToken((runner, token) =>
       runner.refundGuardianCredit(token, input),
+    );
+  }
+
+  getCashSetup(): Promise<CashSetup> {
+    return this.callWithToken((runner, token) => runner.getCashSetup(token));
+  }
+
+  openCashSession(input: { openingFloatCents?: number }): Promise<CashSetup> {
+    return this.callWithToken((runner, token) =>
+      runner.openCashSession(token, input),
+    );
+  }
+
+  addCashForChange(input: {
+    amountCents: number;
+    note: string;
+  }): Promise<CashSetup> {
+    return this.callWithToken((runner, token) =>
+      runner.addCashForChange(token, input),
+    );
+  }
+
+  removeCash(input: { amountCents: number; note: string }): Promise<CashSetup> {
+    return this.callWithToken((runner, token) =>
+      runner.removeCash(token, input),
+    );
+  }
+
+  closeCashSession(input: {
+    countedCents: number;
+    note?: string;
+  }): Promise<CashSetup> {
+    return this.callWithToken((runner, token) =>
+      runner.closeCashSession(token, input),
     );
   }
 

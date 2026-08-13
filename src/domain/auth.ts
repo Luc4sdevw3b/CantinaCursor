@@ -29,6 +29,11 @@ export const AUTH_ACTIONS = [
   'credits.read',
   'credits.deposit',
   'credits.refund',
+  'cash.read',
+  'cash.open',
+  'cash.add',
+  'cash.remove',
+  'cash.close',
 ] as const;
 export type AuthAction = (typeof AUTH_ACTIONS)[number];
 
@@ -60,6 +65,11 @@ export const ACTION_ROLES: Record<AuthAction, readonly UserRole[]> = {
   'credits.read': ['owner', 'staff'],
   'credits.deposit': ['owner', 'staff'],
   'credits.refund': ['owner'],
+  'cash.read': ['owner', 'staff'],
+  'cash.open': ['owner'],
+  'cash.add': ['owner', 'staff'],
+  'cash.remove': ['owner'],
+  'cash.close': ['owner'],
 };
 
 export const E2E_OWNER_SUBJECT = 'e2e-owner';

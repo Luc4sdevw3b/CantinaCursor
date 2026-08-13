@@ -113,7 +113,7 @@ Turmas pertencem a um ano letivo. Histórico de matrícula fica em `_student_enr
 
 `_sale_settlements`: id, sale_id, kind, amount_cents, related_entity_id, created_at.
 
-Invariante: soma settlements = net_total. Kinds desta fase: `pix`, `cash` (valor recebido), `change` (troco negativo) e `fiado` (valor líquido da conta). `consumer_student_id` vazio é venda anônima. `charged_student_id` é o consumidor, ou a conta do irmão quando há autorização direcional `can_charge_account` (Fase 20). Fiado exige aluno na conta cobrada. Caixa físico ainda não consome esses settlements.
+Invariante: soma settlements = net_total. Kinds desta fase: `pix`, `cash` (valor recebido), `change` (troco negativo) e `fiado` (valor líquido da conta). `consumer_student_id` vazio é venda anônima. `charged_student_id` é o consumidor, ou a conta do irmão quando há autorização direcional `can_charge_account` (Fase 20). Fiado exige aluno na conta cobrada. PIX não passa pelo caixa. Dinheiro, troco, pagamento em dinheiro e depósito em dinheiro exigem caixa aberto no dia (Fase 21).
 
 ## Recebíveis
 
@@ -153,9 +153,9 @@ Saldo = soma dos movimentos. Conta pessoal: `owner_type=student`. Conta de respo
 
 ## Caixa
 
-`_cash_sessions`: id, business_date, status, opening_float_cents, opened_by/at, closed_by/at, expected_close_cents, counted_close_cents, difference_cents, close_note.
+`_cash_sessions`: id, business_date, status (`open`|`closed`), opening_float_cents, opened_by/at, closed_by/at, expected_close_cents, counted_close_cents, difference_cents, close_note. Troco inicial não é receita. Um caixa por dia civil; fechado não reabre. Caixa antigo aberto bloqueia dinheiro novo, não PIX. Schema version 13 (`013_cash`).
 
-`_cash_movements`: cash_session_id, kind, amount_delta_cents, source_type, source_id, created_by, created_at, note.
+`_cash_movements`: id, cash_session_id, kind, amount_delta_cents, source_type, source_id, created_by, created_at, note. Esperado = troco inicial + soma dos deltas. Kinds: `cash_received`, `change_given`, `cash_added_for_change`, `cash_removed`, `debt_payment_received`, `credit_deposit_received`. Saída não deixa o físico negativo.
 
 ## Notas
 

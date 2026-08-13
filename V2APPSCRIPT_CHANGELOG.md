@@ -9,6 +9,37 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-13 17:20 — Implementada a Fase 21: caixa físico
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 21
+
+### Pedido / objetivo
+
+- Iniciar a Fase 21: abertura opcional, troco inicial, dinheiro recebido, troco saída, adicionar troco, retirar dinheiro, fechamento/diferença e caixa antigo. E2E: R$ 8,00 com R$ 10,00 = +10/−2.
+
+### Tentativa / implementação
+
+- Migration `013_cash`, schema 13: `_cash_sessions` e `_cash_movements`.
+- PIX continua sem caixa. Dinheiro, troco, pagamento em dinheiro e depósito em dinheiro exigem caixa aberto no dia.
+- Troco inicial não é receita. Adicionar troco (dona e funcionário) e retirar (só dona) são movimentos, não receita/despesa. Fechamento grava esperado, contado e diferença; diferença exige nota. Caixa antigo aberto bloqueia dinheiro novo. Um caixa por dia; fechado não reabre.
+- Showcase: Coxinha + Brigadeiro = `R$ 8,00`, recebido `R$ 10,00`; movimentos `entrada R$ 10,00` e `troco R$ 2,00`. Botões **Abrir caixa**, **Adicionar troco**, **Retirar dinheiro** e **Fechar caixa**. Confirmar venda não muda de rótulo.
+
+### Resultado
+
+- Fase 21 concluída sobre o ambiente E2E isolado e o preview local.
+- Estornos são a Fase 22. Reservas reais e WhatsApp permanecem nas fases seguintes.
+
+### Diferenças do pedido
+
+- Devolução de crédito ainda não sai do caixa físico; isso fica junto dos estornos.
+
+### Impacto técnico
+
+- `getCashSetup`, `openCashSession`, `addCashForChange`, `removeCash` e `closeCashSession` entram no `AppApi`. Abrir, retirar e fechar são só da dona.
+
 ## 2026-08-13 16:55 — Implementada a Fase 20: venda na conta do irmão
 
 **Origem:** Pedido do usuário

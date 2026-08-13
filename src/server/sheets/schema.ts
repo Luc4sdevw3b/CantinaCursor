@@ -60,8 +60,9 @@ export const SALES_MIGRATION_ID = '009_sales';
 export const RECEIVABLES_MIGRATION_ID = '010_receivables';
 export const PAYMENTS_MIGRATION_ID = '011_payments';
 export const CREDITS_MIGRATION_ID = '012_credits';
+export const CASH_MIGRATION_ID = '013_cash';
 export const FOUNDATION_SCHEMA_VERSION = 1;
-export const CURRENT_SCHEMA_VERSION = 12;
+export const CURRENT_SCHEMA_VERSION = 13;
 
 export const USERS_SHEET: SheetSchema = {
   name: '_users',
@@ -367,4 +368,37 @@ export const CREDIT_MOVEMENTS_SHEET: SheetSchema = {
 export const PAYMENT_CREDIT_ALLOCATIONS_SHEET: SheetSchema = {
   name: '_payment_credit_allocations',
   headers: ['payment_id', 'credit_account_id', 'amount_cents'],
+};
+
+export const CASH_SESSIONS_SHEET: SheetSchema = {
+  name: '_cash_sessions',
+  headers: [
+    'id',
+    'business_date',
+    'status',
+    'opening_float_cents',
+    'opened_by',
+    'opened_at',
+    'closed_by',
+    'closed_at',
+    'expected_close_cents',
+    'counted_close_cents',
+    'difference_cents',
+    'close_note',
+  ],
+};
+
+export const CASH_MOVEMENTS_SHEET: SheetSchema = {
+  name: '_cash_movements',
+  headers: [
+    'id',
+    'cash_session_id',
+    'kind',
+    'amount_delta_cents',
+    'source_type',
+    'source_id',
+    'created_by',
+    'created_at',
+    'note',
+  ],
 };

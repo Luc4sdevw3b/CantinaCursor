@@ -26,6 +26,7 @@ import { resolveSaleCharge } from '../../domain/sibling-authorization';
 import {
   familyPaymentSummaryLabel,
   parsePaymentMethod,
+  PAYMENT_METHOD_CASH,
   PAYMENT_CHILD_NOT_LINKED_ERROR,
   PAYMENT_GUARDIAN_REQUIRED_ERROR,
   PAYMENT_MODE_OLDEST_FIRST,
@@ -74,6 +75,7 @@ import {
 import type { MemoryCatalog } from '../products/memory-catalog';
 import type { MemoryStock } from '../inventory/memory-stock';
 import type { MemoryRoster } from '../students/memory-roster';
+import type { MemoryCash } from '../cash/memory-cash';
 
 const LOCAL_ACTOR_ID = 'aaaaaaaa-bbbb-4ccc-8ddd-000000000099';
 
@@ -318,6 +320,7 @@ export class MemorySales {
     private readonly catalog: MemoryCatalog,
     private readonly stock: MemoryStock,
     private readonly roster: MemoryRoster,
+    private readonly cash: MemoryCash,
     private readonly nowIso: () => string = () => new Date().toISOString(),
     private readonly createId: () => string = () => crypto.randomUUID(),
   ) {}
@@ -422,6 +425,12 @@ export class MemorySales {
     if (!planned.ok) {
       return err(planned.error);
     }
+    if (method.data === PAYMENT_METHOD_CASH) {
+      const allowed = this.cash.assertCanMove(Number(input.amountCents));
+      if (!allowed.ok) {
+        return err(allowed.error);
+      }
+    }
     const now = this.nowIso();
     const payment: PaymentRecord = {
       id: this.createId(),
@@ -442,6 +451,15 @@ export class MemorySales {
         student_id: row.student_id,
         amount_cents: row.amount_cents,
       });
+    }
+    if (method.data === PAYMENT_METHOD_CASH) {
+      const recorded = this.cash.recordPaymentCash({
+        paymentId: payment.id,
+        amountCents: Number(input.amountCents),
+      });
+      if (!recorded.ok) {
+        return err(recorded.error);
+      }
     }
     return ok(this.toPayment(payment));
   }
@@ -501,6 +519,12 @@ export class MemorySales {
         (total, row) => total + Number(row.amount_cents),
         0,
       ) + planned.data.creditCents;
+    if (method.data === PAYMENT_METHOD_CASH) {
+      const allowed = this.cash.assertCanMove(receivedCents);
+      if (!allowed.ok) {
+        return err(allowed.error);
+      }
+    }
     const now = this.nowIso();
     const payment: PaymentRecord = {
       id: this.createId(),
@@ -540,6 +564,15 @@ export class MemorySales {
         credit_account_id: account.id,
         amount_cents: String(planned.data.creditCents),
       });
+    }
+    if (method.data === PAYMENT_METHOD_CASH) {
+      const recorded = this.cash.recordPaymentCash({
+        paymentId: payment.id,
+        amountCents: receivedCents,
+      });
+      if (!recorded.ok) {
+        return err(recorded.error);
+      }
     }
     return ok(this.toPayment(payment));
   }
@@ -589,6 +622,12 @@ export class MemorySales {
     if (!planned.ok) {
       return err(planned.error);
     }
+    if (method.data === PAYMENT_METHOD_CASH) {
+      const allowed = this.cash.assertCanMove(Number(input.amountCents));
+      if (!allowed.ok) {
+        return err(allowed.error);
+      }
+    }
     const now = this.nowIso();
     const payment: PaymentRecord = {
       id: this.createId(),
@@ -628,6 +667,15 @@ export class MemorySales {
         credit_account_id: account.id,
         amount_cents: String(planned.data.creditCents),
       });
+    }
+    if (method.data === PAYMENT_METHOD_CASH) {
+      const recorded = this.cash.recordCreditDepositCash({
+        paymentId: payment.id,
+        amountCents: Number(input.amountCents),
+      });
+      if (!recorded.ok) {
+        return err(recorded.error);
+      }
     }
     return ok(this.toCredit(account));
   }
@@ -711,6 +759,12 @@ export class MemorySales {
     if (!planned.ok) {
       return err(planned.error);
     }
+    if (method.data === PAYMENT_METHOD_CASH) {
+      const allowed = this.cash.assertCanMove(Number(input.amountCents));
+      if (!allowed.ok) {
+        return err(allowed.error);
+      }
+    }
     const now = this.nowIso();
     const payment: PaymentRecord = {
       id: this.createId(),
@@ -750,6 +804,15 @@ export class MemorySales {
         credit_account_id: account.id,
         amount_cents: String(planned.data.creditCents),
       });
+    }
+    if (method.data === PAYMENT_METHOD_CASH) {
+      const recorded = this.cash.recordCreditDepositCash({
+        paymentId: payment.id,
+        amountCents: Number(input.amountCents),
+      });
+      if (!recorded.ok) {
+        return err(recorded.error);
+      }
     }
     return ok(this.toCredit(account));
   }
@@ -970,6 +1033,14 @@ export class MemorySales {
     if (!settlements.ok) {
       return err(settlements.error);
     }
+    const cashTendered = settlements.data.cashTenderedCents;
+    const changeCents = settlements.data.changeCents;
+    if (cashTendered > 0 || changeCents > 0) {
+      const allowed = this.cash.assertCanMove(cashTendered - changeCents);
+      if (!allowed.ok) {
+        return err(allowed.error);
+      }
+    }
     let installments: Array<{ due_date: string; amount_cents: string }> = [];
     if (settlements.data.paymentKind === PAYMENT_FIADO) {
       if (!chargedId) {
@@ -1117,6 +1188,16 @@ export class MemorySales {
       });
       if (!moved.ok) {
         return err(moved.error);
+      }
+    }
+    if (cashTendered > 0 || changeCents > 0) {
+      const recorded = this.cash.recordSaleCash({
+        saleId: sale.id,
+        tenderedCents: cashTendered,
+        changeCents,
+      });
+      if (!recorded.ok) {
+        return err(recorded.error);
       }
     }
     return ok(this.toSale(sale));
