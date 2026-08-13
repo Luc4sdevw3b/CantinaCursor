@@ -26,7 +26,7 @@ const FOUNDATION_MIGRATION_CHECKSUM = 'meta|schema_migrations';
 const OPERATION_REQUESTS_MIGRATION_ID = '002_operation_requests';
 const OPERATION_REQUESTS_MIGRATION_CHECKSUM =
   'request_id|operation_type|result_entity_id|status|created_at';
-const CURRENT_SCHEMA_VERSION = 13;
+const CURRENT_SCHEMA_VERSION = 14;
 const BACKUPS_SHEET = '_backups';
 const BACKUPS_HEADERS = [
   'id',
@@ -373,6 +373,32 @@ const CASH_MOVEMENTS_HEADERS = [
 const CASH_MIGRATION_ID = '013_cash';
 const CASH_MIGRATION_CHECKSUM =
   'id|business_date|status|opening_float_cents|opened_by|opened_at|closed_by|closed_at|expected_close_cents|counted_close_cents|difference_cents|close_note|id|cash_session_id|kind|amount_delta_cents|source_type|source_id|created_by|created_at|note';
+const OPERATION_REVERSALS_SHEET = '_operation_reversals';
+const OPERATION_REVERSALS_HEADERS = [
+  'id',
+  'operation_type',
+  'operation_id',
+  'reason',
+  'original_methods',
+  'refund_method',
+  'different_method_confirmed',
+  'returned_to_stock',
+  'created_by',
+  'created_at',
+];
+const REVERSAL_EFFECTS_SHEET = '_reversal_effects';
+const REVERSAL_EFFECTS_HEADERS = [
+  'id',
+  'reversal_id',
+  'effect_type',
+  'entity_type',
+  'entity_id',
+  'amount_delta_cents',
+  'quantity_delta',
+];
+const REVERSALS_MIGRATION_ID = '014_reversals';
+const REVERSALS_MIGRATION_CHECKSUM =
+  'id|operation_type|operation_id|reason|original_methods|refund_method|different_method_confirmed|returned_to_stock|created_by|created_at|id|reversal_id|effect_type|entity_type|entity_id|amount_delta_cents|quantity_delta';
 const CASH_STATUS_OPEN = 'open';
 const CASH_STATUS_CLOSED = 'closed';
 const CASH_KIND_RECEIVED = 'cash_received';
@@ -381,6 +407,14 @@ const CASH_KIND_ADDED = 'cash_added_for_change';
 const CASH_KIND_REMOVED = 'cash_removed';
 const CASH_KIND_PAYMENT = 'debt_payment_received';
 const CASH_KIND_CREDIT_DEPOSIT = 'credit_deposit_received';
+const CASH_KIND_REVERSAL = 'reversal';
+const CASH_SOURCE_REVERSAL = 'operation_reversal';
+const CREDIT_KIND_REVERSAL = 'reversal';
+const CREDIT_SOURCE_OPERATION_REVERSAL = 'operation_reversal';
+const SALE_STATUS_REVERSED = 'reversed';
+const PAYMENT_STATUS_REVERSED = 'reversed';
+const RECEIVABLE_STATUS_REVERSED = 'reversed';
+const INVENTORY_SALE_RETURN_KIND = 'sale_return';
 const CREDIT_OWNER_STUDENT = 'student';
 const CREDIT_OWNER_GUARDIAN = 'guardian';
 const CREDIT_KIND_DEPOSIT = 'deposit';
@@ -469,6 +503,8 @@ const ACTION_ROLES = {
   'cash.add': ['owner', 'staff'],
   'cash.remove': ['owner'],
   'cash.close': ['owner'],
+  'reversals.read': ['owner', 'staff'],
+  'reversals.write': ['owner'],
 };
 const BACKUP_FILE_PREFIX = 'cantina-backup';
 const BACKUP_FOLDER_NAME = 'Cantina V2 AppScript E2E backups';
@@ -941,6 +977,7 @@ function assertKnownMigrations(applied) {
     PAYMENTS_MIGRATION_ID,
     CREDITS_MIGRATION_ID,
     CASH_MIGRATION_ID,
+    REVERSALS_MIGRATION_ID,
   ];
   applied.forEach(function (id) {
     if (catalog.indexOf(id) === -1) {
@@ -975,7 +1012,8 @@ function setupSchema() {
     applied.indexOf(RECEIVABLES_MIGRATION_ID) === -1 ||
     applied.indexOf(PAYMENTS_MIGRATION_ID) === -1 ||
     applied.indexOf(CREDITS_MIGRATION_ID) === -1 ||
-    applied.indexOf(CASH_MIGRATION_ID) === -1;
+    applied.indexOf(CASH_MIGRATION_ID) === -1 ||
+    applied.indexOf(REVERSALS_MIGRATION_ID) === -1;
   let pendingCopy = null;
   if (pending) {
     try {
@@ -1218,13 +1256,33 @@ function setupSchema() {
   if (applied.indexOf(CASH_MIGRATION_ID) === -1) {
     getOrCreateSheet(spreadsheet, CASH_SESSIONS_SHEET, CASH_SESSIONS_HEADERS);
     getOrCreateSheet(spreadsheet, CASH_MOVEMENTS_SHEET, CASH_MOVEMENTS_HEADERS);
-    meta.appendRow(['schema_version', String(CURRENT_SCHEMA_VERSION)]);
+    meta.appendRow(['schema_version', '13']);
     migrations.appendRow([
       CASH_MIGRATION_ID,
       createdAt,
       CANTINA_APP_VERSION,
       CASH_MIGRATION_CHECKSUM,
       'Cria sessões e movimentos de caixa físico',
+    ]);
+  }
+  if (applied.indexOf(REVERSALS_MIGRATION_ID) === -1) {
+    getOrCreateSheet(
+      spreadsheet,
+      OPERATION_REVERSALS_SHEET,
+      OPERATION_REVERSALS_HEADERS,
+    );
+    getOrCreateSheet(
+      spreadsheet,
+      REVERSAL_EFFECTS_SHEET,
+      REVERSAL_EFFECTS_HEADERS,
+    );
+    meta.appendRow(['schema_version', String(CURRENT_SCHEMA_VERSION)]);
+    migrations.appendRow([
+      REVERSALS_MIGRATION_ID,
+      createdAt,
+      CANTINA_APP_VERSION,
+      REVERSALS_MIGRATION_CHECKSUM,
+      'Cria estornos de operações e efeitos auditáveis',
     ]);
   }
   if (pendingCopy) {
@@ -3762,6 +3820,12 @@ function cashMovementSummaryGs(kind, amountDeltaCents) {
   if (kind === CASH_KIND_CREDIT_DEPOSIT) {
     return 'crédito ' + formatBrlGs(amountDeltaCents);
   }
+  if (kind === CASH_KIND_REVERSAL) {
+    if (amountDeltaCents < 0) {
+      return 'devolução ' + formatBrlGs(-amountDeltaCents);
+    }
+    return 'recuperação ' + formatBrlGs(amountDeltaCents);
+  }
   return formatBrlGs(Math.abs(amountDeltaCents));
 }
 
@@ -4334,7 +4398,15 @@ function listPaymentCreditAllocationRecords() {
   );
 }
 
-function remainingCentsGs(receivableId) {
+function remainingCentsGs(receivableId, ignorePaymentId) {
+  const receivable = latestRecordsById(listReceivableRecords()).filter(
+    function (item) {
+      return item.id === receivableId;
+    },
+  )[0];
+  if (!receivable || receivable.status === RECEIVABLE_STATUS_REVERSED) {
+    return 0;
+  }
   const charged = listReceivableChargeRecords()
     .filter(function (item) {
       return item.receivable_id === receivableId;
@@ -4342,9 +4414,21 @@ function remainingCentsGs(receivableId) {
     .reduce(function (total, item) {
       return total + Number(item.amount_cents);
     }, 0);
+  const reversedPaymentIds = {};
+  latestRecordsById(listPaymentRecords()).forEach(function (item) {
+    if (item.status === PAYMENT_STATUS_REVERSED) {
+      reversedPaymentIds[item.id] = true;
+    }
+  });
+  if (ignorePaymentId) {
+    reversedPaymentIds[ignorePaymentId] = true;
+  }
   const allocated = listPaymentAllocationRecords()
     .filter(function (item) {
-      return item.receivable_id === receivableId;
+      return (
+        item.receivable_id === receivableId &&
+        !reversedPaymentIds[item.payment_id]
+      );
     })
     .reduce(function (total, item) {
       return total + Number(item.amount_cents);
@@ -4642,7 +4726,10 @@ function toSaleViewGs(sale) {
     id: sale.id,
     consumerStudentId: sale.consumer_student_id || null,
     consumerLabel: consumerLabel,
-    status: SALE_STATUS_PAID,
+    status:
+      sale.status === SALE_STATUS_REVERSED
+        ? SALE_STATUS_REVERSED
+        : SALE_STATUS_PAID,
     paymentKind: paymentKind,
     grossTotalCents: Number(sale.gross_total_cents),
     discountTotalCents: Number(sale.discount_total_cents),
@@ -5086,7 +5173,7 @@ function createSale(sessionToken, payload) {
 
 function listSales(sessionToken) {
   requireAction(sessionToken, 'sales.read');
-  return listSaleRecords()
+  return latestRecordsById(listSaleRecords())
     .slice()
     .reverse()
     .map(function (sale) {
@@ -5135,7 +5222,7 @@ function listReceivables(sessionToken) {
   const overdue = [];
   const dueToday = [];
   const upcoming = [];
-  listReceivableRecords().forEach(function (receivable) {
+  latestRecordsById(listReceivableRecords()).forEach(function (receivable) {
     const remaining = remainingCentsGs(receivable.id);
     if (remaining <= 0) {
       return;
@@ -5866,7 +5953,7 @@ function createFamilyPayment(sessionToken, payload) {
 
 function listPayments(sessionToken) {
   requireAction(sessionToken, 'receivables.read');
-  return listPaymentRecords()
+  return latestRecordsById(listPaymentRecords())
     .slice()
     .reverse()
     .map(function (payment) {
@@ -6439,7 +6526,7 @@ function refundPersonalCreditUnlocked(userId, payload) {
     CREDIT_KIND_REFUND,
     String(-amount),
     CREDIT_SOURCE_REFUND,
-    '',
+    Utilities.getUuid(),
     student.id,
     userId,
     now,
@@ -6623,7 +6710,7 @@ function refundGuardianCreditUnlocked(userId, payload) {
     CREDIT_KIND_REFUND,
     String(-amount),
     CREDIT_SOURCE_REFUND,
-    '',
+    Utilities.getUuid(),
     '',
     userId,
     now,
@@ -6645,5 +6732,817 @@ function refundGuardianCredit(sessionToken, payload) {
   return withScriptLock(function () {
     setupSchema();
     return refundGuardianCreditUnlocked(session.user_id, payload || {});
+  });
+}
+
+function listOperationReversalRecords() {
+  return listSheetRecords(
+    openNamedSheet(OPERATION_REVERSALS_SHEET, OPERATION_REVERSALS_HEADERS),
+    OPERATION_REVERSALS_HEADERS,
+  );
+}
+
+function listReversalEffectRecords() {
+  return listSheetRecords(
+    openNamedSheet(REVERSAL_EFFECTS_SHEET, REVERSAL_EFFECTS_HEADERS),
+    REVERSAL_EFFECTS_HEADERS,
+  );
+}
+
+function parseReversalReasonGs(value) {
+  return parseRequiredReasonGs(
+    value,
+    'REVERSAL_REASON_REQUIRED',
+    'Informe um motivo entre 2 e 500 caracteres.',
+  );
+}
+
+function parseReversalMethodGs(value) {
+  if (value === PAYMENT_METHOD_PIX || value === PAYMENT_METHOD_CASH) {
+    return value;
+  }
+  throw new Error('REVERSAL_METHOD_UNSUPPORTED: Forma inválida.');
+}
+
+function parseNullableReversalMethodGs(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+  return parseReversalMethodGs(value);
+}
+
+function originalMethodsFromSettlementsGs(settlements) {
+  const methods = [];
+  settlements.forEach(function (item) {
+    if (
+      (item.kind === PAYMENT_METHOD_PIX || item.kind === PAYMENT_METHOD_CASH) &&
+      methods.indexOf(item.kind) === -1
+    ) {
+      methods.push(item.kind);
+    }
+  });
+  return methods;
+}
+
+function externalAmountFromSettlementsGs(settlements) {
+  return settlements
+    .filter(function (item) {
+      return (
+        item.kind === PAYMENT_METHOD_PIX ||
+        item.kind === PAYMENT_METHOD_CASH ||
+        item.kind === SETTLEMENT_CHANGE
+      );
+    })
+    .reduce(function (total, item) {
+      return total + Number(item.amount_cents || item.amountCents || 0);
+    }, 0);
+}
+
+function reversalEffectSummaryGs(type, amountDeltaCents, quantityDelta) {
+  const labels = {
+    cash_refund: 'Devolução em dinheiro',
+    pix_refund: 'Devolução por PIX',
+    cash_recovery: 'Dinheiro recuperado',
+    pix_recovery: 'PIX recuperado',
+    credit_restore: 'Crédito restaurado',
+    credit_remove: 'Crédito removido',
+    debt_cancelled: 'Dívida cancelada',
+    debt_reopened: 'Dívida reaberta',
+    stock_return: 'Produto retornado ao estoque',
+  };
+  const name = labels[type] || type;
+  if (amountDeltaCents !== null && amountDeltaCents !== '') {
+    const amount = Number(amountDeltaCents);
+    const sign = amount > 0 ? '+' : '−';
+    return name + ': ' + sign + formatBrlGs(Math.abs(amount));
+  }
+  if (quantityDelta !== null && quantityDelta !== '') {
+    return name + ': +' + Number(quantityDelta);
+  }
+  return name;
+}
+
+function appendReversalEffectGs(
+  reversalId,
+  type,
+  entityType,
+  entityId,
+  amountDeltaCents,
+  quantityDelta,
+) {
+  openNamedSheet(REVERSAL_EFFECTS_SHEET, REVERSAL_EFFECTS_HEADERS).appendRow([
+    Utilities.getUuid(),
+    reversalId,
+    type,
+    entityType,
+    entityId || '',
+    amountDeltaCents === null || amountDeltaCents === undefined
+      ? ''
+      : String(amountDeltaCents),
+    quantityDelta === null || quantityDelta === undefined
+      ? ''
+      : String(quantityDelta),
+  ]);
+}
+
+function recordOutgoingRefundGs(
+  userId,
+  reversalId,
+  amountCents,
+  method,
+  reason,
+) {
+  if (method === PAYMENT_METHOD_CASH) {
+    appendCashMovementGs(
+      userId,
+      CASH_KIND_REVERSAL,
+      -amountCents,
+      CASH_SOURCE_REVERSAL,
+      reversalId,
+      reason,
+    );
+    appendReversalEffectGs(
+      reversalId,
+      'cash_refund',
+      'operation_reversal',
+      reversalId,
+      -amountCents,
+      null,
+    );
+    return;
+  }
+  appendReversalEffectGs(
+    reversalId,
+    'pix_refund',
+    'operation_reversal',
+    reversalId,
+    -amountCents,
+    null,
+  );
+}
+
+function studentRemainingDebtGs(studentId, exceptSaleId, ignorePaymentId) {
+  return latestRecordsById(listReceivableRecords())
+    .filter(function (item) {
+      return (
+        item.charged_student_id === studentId &&
+        item.source_sale_id !== exceptSaleId
+      );
+    })
+    .reduce(function (total, item) {
+      return total + remainingCentsGs(item.id, ignorePaymentId);
+    }, 0);
+}
+
+function chargeCentsGs(receivableId) {
+  return listReceivableChargeRecords()
+    .filter(function (item) {
+      return item.receivable_id === receivableId;
+    })
+    .reduce(function (total, item) {
+      return total + Number(item.amount_cents);
+    }, 0);
+}
+
+function toReversalsSetupGs() {
+  const sales = latestRecordsById(listSaleRecords())
+    .slice()
+    .reverse()
+    .map(function (sale) {
+      const view = toSaleViewGs(sale);
+      const settlementRows = listSettlementRecords().filter(function (item) {
+        return item.sale_id === sale.id;
+      });
+      const tracked = listSaleItemRecords().some(function (item) {
+        if (item.sale_id !== sale.id || !item.product_id) {
+          return false;
+        }
+        const product = latestProductById(item.product_id);
+        return product && product.stock_tracked === 'true';
+      });
+      return {
+        id: sale.id,
+        displayName:
+          view.consumerLabel +
+          ' • ' +
+          view.items
+            .map(function (item) {
+              return item.description;
+            })
+            .join(', '),
+        amountCents: view.netTotalCents,
+        externalAmountCents: externalAmountFromSettlementsGs(settlementRows),
+        originalMethods: originalMethodsFromSettlementsGs(settlementRows),
+        hasTrackedItems: tracked,
+        status: view.status,
+        createdAt: sale.created_at,
+      };
+    });
+  const reversedRefunds = {};
+  listOperationReversalRecords().forEach(function (item) {
+    if (item.operation_type === 'credit_refund') {
+      reversedRefunds[item.operation_id] = true;
+    }
+  });
+  const payments = latestRecordsById(listPaymentRecords())
+    .slice()
+    .reverse()
+    .map(function (payment) {
+      const debtCents = listPaymentAllocationRecords()
+        .filter(function (item) {
+          return item.payment_id === payment.id;
+        })
+        .reduce(function (total, item) {
+          return total + Number(item.amount_cents);
+        }, 0);
+      const creditCents = listPaymentCreditAllocationRecords()
+        .filter(function (item) {
+          return item.payment_id === payment.id;
+        })
+        .reduce(function (total, item) {
+          return total + Number(item.amount_cents);
+        }, 0);
+      const payerName = payment.payer_guardian_id
+        ? latestGuardianById(payment.payer_guardian_id).full_name
+        : saleConsumerLabelGs(payment.payer_student_id);
+      return {
+        id: payment.id,
+        payerName: payerName,
+        amountCents: Number(payment.amount_received_cents),
+        method: payment.method,
+        destinationLabel:
+          debtCents > 0 && creditCents > 0
+            ? 'Dívidas e crédito'
+            : creditCents > 0
+              ? 'Crédito'
+              : 'Dívidas',
+        status:
+          payment.status === PAYMENT_STATUS_REVERSED
+            ? PAYMENT_STATUS_REVERSED
+            : PAYMENT_STATUS_COMPLETED,
+        createdAt: payment.created_at,
+      };
+    });
+  const creditRefunds = listCreditMovementRecords()
+    .filter(function (item) {
+      return item.kind === CREDIT_KIND_REFUND && item.source_id;
+    })
+    .slice()
+    .reverse()
+    .map(function (item) {
+      const account = listCreditAccountRecords().filter(function (entry) {
+        return entry.id === item.credit_account_id;
+      })[0];
+      const ownerType =
+        account && account.owner_type === CREDIT_OWNER_GUARDIAN
+          ? CREDIT_OWNER_GUARDIAN
+          : CREDIT_OWNER_STUDENT;
+      const ownerName =
+        ownerType === CREDIT_OWNER_GUARDIAN
+          ? latestGuardianById(account.owner_guardian_id).full_name
+          : saleConsumerLabelGs(item.student_id || account.owner_student_id);
+      return {
+        id: item.source_id,
+        ownerName: ownerName,
+        amountCents: Math.abs(Number(item.amount_delta_cents)),
+        method: PAYMENT_METHOD_PIX,
+        ownerType: ownerType,
+        reversed: Boolean(reversedRefunds[item.source_id]),
+        createdAt: item.created_at,
+      };
+    });
+  const recentReversals = listOperationReversalRecords()
+    .slice()
+    .reverse()
+    .map(function (item) {
+      const effects = listReversalEffectRecords()
+        .filter(function (effect) {
+          return effect.reversal_id === item.id;
+        })
+        .map(function (effect) {
+          const amount =
+            effect.amount_delta_cents === ''
+              ? null
+              : Number(effect.amount_delta_cents);
+          const quantity =
+            effect.quantity_delta === '' ? null : Number(effect.quantity_delta);
+          return {
+            type: effect.effect_type,
+            amountDeltaCents: amount,
+            quantityDelta: quantity,
+            summaryLabel: reversalEffectSummaryGs(
+              effect.effect_type,
+              effect.amount_delta_cents,
+              effect.quantity_delta,
+            ),
+          };
+        });
+      return {
+        id: item.id,
+        operationType: item.operation_type,
+        operationId: item.operation_id,
+        reason: item.reason,
+        refundMethod: item.refund_method || null,
+        differentMethodConfirmed: item.different_method_confirmed === 'true',
+        returnedToStock:
+          item.returned_to_stock === ''
+            ? null
+            : item.returned_to_stock === 'true',
+        createdByName: 'Dona',
+        createdAt: item.created_at,
+        effects: effects,
+      };
+    });
+  return {
+    sales: sales,
+    payments: payments,
+    creditRefunds: creditRefunds,
+    recentReversals: recentReversals,
+  };
+}
+
+function getReversalsSetup(sessionToken) {
+  requireAction(sessionToken, 'reversals.read');
+  return toReversalsSetupGs();
+}
+
+function reverseSaleUnlocked(userId, payload) {
+  const saleId = payload && payload.saleId ? String(payload.saleId) : '';
+  const sale = latestRecordsById(listSaleRecords()).filter(function (item) {
+    return item.id === saleId;
+  })[0];
+  if (!sale) {
+    throw new Error('SALE_NOT_FOUND: Venda não encontrada.');
+  }
+  if (sale.status === SALE_STATUS_REVERSED) {
+    throw new Error('SALE_ALREADY_REVERSED: Esta venda já foi estornada.');
+  }
+  const reason = parseReversalReasonGs(payload && payload.reason);
+  if (typeof payload.returnItemsToStock !== 'boolean') {
+    throw new Error(
+      'REVERSAL_STOCK_CHOICE_REQUIRED: Informe se os produtos voltaram ao estoque.',
+    );
+  }
+  if (typeof payload.confirmDifferentMethod !== 'boolean') {
+    throw new Error('REVERSAL_CONFIRMATION_INVALID: Confirmação inválida.');
+  }
+  const refundMethod = parseNullableReversalMethodGs(payload.refundMethod);
+  const settlementRows = listSettlementRecords().filter(function (item) {
+    return item.sale_id === sale.id;
+  });
+  const originalMethods = originalMethodsFromSettlementsGs(settlementRows);
+  const externalAmountCents = externalAmountFromSettlementsGs(settlementRows);
+  if (externalAmountCents > 0 && refundMethod === null) {
+    throw new Error(
+      'REVERSAL_REFUND_METHOD_REQUIRED: Escolha como o valor pago será devolvido.',
+    );
+  }
+  if (externalAmountCents === 0 && refundMethod !== null) {
+    throw new Error(
+      'REVERSAL_NO_EXTERNAL_REFUND: Esta venda não possui PIX ou dinheiro para devolver.',
+    );
+  }
+  const different =
+    externalAmountCents > 0 &&
+    (originalMethods.length !== 1 || originalMethods[0] !== refundMethod);
+  if (different && !payload.confirmDifferentMethod) {
+    throw new Error(
+      'REVERSAL_DIFFERENT_METHOD_UNCONFIRMED: Confirme explicitamente a devolução por forma diferente da original.',
+    );
+  }
+  const saleReceivables = latestRecordsById(listReceivableRecords()).filter(
+    function (item) {
+      return item.source_sale_id === sale.id;
+    },
+  );
+  saleReceivables.forEach(function (receivable) {
+    if (chargeCentsGs(receivable.id) - remainingCentsGs(receivable.id) > 0) {
+      throw new Error(
+        'REVERSAL_PAYMENTS_FIRST: Esta venda possui cobrança já paga. Estorne primeiro os pagamentos vinculados.',
+      );
+    }
+  });
+  const tracked = {};
+  listSaleItemRecords()
+    .filter(function (item) {
+      return item.sale_id === sale.id && item.product_id;
+    })
+    .forEach(function (item) {
+      const product = latestProductById(item.product_id);
+      if (product && product.stock_tracked === 'true') {
+        tracked[item.product_id] =
+          (tracked[item.product_id] || 0) + Number(item.quantity);
+      }
+    });
+  const trackedIds = Object.keys(tracked);
+  if (payload.returnItemsToStock && trackedIds.length) {
+    requireInventoryDayGs(todayCivil());
+  }
+  if (refundMethod === PAYMENT_METHOD_CASH && externalAmountCents > 0) {
+    assertCanMoveCashGs(-externalAmountCents);
+  }
+  const creditMovements = listCreditMovementRecords().filter(function (item) {
+    return (
+      item.source_type === CREDIT_SOURCE_SALE && item.source_id === sale.id
+    );
+  });
+  creditMovements.forEach(function (movement) {
+    const account = listCreditAccountRecords().filter(function (item) {
+      return item.id === movement.credit_account_id;
+    })[0];
+    if (
+      !account ||
+      account.owner_type !== CREDIT_OWNER_STUDENT ||
+      !account.owner_student_id
+    ) {
+      return;
+    }
+    const future =
+      creditBalanceCentsGs(account.id) +
+      Math.abs(Number(movement.amount_delta_cents));
+    if (future < 0) {
+      throw new Error(
+        'REVERSAL_NEGATIVE_CREDIT: O estorno não pode deixar crédito negativo.',
+      );
+    }
+    if (
+      future > 0 &&
+      studentRemainingDebtGs(account.owner_student_id, sale.id) > 0
+    ) {
+      throw new Error(
+        'REVERSAL_CREDIT_WITH_DEBT: O estorno restauraria crédito pessoal enquanto existe dívida. Regularize a dívida antes de continuar.',
+      );
+    }
+  });
+  const now = new Date().toISOString();
+  const reversalId = Utilities.getUuid();
+  openNamedSheet(
+    OPERATION_REVERSALS_SHEET,
+    OPERATION_REVERSALS_HEADERS,
+  ).appendRow([
+    reversalId,
+    'sale',
+    sale.id,
+    reason,
+    originalMethods.join(','),
+    refundMethod || '',
+    different ? 'true' : 'false',
+    payload.returnItemsToStock ? 'true' : 'false',
+    userId,
+    now,
+  ]);
+  openNamedSheet(SALES_SHEET, SALES_HEADERS).appendRow([
+    sale.id,
+    sale.consumer_student_id,
+    sale.charged_student_id,
+    SALE_STATUS_REVERSED,
+    sale.gross_total_cents,
+    sale.discount_total_cents,
+    sale.net_total_cents,
+    sale.source_reservation_id,
+    sale.created_by,
+    sale.created_at,
+    reversalId,
+  ]);
+  saleReceivables.forEach(function (receivable) {
+    openNamedSheet(RECEIVABLES_SHEET, RECEIVABLES_HEADERS).appendRow([
+      receivable.id,
+      receivable.charged_student_id,
+      receivable.source_sale_id,
+      receivable.due_date,
+      RECEIVABLE_STATUS_REVERSED,
+      receivable.created_by,
+      receivable.created_at,
+    ]);
+    appendReversalEffectGs(
+      reversalId,
+      'debt_cancelled',
+      'receivable',
+      receivable.id,
+      -chargeCentsGs(receivable.id),
+      null,
+    );
+  });
+  creditMovements.forEach(function (movement) {
+    const restored = Math.abs(Number(movement.amount_delta_cents));
+    openNamedSheet(CREDIT_MOVEMENTS_SHEET, CREDIT_MOVEMENTS_HEADERS).appendRow([
+      movement.credit_account_id,
+      CREDIT_KIND_REVERSAL,
+      String(restored),
+      CREDIT_SOURCE_OPERATION_REVERSAL,
+      reversalId,
+      movement.student_id,
+      userId,
+      now,
+      reason,
+    ]);
+    appendReversalEffectGs(
+      reversalId,
+      'credit_restore',
+      'credit_account',
+      movement.credit_account_id,
+      restored,
+      null,
+    );
+  });
+  if (externalAmountCents > 0 && refundMethod) {
+    recordOutgoingRefundGs(
+      userId,
+      reversalId,
+      externalAmountCents,
+      refundMethod,
+      reason,
+    );
+  }
+  if (payload.returnItemsToStock) {
+    const day = requireInventoryDayGs(todayCivil());
+    const movements = openNamedSheet(
+      INVENTORY_MOVEMENTS_SHEET,
+      INVENTORY_MOVEMENTS_HEADERS,
+    );
+    trackedIds.forEach(function (productId) {
+      movements.appendRow([
+        Utilities.getUuid(),
+        day.id,
+        productId,
+        INVENTORY_SALE_RETURN_KIND,
+        String(tracked[productId]),
+        CREDIT_SOURCE_OPERATION_REVERSAL,
+        reversalId,
+        userId,
+        now,
+        reason,
+      ]);
+      appendReversalEffectGs(
+        reversalId,
+        'stock_return',
+        'product',
+        productId,
+        null,
+        tracked[productId],
+      );
+    });
+  }
+  return toReversalsSetupGs();
+}
+
+function reverseSale(sessionToken, payload) {
+  const session = requireAction(sessionToken, 'reversals.write');
+  return withScriptLock(function () {
+    setupSchema();
+    return reverseSaleUnlocked(session.user_id, payload || {});
+  });
+}
+
+function reversePaymentUnlocked(userId, payload) {
+  const paymentId =
+    payload && payload.paymentId ? String(payload.paymentId) : '';
+  const payment = latestRecordsById(listPaymentRecords()).filter(
+    function (item) {
+      return item.id === paymentId;
+    },
+  )[0];
+  if (!payment) {
+    throw new Error('PAYMENT_NOT_FOUND: Pagamento não encontrado.');
+  }
+  if (payment.status === PAYMENT_STATUS_REVERSED) {
+    throw new Error(
+      'PAYMENT_ALREADY_REVERSED: Este pagamento já foi estornado.',
+    );
+  }
+  const reason = parseReversalReasonGs(payload && payload.reason);
+  const refundMethod = parseReversalMethodGs(payload && payload.refundMethod);
+  if (typeof payload.confirmDifferentMethod !== 'boolean') {
+    throw new Error('REVERSAL_CONFIRMATION_INVALID: Confirmação inválida.');
+  }
+  const different = payment.method !== refundMethod;
+  if (different && !payload.confirmDifferentMethod) {
+    throw new Error(
+      'REVERSAL_DIFFERENT_METHOD_UNCONFIRMED: Confirme explicitamente a devolução por forma diferente da original.',
+    );
+  }
+  const deposits = listCreditMovementRecords().filter(function (item) {
+    return (
+      item.source_type === CREDIT_SOURCE_PAYMENT &&
+      item.source_id === payment.id &&
+      item.kind === CREDIT_KIND_DEPOSIT
+    );
+  });
+  deposits.forEach(function (movement) {
+    const next =
+      creditBalanceCentsGs(movement.credit_account_id) -
+      Number(movement.amount_delta_cents);
+    if (next < 0) {
+      throw new Error(
+        'REVERSAL_CREDIT_ALREADY_USED: O crédito originado neste pagamento já foi usado. Reverta os usos posteriores antes de estornar o pagamento.',
+      );
+    }
+  });
+  const amountCents = Number(payment.amount_received_cents);
+  if (refundMethod === PAYMENT_METHOD_CASH) {
+    assertCanMoveCashGs(-amountCents);
+  }
+  const now = new Date().toISOString();
+  const reversalId = Utilities.getUuid();
+  openNamedSheet(
+    OPERATION_REVERSALS_SHEET,
+    OPERATION_REVERSALS_HEADERS,
+  ).appendRow([
+    reversalId,
+    'payment',
+    payment.id,
+    reason,
+    payment.method,
+    refundMethod,
+    different ? 'true' : 'false',
+    '',
+    userId,
+    now,
+  ]);
+  openNamedSheet(PAYMENTS_SHEET, PAYMENTS_HEADERS).appendRow([
+    payment.id,
+    payment.payer_guardian_id,
+    payment.payer_student_id,
+    payment.method,
+    payment.amount_received_cents,
+    PAYMENT_STATUS_REVERSED,
+    payment.created_by,
+    payment.created_at,
+    payment.note,
+  ]);
+  deposits.forEach(function (movement) {
+    openNamedSheet(CREDIT_MOVEMENTS_SHEET, CREDIT_MOVEMENTS_HEADERS).appendRow([
+      movement.credit_account_id,
+      CREDIT_KIND_REVERSAL,
+      String(-Number(movement.amount_delta_cents)),
+      CREDIT_SOURCE_OPERATION_REVERSAL,
+      reversalId,
+      movement.student_id,
+      userId,
+      now,
+      reason,
+    ]);
+    appendReversalEffectGs(
+      reversalId,
+      Number(movement.amount_delta_cents) > 0
+        ? 'credit_remove'
+        : 'credit_restore',
+      'credit_account',
+      movement.credit_account_id,
+      -Number(movement.amount_delta_cents),
+      null,
+    );
+  });
+  const seen = {};
+  listPaymentAllocationRecords()
+    .filter(function (item) {
+      return item.payment_id === payment.id;
+    })
+    .forEach(function (allocation) {
+      if (seen[allocation.receivable_id]) {
+        return;
+      }
+      seen[allocation.receivable_id] = true;
+      const receivable = latestRecordsById(listReceivableRecords()).filter(
+        function (item) {
+          return item.id === allocation.receivable_id;
+        },
+      )[0];
+      if (!receivable || receivable.status === RECEIVABLE_STATUS_REVERSED) {
+        return;
+      }
+      appendReversalEffectGs(
+        reversalId,
+        'debt_reopened',
+        'receivable',
+        allocation.receivable_id,
+        Number(allocation.amount_cents),
+        null,
+      );
+    });
+  recordOutgoingRefundGs(userId, reversalId, amountCents, refundMethod, reason);
+  return toReversalsSetupGs();
+}
+
+function reversePayment(sessionToken, payload) {
+  const session = requireAction(sessionToken, 'reversals.write');
+  return withScriptLock(function () {
+    setupSchema();
+    return reversePaymentUnlocked(session.user_id, payload || {});
+  });
+}
+
+function reverseCreditRefundUnlocked(userId, payload) {
+  const creditMovementId =
+    payload && payload.creditMovementId ? String(payload.creditMovementId) : '';
+  const refund = listCreditMovementRecords().filter(function (item) {
+    return (
+      item.kind === CREDIT_KIND_REFUND && item.source_id === creditMovementId
+    );
+  })[0];
+  if (!refund || !refund.source_id) {
+    throw new Error(
+      'CREDIT_REFUND_NOT_FOUND: Devolução de crédito não encontrada.',
+    );
+  }
+  const already = listOperationReversalRecords().some(function (item) {
+    return (
+      item.operation_type === 'credit_refund' &&
+      item.operation_id === refund.source_id
+    );
+  });
+  if (already) {
+    throw new Error(
+      'CREDIT_REFUND_ALREADY_REVERSED: Esta devolução de crédito já foi estornada.',
+    );
+  }
+  const reason = parseReversalReasonGs(payload && payload.reason);
+  const recoveryMethod = parseReversalMethodGs(
+    payload && payload.recoveryMethod,
+  );
+  if (typeof payload.confirmDifferentMethod !== 'boolean') {
+    throw new Error('REVERSAL_CONFIRMATION_INVALID: Confirmação inválida.');
+  }
+  const different = PAYMENT_METHOD_PIX !== recoveryMethod;
+  if (different && !payload.confirmDifferentMethod) {
+    throw new Error(
+      'REVERSAL_DIFFERENT_METHOD_UNCONFIRMED: Confirme explicitamente a devolução por forma diferente da original.',
+    );
+  }
+  const amountCents = Math.abs(Number(refund.amount_delta_cents));
+  if (recoveryMethod === PAYMENT_METHOD_CASH) {
+    assertCanMoveCashGs(amountCents);
+  }
+  const now = new Date().toISOString();
+  const reversalId = Utilities.getUuid();
+  openNamedSheet(
+    OPERATION_REVERSALS_SHEET,
+    OPERATION_REVERSALS_HEADERS,
+  ).appendRow([
+    reversalId,
+    'credit_refund',
+    refund.source_id,
+    reason,
+    PAYMENT_METHOD_PIX,
+    recoveryMethod,
+    different ? 'true' : 'false',
+    '',
+    userId,
+    now,
+  ]);
+  openNamedSheet(CREDIT_MOVEMENTS_SHEET, CREDIT_MOVEMENTS_HEADERS).appendRow([
+    refund.credit_account_id,
+    CREDIT_KIND_REVERSAL,
+    String(amountCents),
+    CREDIT_SOURCE_OPERATION_REVERSAL,
+    reversalId,
+    refund.student_id,
+    userId,
+    now,
+    reason,
+  ]);
+  appendReversalEffectGs(
+    reversalId,
+    'credit_restore',
+    'credit_account',
+    refund.credit_account_id,
+    amountCents,
+    null,
+  );
+  if (recoveryMethod === PAYMENT_METHOD_CASH) {
+    appendCashMovementGs(
+      userId,
+      CASH_KIND_REVERSAL,
+      amountCents,
+      CASH_SOURCE_REVERSAL,
+      reversalId,
+      reason,
+    );
+    appendReversalEffectGs(
+      reversalId,
+      'cash_recovery',
+      'credit_movement',
+      refund.source_id,
+      amountCents,
+      null,
+    );
+  } else {
+    appendReversalEffectGs(
+      reversalId,
+      'pix_recovery',
+      'credit_movement',
+      refund.source_id,
+      amountCents,
+      null,
+    );
+  }
+  return toReversalsSetupGs();
+}
+
+function reverseCreditRefund(sessionToken, payload) {
+  const session = requireAction(sessionToken, 'reversals.write');
+  return withScriptLock(function () {
+    setupSchema();
+    return reverseCreditRefundUnlocked(session.user_id, payload || {});
   });
 }

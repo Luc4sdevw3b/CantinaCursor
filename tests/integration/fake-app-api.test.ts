@@ -1105,4 +1105,34 @@ describe('FakeAppApi', () => {
       'FORBIDDEN',
     );
   });
+
+  it('reverses a PIX Coxinha with stock return back to 10', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const coxinha = (await api.listProducts()).find(
+      (item) => item.name === 'Coxinha',
+    );
+    if (!coxinha) {
+      throw new Error('coxinha local incompleta');
+    }
+    const sale = await api.createSale({
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'pix',
+    });
+    const setup = await api.reverseSale({
+      saleId: sale.id,
+      refundMethod: 'pix',
+      confirmDifferentMethod: false,
+      returnItemsToStock: true,
+      reason: 'Venda lançada em duplicidade',
+    });
+    expect(
+      setup.recentReversals[0]?.effects.map((item) => item.summaryLabel),
+    ).toContain('Produto retornado ao estoque: +1');
+    expect(
+      (await api.listInventoryBalances()).items.find(
+        (item) => item.productName === 'Coxinha',
+      )?.physicalQuantity,
+    ).toBe(10);
+  });
 });

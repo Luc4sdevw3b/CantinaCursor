@@ -2,6 +2,7 @@ import { parseCents } from './money';
 import { err, ok, type Result } from './result';
 
 export const PAYMENT_STATUS_COMPLETED = 'completed';
+export const PAYMENT_STATUS_REVERSED = 'reversed';
 export const PAYMENT_METHOD_PIX = 'pix';
 export const PAYMENT_METHOD_CASH = 'cash';
 export const PAYMENT_MODE_OLDEST_FIRST = 'oldest_first';

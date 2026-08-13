@@ -5,6 +5,7 @@ import { parseSaleQuantity } from './quantity';
 import { err, ok, type Result } from './result';
 
 export const SALE_STATUS_PAID = 'paid';
+export const SALE_STATUS_REVERSED = 'reversed';
 export const SALE_ITEM_PRODUCT = 'product';
 export const SALE_ITEM_AD_HOC = 'ad_hoc';
 export const SETTLEMENT_PIX = 'pix';

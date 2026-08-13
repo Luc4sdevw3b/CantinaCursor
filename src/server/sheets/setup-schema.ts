@@ -55,6 +55,9 @@ import {
   CASH_MIGRATION_ID,
   CASH_SESSIONS_SHEET,
   CASH_MOVEMENTS_SHEET,
+  REVERSALS_MIGRATION_ID,
+  OPERATION_REVERSALS_SHEET,
+  REVERSAL_EFFECTS_SHEET,
 } from './schema';
 import { deserializeRecord, serializeRecord } from './serialize';
 import { ensureSheet } from './ensure-sheet';
@@ -424,6 +427,26 @@ export function setupSchema(
       );
       if (!cashMovements.ok) {
         return err(cashMovements.error);
+      }
+      meta.data.appendRow(
+        serializeRecord(META_SHEET.headers, {
+          key: 'schema_version',
+          value: '13',
+        }),
+      );
+    }
+
+    if (migration.id === REVERSALS_MIGRATION_ID) {
+      const reversals = ensureSheet(
+        input.spreadsheet,
+        OPERATION_REVERSALS_SHEET,
+      );
+      if (!reversals.ok) {
+        return err(reversals.error);
+      }
+      const effects = ensureSheet(input.spreadsheet, REVERSAL_EFFECTS_SHEET);
+      if (!effects.ok) {
+        return err(effects.error);
       }
       meta.data.appendRow(
         serializeRecord(META_SHEET.headers, {

@@ -15,6 +15,7 @@ import {
   PAYMENTS_MIGRATION_ID,
   CREDITS_MIGRATION_ID,
   CASH_MIGRATION_ID,
+  REVERSALS_MIGRATION_ID,
 } from '../../src/server/sheets/schema';
 
 describe('setupSchema', () => {
@@ -33,7 +34,7 @@ describe('setupSchema', () => {
     expect(first).toEqual({
       ok: true,
       data: {
-        schemaVersion: 13,
+        schemaVersion: 14,
         appliedMigrations: [
           FOUNDATION_MIGRATION_ID,
           OPERATION_REQUESTS_MIGRATION_ID,
@@ -48,11 +49,12 @@ describe('setupSchema', () => {
           PAYMENTS_MIGRATION_ID,
           CREDITS_MIGRATION_ID,
           CASH_MIGRATION_ID,
+          REVERSALS_MIGRATION_ID,
         ],
       },
     });
     expect(second).toEqual(first);
-    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(13);
+    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(14);
     expect(sheets.get('_meta')?.getHeaders()).toEqual(['key', 'value']);
     expect(sheets.get('_operation_requests')?.getHeaders()).toEqual([
       'request_id',
@@ -290,6 +292,27 @@ describe('setupSchema', () => {
       'created_at',
       'note',
     ]);
+    expect(sheets.get('_operation_reversals')?.getHeaders()).toEqual([
+      'id',
+      'operation_type',
+      'operation_id',
+      'reason',
+      'original_methods',
+      'refund_method',
+      'different_method_confirmed',
+      'returned_to_stock',
+      'created_by',
+      'created_at',
+    ]);
+    expect(sheets.get('_reversal_effects')?.getHeaders()).toEqual([
+      'id',
+      'reversal_id',
+      'effect_type',
+      'entity_type',
+      'entity_id',
+      'amount_delta_cents',
+      'quantity_delta',
+    ]);
   });
 
   it('applies only the operation-requests migration when foundation already exists', () => {
@@ -335,9 +358,10 @@ describe('setupSchema', () => {
         PAYMENTS_MIGRATION_ID,
         CREDITS_MIGRATION_ID,
         CASH_MIGRATION_ID,
+        REVERSALS_MIGRATION_ID,
       ]);
     }
-    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(13);
+    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(14);
   });
 
   it('refuses PROD', () => {

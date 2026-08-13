@@ -282,7 +282,7 @@ export interface Sale {
   id: string;
   consumerStudentId: string | null;
   consumerLabel: string;
-  status: 'paid';
+  status: 'paid' | 'reversed';
   paymentKind: 'pix' | 'cash' | 'mixed' | 'fiado';
   grossTotalCents: number;
   discountTotalCents: number;
@@ -380,7 +380,7 @@ export interface Payment {
   method: 'pix' | 'cash';
   amountCents: number;
   amountLabel: string;
-  status: 'completed';
+  status: 'completed' | 'reversed';
   summaryLabel: string;
   createdAt: string;
 }
@@ -454,8 +454,88 @@ export interface CashSetup {
   recentSessions: CashSession[];
 }
 
+export interface ReversibleSale {
+  id: string;
+  displayName: string;
+  amountCents: number;
+  externalAmountCents: number;
+  originalMethods: Array<'pix' | 'cash'>;
+  hasTrackedItems: boolean;
+  status: 'paid' | 'reversed';
+  createdAt: string;
+}
+
+export interface ReversiblePayment {
+  id: string;
+  payerName: string;
+  amountCents: number;
+  method: 'pix' | 'cash';
+  destinationLabel: string;
+  status: 'completed' | 'reversed';
+  createdAt: string;
+}
+
+export interface ReversibleCreditRefund {
+  id: string;
+  ownerName: string;
+  amountCents: number;
+  method: 'pix' | 'cash';
+  ownerType: 'student' | 'guardian';
+  reversed: boolean;
+  createdAt: string;
+}
+
+export interface ReversalEffect {
+  type: string;
+  amountDeltaCents: number | null;
+  quantityDelta: number | null;
+  summaryLabel: string;
+}
+
+export interface ReversalRecord {
+  id: string;
+  operationType: 'sale' | 'payment' | 'credit_refund';
+  operationId: string;
+  reason: string;
+  refundMethod: 'pix' | 'cash' | null;
+  differentMethodConfirmed: boolean;
+  returnedToStock: boolean | null;
+  createdByName: string;
+  createdAt: string;
+  effects: ReversalEffect[];
+}
+
+export interface ReversalsSetup {
+  sales: ReversibleSale[];
+  payments: ReversiblePayment[];
+  creditRefunds: ReversibleCreditRefund[];
+  recentReversals: ReversalRecord[];
+}
+
+export interface ReverseSaleInput {
+  saleId: string;
+  refundMethod?: 'pix' | 'cash' | null;
+  confirmDifferentMethod: boolean;
+  returnItemsToStock: boolean;
+  reason: string;
+}
+
+export interface ReversePaymentInput {
+  paymentId: string;
+  refundMethod: 'pix' | 'cash';
+  confirmDifferentMethod: boolean;
+  reason: string;
+}
+
+export interface ReverseCreditRefundInput {
+  creditMovementId: string;
+  recoveryMethod: 'pix' | 'cash';
+  confirmDifferentMethod: boolean;
+  reason: string;
+}
+
 /**
- * Contrato técnico da Fase 21.
+ * Contrato técnico da Fase 22.
  * Sem reservas reais ou envio de WhatsApp.
  */
 export interface AppApi {
@@ -560,4 +640,8 @@ export interface AppApi {
     countedCents: number;
     note?: string;
   }): Promise<CashSetup>;
+  getReversalsSetup(): Promise<ReversalsSetup>;
+  reverseSale(input: ReverseSaleInput): Promise<ReversalsSetup>;
+  reversePayment(input: ReversePaymentInput): Promise<ReversalsSetup>;
+  reverseCreditRefund(input: ReverseCreditRefundInput): Promise<ReversalsSetup>;
 }

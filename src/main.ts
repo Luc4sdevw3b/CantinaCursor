@@ -1,13 +1,14 @@
 import './styles.css';
 import { APP_VERSION } from './app-version';
 import { roleLabel, type UserRole } from './domain/auth';
-import { parseReaisToCents } from './domain/money';
+import { formatBrl, parseReaisToCents } from './domain/money';
 import type {
   AppSession,
   DueDateShortcuts,
   InventoryBalanceItem,
   Product,
   Receivable,
+  ReversalsSetup,
   SiblingAuthorization,
   StudentSummary,
 } from './web/shared/app-api';
@@ -45,7 +46,7 @@ app.innerHTML = `
         <p class="eyebrow">Web App em preparação</p>
         <div class="hero-title-row">
           <h1 id="page-title">Cantina V2 AppScript</h1>
-          <span class="phase-badge">Fase 21</span>
+          <span class="phase-badge">Fase 22</span>
         </div>
         <p class="intro">
           Uma base simples e confiável para a operação diária da cantina.
@@ -77,6 +78,7 @@ app.innerHTML = `
         <button type="button" data-area="credits">Crédito</button>
         <button type="button" data-area="inventory">Estoque</button>
         <button type="button" data-area="cash">Caixa</button>
+        <button type="button" data-area="reversals">Estornos</button>
         <button type="button" data-area="students">Alunos</button>
         <button type="button" data-area="family">Responsáveis</button>
         <button type="button" data-area="products">Cardápio</button>
@@ -313,6 +315,101 @@ app.innerHTML = `
         <button type="submit">Fechar caixa</button>
       </form>
       <ul id="cash-movements"></ul>
+    </section>
+
+    <section class="students-panel" id="reversals-panel" hidden>
+      <h2 id="reversals-title">Estornos completos</h2>
+      <p>A operação original nunca é apagada. Cada devolução, dívida, crédito, caixa e item retornado fica vinculado.</p>
+      <p id="reversals-status">Entre para ver os estornos.</p>
+      <div id="reversal-forms">
+        <form id="reverse-sale-form" aria-label="Estornar venda">
+          <h3>Estornar venda</h3>
+          <label>
+            Venda
+            <select id="reverse-sale-id" aria-label="Venda para estorno"></select>
+          </label>
+          <label id="reverse-sale-method-label">
+            Forma da devolução
+            <select id="reverse-sale-method" aria-label="Forma da devolução da venda">
+              <option value="">Escolha</option>
+              <option value="pix">PIX</option>
+              <option value="cash">Dinheiro</option>
+            </select>
+          </label>
+          <p id="reverse-sale-no-external" hidden>Sem valor externo: crédito será restaurado e/ou dívida cancelada.</p>
+          <fieldset id="reverse-sale-stock" hidden>
+            <legend>O produto voltou fisicamente ao estoque?</legend>
+            <label>
+              <input type="radio" name="return-stock" value="yes" />
+              Sim, devolver ao estoque
+            </label>
+            <label>
+              <input type="radio" name="return-stock" value="no" />
+              Não, manter fora do estoque
+            </label>
+          </fieldset>
+          <label>
+            <input id="reverse-sale-different" type="checkbox" />
+            Confirmo a forma diferente ou a consolidação de formas originais
+          </label>
+          <label>
+            Motivo
+            <textarea id="reverse-sale-reason" aria-label="Motivo do estorno da venda"></textarea>
+          </label>
+          <button type="submit">Confirmar estorno da venda</button>
+        </form>
+        <form id="reverse-payment-form" aria-label="Estornar pagamento">
+          <h3>Estornar pagamento</h3>
+          <label>
+            Pagamento
+            <select id="reverse-payment-id" aria-label="Pagamento para estorno"></select>
+          </label>
+          <label>
+            Forma da devolução
+            <select id="reverse-payment-method" aria-label="Forma da devolução do pagamento">
+              <option value="pix">PIX</option>
+              <option value="cash">Dinheiro</option>
+            </select>
+          </label>
+          <label>
+            <input id="reverse-payment-different" type="checkbox" />
+            Confirmo que a forma é diferente da original
+          </label>
+          <label>
+            Motivo
+            <textarea id="reverse-payment-reason" aria-label="Motivo do estorno do pagamento"></textarea>
+          </label>
+          <button type="submit">Confirmar estorno do pagamento</button>
+        </form>
+        <form id="reverse-credit-form" aria-label="Estornar devolução de crédito">
+          <h3>Cancelar devolução de crédito</h3>
+          <p>O valor volta ao crédito e a cantina recebe novamente pela forma escolhida.</p>
+          <label>
+            Devolução
+            <select id="reverse-credit-id" aria-label="Devolução de crédito para estorno"></select>
+          </label>
+          <label>
+            Forma de recuperação
+            <select id="reverse-credit-method" aria-label="Forma de recuperação da devolução de crédito">
+              <option value="pix">PIX</option>
+              <option value="cash">Dinheiro</option>
+            </select>
+          </label>
+          <label>
+            <input id="reverse-credit-different" type="checkbox" />
+            Confirmo que a forma é diferente da original
+          </label>
+          <label>
+            Motivo
+            <textarea id="reverse-credit-reason" aria-label="Motivo do estorno da devolução de crédito"></textarea>
+          </label>
+          <button type="submit">Confirmar cancelamento da devolução</button>
+        </form>
+      </div>
+      <div class="reversal-history" aria-label="Histórico de estornos">
+        <h3>Auditoria de estornos</h3>
+        <ul id="reversals-history"></ul>
+      </div>
     </section>
 
     <section class="students-panel" id="sales-panel" hidden>
@@ -625,6 +722,7 @@ type AppArea =
   | 'credits'
   | 'inventory'
   | 'cash'
+  | 'reversals'
   | 'students'
   | 'family'
   | 'products'
@@ -637,6 +735,7 @@ const AREA_PANELS: Record<AppArea, string> = {
   credits: '#credits-panel',
   inventory: '#inventory-panel',
   cash: '#cash-panel',
+  reversals: '#reversals-panel',
   students: '#students-panel',
   family: '#family-panel',
   products: '#products-panel',
@@ -769,6 +868,7 @@ async function showAuthenticated(session: AppSession | null): Promise<void> {
   await renderProducts(session);
   await renderInventory(session);
   await renderCash(session);
+  await renderReversals(session);
   await renderSales(session);
   await renderAgenda(session);
   await renderPayments(session);
@@ -1370,6 +1470,184 @@ async function renderCash(session: AppSession | null): Promise<void> {
       error instanceof Error
         ? error.message.replace(/^[A-Z_]+:\s*/, '')
         : 'Não foi possível carregar o caixa.';
+  }
+}
+
+const reversalsPanel = document.querySelector('#reversals-panel');
+const reversalsStatus = document.querySelector('#reversals-status');
+const reversalsHistory = document.querySelector('#reversals-history');
+const reversalForms = document.querySelector('#reversal-forms');
+const reverseSaleId = document.querySelector('#reverse-sale-id');
+const reverseSaleMethod = document.querySelector('#reverse-sale-method');
+const reverseSaleMethodLabel = document.querySelector(
+  '#reverse-sale-method-label',
+);
+const reverseSaleNoExternal = document.querySelector(
+  '#reverse-sale-no-external',
+);
+const reverseSaleStock = document.querySelector('#reverse-sale-stock');
+const reverseSaleDifferent = document.querySelector('#reverse-sale-different');
+const reverseSaleReason = document.querySelector('#reverse-sale-reason');
+const reversePaymentId = document.querySelector('#reverse-payment-id');
+const reversePaymentMethod = document.querySelector('#reverse-payment-method');
+const reversePaymentDifferent = document.querySelector(
+  '#reverse-payment-different',
+);
+const reversePaymentReason = document.querySelector('#reverse-payment-reason');
+const reverseCreditId = document.querySelector('#reverse-credit-id');
+const reverseCreditMethod = document.querySelector('#reverse-credit-method');
+const reverseCreditDifferent = document.querySelector(
+  '#reverse-credit-different',
+);
+const reverseCreditReason = document.querySelector('#reverse-credit-reason');
+
+let reversalsSetup: ReversalsSetup | null = null;
+
+function fillSelect(
+  select: Element | null,
+  options: Array<{ value: string; label: string }>,
+  emptyLabel: string,
+) {
+  if (!(select instanceof HTMLSelectElement)) {
+    return;
+  }
+  const current = select.value;
+  select.replaceChildren();
+  const empty = document.createElement('option');
+  empty.value = '';
+  empty.textContent = emptyLabel;
+  select.append(empty);
+  for (const option of options) {
+    const row = document.createElement('option');
+    row.value = option.value;
+    row.textContent = option.label;
+    select.append(row);
+  }
+  if (options.some((item) => item.value === current)) {
+    select.value = current;
+  }
+}
+
+function syncReverseSaleFields(): void {
+  const sale = reversalsSetup?.sales.find(
+    (item) =>
+      item.id ===
+      (reverseSaleId instanceof HTMLSelectElement ? reverseSaleId.value : ''),
+  );
+  const hasExternal = Boolean(sale && sale.externalAmountCents > 0);
+  if (reverseSaleMethodLabel instanceof HTMLElement) {
+    reverseSaleMethodLabel.hidden = !hasExternal;
+  }
+  if (reverseSaleNoExternal instanceof HTMLElement) {
+    reverseSaleNoExternal.hidden = !sale || hasExternal;
+  }
+  if (reverseSaleStock instanceof HTMLElement) {
+    reverseSaleStock.hidden = !sale?.hasTrackedItems;
+  }
+  if (
+    sale &&
+    reverseSaleMethod instanceof HTMLSelectElement &&
+    sale.originalMethods.length === 1
+  ) {
+    reverseSaleMethod.value = sale.originalMethods[0] ?? '';
+  }
+}
+
+async function renderReversals(session: AppSession | null): Promise<void> {
+  if (
+    !(reversalsPanel instanceof HTMLElement) ||
+    !reversalsStatus ||
+    !(reversalsHistory instanceof HTMLElement)
+  ) {
+    return;
+  }
+  reversalsHistory.replaceChildren();
+  if (!session) {
+    reversalsSetup = null;
+    if (reversalForms instanceof HTMLElement) {
+      reversalForms.hidden = true;
+    }
+    reversalsStatus.textContent = 'Entre para ver os estornos.';
+    return;
+  }
+  try {
+    const setup = await api.getReversalsSetup();
+    reversalsSetup = setup;
+    if (reversalForms instanceof HTMLElement) {
+      reversalForms.hidden = session.role !== 'owner';
+    }
+    fillSelect(
+      reverseSaleId,
+      setup.sales
+        .filter((item) => item.status !== 'reversed')
+        .map((item) => ({
+          value: item.id,
+          label: `${item.displayName} • ${formatBrl(item.amountCents)}`,
+        })),
+      'Escolha uma venda',
+    );
+    fillSelect(
+      reversePaymentId,
+      setup.payments
+        .filter((item) => item.status !== 'reversed')
+        .map((item) => ({
+          value: item.id,
+          label: `${item.payerName} • ${item.destinationLabel} • ${formatBrl(item.amountCents)}`,
+        })),
+      'Escolha um pagamento',
+    );
+    fillSelect(
+      reverseCreditId,
+      setup.creditRefunds
+        .filter((item) => !item.reversed)
+        .map((item) => ({
+          value: item.id,
+          label: `${item.ownerName} • ${formatBrl(item.amountCents)}`,
+        })),
+      'Escolha uma devolução',
+    );
+    syncReverseSaleFields();
+    if (session.role !== 'owner') {
+      reversalsStatus.textContent =
+        'Funcionários podem consultar a auditoria. Somente a dona pode realizar estornos.';
+    } else {
+      reversalsStatus.textContent =
+        setup.recentReversals.length === 1
+          ? '1 estorno'
+          : `${setup.recentReversals.length} estornos`;
+    }
+    if (setup.recentReversals.length === 0) {
+      const empty = document.createElement('li');
+      empty.textContent = 'Nenhum estorno registrado.';
+      reversalsHistory.append(empty);
+      return;
+    }
+    for (const entry of setup.recentReversals) {
+      const row = document.createElement('li');
+      const title = document.createElement('strong');
+      const kind =
+        entry.operationType === 'sale'
+          ? 'Venda'
+          : entry.operationType === 'payment'
+            ? 'Pagamento'
+            : 'Devolução de crédito';
+      title.textContent = `Estorno • ${kind}`;
+      const reason = document.createElement('small');
+      reason.textContent = `${entry.reason} • ${entry.createdByName}`;
+      const effects = document.createElement('ul');
+      for (const effect of entry.effects) {
+        const effectRow = document.createElement('li');
+        effectRow.textContent = effect.summaryLabel;
+        effects.append(effectRow);
+      }
+      row.append(title, reason, effects);
+      reversalsHistory.append(row);
+    }
+  } catch (error: unknown) {
+    reversalsStatus.textContent =
+      error instanceof Error
+        ? error.message.replace(/^[A-Z_]+:\s*/, '')
+        : 'Não foi possível carregar os estornos.';
   }
 }
 
@@ -2213,6 +2491,7 @@ document
           renderSales(session),
           renderInventory(session),
           renderCash(session),
+          renderReversals(session),
           renderAgenda(session),
         ]).then(() =>
           renderPayments(session).then(() =>
@@ -3305,6 +3584,237 @@ document
               ? error.message.replace(/^[A-Z_]+:\s*/, '')
               : 'Não foi possível fechar o caixa.';
         }
+      });
+  });
+
+reverseSaleId?.addEventListener('change', () => {
+  syncReverseSaleFields();
+});
+
+reversePaymentId?.addEventListener('change', () => {
+  const payment = reversalsSetup?.payments.find(
+    (item) =>
+      item.id ===
+      (reversePaymentId instanceof HTMLSelectElement
+        ? reversePaymentId.value
+        : ''),
+  );
+  if (payment && reversePaymentMethod instanceof HTMLSelectElement) {
+    reversePaymentMethod.value = payment.method;
+  }
+});
+
+reverseCreditId?.addEventListener('change', () => {
+  const refund = reversalsSetup?.creditRefunds.find(
+    (item) =>
+      item.id ===
+      (reverseCreditId instanceof HTMLSelectElement
+        ? reverseCreditId.value
+        : ''),
+  );
+  if (refund && reverseCreditMethod instanceof HTMLSelectElement) {
+    reverseCreditMethod.value = refund.method;
+  }
+});
+
+function refreshAfterReversal(successMessage: string): Promise<void> {
+  return api.getSession().then((session) =>
+    Promise.all([
+      renderReversals(session),
+      renderSales(session),
+      renderInventory(session),
+      renderCash(session),
+      renderAgenda(session),
+    ]).then(() =>
+      renderPayments(session).then(() =>
+        renderCredits(session).then(() => {
+          renderAdjust(session);
+          if (reversalsStatus) {
+            reversalsStatus.textContent = successMessage;
+          }
+        }),
+      ),
+    ),
+  );
+}
+
+document
+  .querySelector('#reverse-sale-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!(reverseSaleId instanceof HTMLSelectElement) || !reversalsStatus) {
+      return;
+    }
+    if (!reverseSaleId.value) {
+      reversalsStatus.textContent = 'Escolha a venda e informe o motivo.';
+      return;
+    }
+    const sale = reversalsSetup?.sales.find(
+      (item) => item.id === reverseSaleId.value,
+    );
+    const reason =
+      reverseSaleReason instanceof HTMLTextAreaElement
+        ? reverseSaleReason.value
+        : '';
+    if (!reason.trim()) {
+      reversalsStatus.textContent = 'Escolha a venda e informe o motivo.';
+      return;
+    }
+    const stockChoice = document.querySelector(
+      'input[name="return-stock"]:checked',
+    );
+    if (sale?.hasTrackedItems && !(stockChoice instanceof HTMLInputElement)) {
+      reversalsStatus.textContent =
+        'Informe se o produto voltou fisicamente ao estoque.';
+      return;
+    }
+    const refundMethod =
+      sale && sale.externalAmountCents > 0
+        ? reverseSaleMethod instanceof HTMLSelectElement
+          ? reverseSaleMethod.value
+          : ''
+        : null;
+    if (sale && sale.externalAmountCents > 0 && !refundMethod) {
+      reversalsStatus.textContent = 'Escolha a forma da devolução.';
+      return;
+    }
+    void api
+      .reverseSale({
+        saleId: reverseSaleId.value,
+        refundMethod:
+          refundMethod === 'pix' || refundMethod === 'cash'
+            ? refundMethod
+            : null,
+        confirmDifferentMethod:
+          reverseSaleDifferent instanceof HTMLInputElement &&
+          reverseSaleDifferent.checked,
+        returnItemsToStock:
+          stockChoice instanceof HTMLInputElement &&
+          stockChoice.value === 'yes',
+        reason,
+      })
+      .then(() => {
+        reverseSaleId.value = '';
+        if (reverseSaleMethod instanceof HTMLSelectElement) {
+          reverseSaleMethod.value = '';
+        }
+        if (reverseSaleDifferent instanceof HTMLInputElement) {
+          reverseSaleDifferent.checked = false;
+        }
+        if (reverseSaleReason instanceof HTMLTextAreaElement) {
+          reverseSaleReason.value = '';
+        }
+        document
+          .querySelectorAll<HTMLInputElement>('input[name="return-stock"]')
+          .forEach((input) => {
+            input.checked = false;
+          });
+        return refreshAfterReversal(
+          'Venda estornada; original e efeitos permanecem auditáveis.',
+        );
+      })
+      .catch((error: unknown) => {
+        reversalsStatus.textContent =
+          error instanceof Error
+            ? error.message.replace(/^[A-Z_]+:\s*/, '')
+            : 'Não foi possível estornar a venda.';
+      });
+  });
+
+document
+  .querySelector('#reverse-payment-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!(reversePaymentId instanceof HTMLSelectElement) || !reversalsStatus) {
+      return;
+    }
+    const reason =
+      reversePaymentReason instanceof HTMLTextAreaElement
+        ? reversePaymentReason.value
+        : '';
+    if (!reversePaymentId.value || !reason.trim()) {
+      reversalsStatus.textContent = 'Escolha o pagamento e informe o motivo.';
+      return;
+    }
+    const method =
+      reversePaymentMethod instanceof HTMLSelectElement
+        ? reversePaymentMethod.value
+        : 'pix';
+    void api
+      .reversePayment({
+        paymentId: reversePaymentId.value,
+        refundMethod: method === 'cash' ? 'cash' : 'pix',
+        confirmDifferentMethod:
+          reversePaymentDifferent instanceof HTMLInputElement &&
+          reversePaymentDifferent.checked,
+        reason,
+      })
+      .then(() => {
+        reversePaymentId.value = '';
+        if (reversePaymentDifferent instanceof HTMLInputElement) {
+          reversePaymentDifferent.checked = false;
+        }
+        if (reversePaymentReason instanceof HTMLTextAreaElement) {
+          reversePaymentReason.value = '';
+        }
+        return refreshAfterReversal(
+          'Pagamento estornado; as dívidas correspondentes foram recalculadas.',
+        );
+      })
+      .catch((error: unknown) => {
+        reversalsStatus.textContent =
+          error instanceof Error
+            ? error.message.replace(/^[A-Z_]+:\s*/, '')
+            : 'Não foi possível estornar o pagamento.';
+      });
+  });
+
+document
+  .querySelector('#reverse-credit-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!(reverseCreditId instanceof HTMLSelectElement) || !reversalsStatus) {
+      return;
+    }
+    const reason =
+      reverseCreditReason instanceof HTMLTextAreaElement
+        ? reverseCreditReason.value
+        : '';
+    if (!reverseCreditId.value || !reason.trim()) {
+      reversalsStatus.textContent =
+        'Escolha a devolução de crédito e informe o motivo.';
+      return;
+    }
+    const method =
+      reverseCreditMethod instanceof HTMLSelectElement
+        ? reverseCreditMethod.value
+        : 'pix';
+    void api
+      .reverseCreditRefund({
+        creditMovementId: reverseCreditId.value,
+        recoveryMethod: method === 'cash' ? 'cash' : 'pix',
+        confirmDifferentMethod:
+          reverseCreditDifferent instanceof HTMLInputElement &&
+          reverseCreditDifferent.checked,
+        reason,
+      })
+      .then(() => {
+        reverseCreditId.value = '';
+        if (reverseCreditDifferent instanceof HTMLInputElement) {
+          reverseCreditDifferent.checked = false;
+        }
+        if (reverseCreditReason instanceof HTMLTextAreaElement) {
+          reverseCreditReason.value = '';
+        }
+        return refreshAfterReversal(
+          'Devolução de crédito estornada e saldo restaurado.',
+        );
+      })
+      .catch((error: unknown) => {
+        reversalsStatus.textContent =
+          error instanceof Error
+            ? error.message.replace(/^[A-Z_]+:\s*/, '')
+            : 'Não foi possível estornar a devolução de crédito.';
       });
   });
 

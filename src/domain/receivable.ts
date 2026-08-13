@@ -3,6 +3,7 @@ import { parseCents, percentAmount } from './money';
 import { err, ok, type Result } from './result';
 
 export const RECEIVABLE_STATUS_OPEN = 'open';
+export const RECEIVABLE_STATUS_REVERSED = 'reversed';
 export const RECEIVABLE_CHARGE_PRINCIPAL = 'principal';
 export const RECEIVABLE_REASON_SALE = 'sale';
 

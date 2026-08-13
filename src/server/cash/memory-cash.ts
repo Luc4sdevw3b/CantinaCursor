@@ -6,10 +6,12 @@ import {
   CASH_KIND_PAYMENT,
   CASH_KIND_RECEIVED,
   CASH_KIND_REMOVED,
+  CASH_KIND_REVERSAL,
   CASH_REMOVE_NOTE_REQUIRED_ERROR,
   CASH_SOURCE_ADDITION,
   CASH_SOURCE_PAYMENT,
   CASH_SOURCE_REMOVAL,
+  CASH_SOURCE_REVERSAL,
   CASH_SOURCE_SALE,
   CASH_STATUS_CLOSED,
   CASH_STATUS_OPEN,
@@ -286,6 +288,20 @@ export class MemoryCash {
       sourceType: CASH_SOURCE_PAYMENT,
       sourceId: input.paymentId,
       note: '',
+    });
+  }
+
+  recordReversalCash(input: {
+    reversalId: string;
+    amountDeltaCents: number;
+    note: string;
+  }): Result<void> {
+    return this.recordMovement({
+      kind: CASH_KIND_REVERSAL,
+      amountDeltaCents: input.amountDeltaCents,
+      sourceType: CASH_SOURCE_REVERSAL,
+      sourceId: input.reversalId,
+      note: input.note,
     });
   }
 

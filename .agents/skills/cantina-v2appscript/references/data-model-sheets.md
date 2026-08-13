@@ -44,6 +44,8 @@ _inventory_opening_items
 _inventory_movements
 _cash_sessions
 _cash_movements
+_operation_reversals
+_reversal_effects
 _notes
 _note_versions
 _note_mentions
@@ -153,9 +155,17 @@ Saldo = soma dos movimentos. Conta pessoal: `owner_type=student`. Conta de respo
 
 ## Caixa
 
-`_cash_sessions`: id, business_date, status (`open`|`closed`), opening_float_cents, opened_by/at, closed_by/at, expected_close_cents, counted_close_cents, difference_cents, close_note. Troco inicial não é receita. Um caixa por dia civil; fechado não reabre. Caixa antigo aberto bloqueia dinheiro novo, não PIX. Schema version 13 (`013_cash`).
+`_cash_sessions`: id, business_date, status (`open`|`closed`), opening_float_cents, opened_by/at, closed_by/at, expected_close_cents, counted_close_cents, difference_cents, close_note. Troco inicial não é receita. Um caixa por dia civil; fechado não reabre. Caixa antigo aberto bloqueia dinheiro novo, não PIX.
 
-`_cash_movements`: id, cash_session_id, kind, amount_delta_cents, source_type, source_id, created_by, created_at, note. Esperado = troco inicial + soma dos deltas. Kinds: `cash_received`, `change_given`, `cash_added_for_change`, `cash_removed`, `debt_payment_received`, `credit_deposit_received`. Saída não deixa o físico negativo.
+`_cash_movements`: id, cash_session_id, kind, amount_delta_cents, source_type, source_id, created_by, created_at, note. Esperado = troco inicial + soma dos deltas. Kinds: `cash_received`, `change_given`, `cash_added_for_change`, `cash_removed`, `debt_payment_received`, `credit_deposit_received`, `reversal`. Saída não deixa o físico negativo.
+
+## Estornos
+
+`_operation_reversals`: id, operation_type (`sale`|`payment`|`credit_refund`), operation_id, reason, original_methods, refund_method, different_method_confirmed, returned_to_stock, created_by, created_at. A operação original permanece; o estorno é uma linha nova. Schema version 14 (`014_reversals`).
+
+`_reversal_effects`: id, reversal_id, effect_type, entity_type, entity_id, amount_delta_cents, quantity_delta. Effects: `cash_refund`, `pix_refund`, `cash_recovery`, `pix_recovery`, `credit_restore`, `credit_remove`, `debt_cancelled`, `debt_reopened`, `stock_return`.
+
+Venda/pagamento estornados ganham uma linha posterior com o mesmo id e `status=reversed`. Crédito usa movimento compensatório `kind=reversal`. Estoque devolvido usa `kind=sale_return`.
 
 ## Notas
 

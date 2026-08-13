@@ -97,6 +97,10 @@ function runnerWith(
     addCashForChange() {},
     removeCash() {},
     closeCashSession() {},
+    getReversalsSetup() {},
+    reverseSale() {},
+    reversePayment() {},
+    reverseCreditRefund() {},
     ...extra,
   };
   return runner;

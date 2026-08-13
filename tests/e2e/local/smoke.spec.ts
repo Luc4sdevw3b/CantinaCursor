@@ -292,7 +292,9 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click();
     await page.getByRole('button', { name: 'Confirmar venda' }).click();
     await expect(
-      page.getByText('Anônima • Coxinha • R$ 5,50', { exact: true }),
+      page
+        .locator('#sales-list')
+        .getByText('Anônima • Coxinha • R$ 5,50', { exact: true }),
     ).toBeVisible();
     await goToArea(page, 'Estoque');
     await expect(page.getByText('Coxinha • 9')).toBeVisible();
@@ -888,5 +890,82 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     ).toBeVisible();
     await goToArea(page, 'Estoque');
     await expect(page.getByText('Coxinha • 9', { exact: true })).toBeVisible();
+  });
+
+  test('reverses a PIX sale with stock return', async ({ page }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click();
+    await page.getByRole('button', { name: 'Confirmar venda' }).click();
+    await expect(
+      page
+        .locator('#sales-list')
+        .getByText('Anônima • Coxinha • R$ 5,50', { exact: true }),
+    ).toBeVisible();
+    await goToArea(page, 'Estoque');
+    await expect(page.getByText('Coxinha • 9', { exact: true })).toBeVisible();
+    await goToArea(page, 'Estornos');
+    await expect(
+      page.getByRole('heading', { name: 'Estornos completos' }),
+    ).toBeVisible();
+    await page.locator('#reverse-sale-id').selectOption({
+      label: 'Anônima • Coxinha • R$ 5,50',
+    });
+    await page.getByLabel('Sim, devolver ao estoque').check();
+    await page
+      .getByLabel('Motivo do estorno da venda')
+      .fill('Venda lançada em duplicidade');
+    await page
+      .getByRole('button', { name: 'Confirmar estorno da venda' })
+      .click();
+    await expect(
+      page.getByText('Produto retornado ao estoque: +1', { exact: true }),
+    ).toBeVisible();
+    await goToArea(page, 'Estoque');
+    await expect(page.getByText('Coxinha • 10', { exact: true })).toBeVisible();
+  });
+
+  test('reverses a PIX sale without returning stock', async ({ page }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click();
+    await page.getByRole('button', { name: 'Confirmar venda' }).click();
+    await goToArea(page, 'Estornos');
+    await page.locator('#reverse-sale-id').selectOption({
+      label: 'Anônima • Coxinha • R$ 5,50',
+    });
+    await page.getByLabel('Não, manter fora do estoque').check();
+    await page
+      .getByLabel('Motivo do estorno da venda')
+      .fill('Produto não voltou');
+    await page
+      .getByRole('button', { name: 'Confirmar estorno da venda' })
+      .click();
+    await expect(
+      page.getByText(
+        'Venda estornada; original e efeitos permanecem auditáveis.',
+      ),
+    ).toBeVisible();
+    await goToArea(page, 'Estoque');
+    await expect(page.getByText('Coxinha • 9', { exact: true })).toBeVisible();
+  });
+
+  test('hides reversal actions from staff and keeps the audit', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como funcionário' }).click();
+    await goToArea(page, 'Estornos');
+    await expect(
+      page.getByRole('heading', { name: 'Estornos completos' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Confirmar estorno da venda' }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByText(
+        'Funcionários podem consultar a auditoria. Somente a dona pode realizar estornos.',
+      ),
+    ).toBeVisible();
   });
 });

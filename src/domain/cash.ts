@@ -10,10 +10,12 @@ export const CASH_KIND_ADDED = 'cash_added_for_change';
 export const CASH_KIND_REMOVED = 'cash_removed';
 export const CASH_KIND_PAYMENT = 'debt_payment_received';
 export const CASH_KIND_CREDIT_DEPOSIT = 'credit_deposit_received';
+export const CASH_KIND_REVERSAL = 'reversal';
 export const CASH_SOURCE_SALE = 'sale';
 export const CASH_SOURCE_PAYMENT = 'payment';
 export const CASH_SOURCE_ADDITION = 'cash_manual_addition';
 export const CASH_SOURCE_REMOVAL = 'cash_manual_removal';
+export const CASH_SOURCE_REVERSAL = 'operation_reversal';
 
 export const CASH_SESSION_REQUIRED_ERROR = {
   code: 'CASH_SESSION_REQUIRED',
@@ -158,6 +160,12 @@ export function cashMovementSummary(
   }
   if (kind === CASH_KIND_CREDIT_DEPOSIT) {
     return `crédito ${formatBrl(amountDeltaCents)}`;
+  }
+  if (kind === CASH_KIND_REVERSAL) {
+    if (amountDeltaCents < 0) {
+      return `devolução ${formatBrl(-amountDeltaCents)}`;
+    }
+    return `recuperação ${formatBrl(amountDeltaCents)}`;
   }
   return formatBrl(Math.abs(amountDeltaCents));
 }

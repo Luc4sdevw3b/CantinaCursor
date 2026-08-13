@@ -37,6 +37,9 @@ import {
   CASH_MIGRATION_ID,
   CASH_SESSIONS_SHEET,
   CASH_MOVEMENTS_SHEET,
+  REVERSALS_MIGRATION_ID,
+  OPERATION_REVERSALS_SHEET,
+  REVERSAL_EFFECTS_SHEET,
   SCHOOL_YEARS_SHEET,
   SESSIONS_SHEET,
   SETTINGS_SHEET,
@@ -174,6 +177,15 @@ export const CASH_MIGRATION: Migration = {
   ]),
 };
 
+export const REVERSALS_MIGRATION: Migration = {
+  id: REVERSALS_MIGRATION_ID,
+  description: 'Cria estornos de operações e efeitos auditáveis',
+  checksum: checksumHeaders([
+    ...OPERATION_REVERSALS_SHEET.headers,
+    ...REVERSAL_EFFECTS_SHEET.headers,
+  ]),
+};
+
 export const MIGRATION_CATALOG: readonly Migration[] = [
   FOUNDATION_MIGRATION,
   OPERATION_REQUESTS_MIGRATION,
@@ -188,6 +200,7 @@ export const MIGRATION_CATALOG: readonly Migration[] = [
   PAYMENTS_MIGRATION,
   CREDITS_MIGRATION,
   CASH_MIGRATION,
+  REVERSALS_MIGRATION,
 ];
 
 export function pendingMigrations(

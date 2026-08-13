@@ -3,9 +3,11 @@ import {
   CREDIT_INSUFFICIENT_ERROR,
   CREDIT_KIND_DEPOSIT,
   CREDIT_KIND_REFUND,
+  CREDIT_KIND_REVERSAL,
   CREDIT_KIND_SALE,
   CREDIT_OWNER_GUARDIAN,
   CREDIT_OWNER_STUDENT,
+  CREDIT_SOURCE_OPERATION_REVERSAL,
   CREDIT_SOURCE_PAYMENT,
   CREDIT_SOURCE_REFUND,
   CREDIT_SOURCE_SALE,
@@ -20,17 +22,22 @@ import {
   formatCivilDisplay,
   todayCivilSaoPaulo,
 } from '../../domain/civil-date';
-import { INVENTORY_SALE_KIND } from '../../domain/inventory';
+import {
+  INVENTORY_SALE_KIND,
+  INVENTORY_SALE_RETURN_KIND,
+} from '../../domain/inventory';
 import { formatBrl } from '../../domain/money';
 import { resolveSaleCharge } from '../../domain/sibling-authorization';
 import {
   familyPaymentSummaryLabel,
   parsePaymentMethod,
   PAYMENT_METHOD_CASH,
+  PAYMENT_METHOD_PIX,
   PAYMENT_CHILD_NOT_LINKED_ERROR,
   PAYMENT_GUARDIAN_REQUIRED_ERROR,
   PAYMENT_MODE_OLDEST_FIRST,
   PAYMENT_STATUS_COMPLETED,
+  PAYMENT_STATUS_REVERSED,
   PAYMENT_STUDENT_REQUIRED_ERROR,
   paymentSummaryLabel,
   planFamilyPayment,
@@ -49,6 +56,7 @@ import {
   RECEIVABLE_REASON_SALE,
   RECEIVABLE_SETTLED_ERROR,
   RECEIVABLE_STATUS_OPEN,
+  RECEIVABLE_STATUS_REVERSED,
   receivableSummaryLabel,
   type FiadoInstallmentInput,
 } from '../../domain/receivable';
@@ -59,6 +67,7 @@ import {
   PAYMENT_FIADO,
   SALE_ITEMS_REQUIRED_ERROR,
   SALE_STATUS_PAID,
+  SALE_STATUS_REVERSED,
   SETTLEMENT_CHANGE,
   SETTLEMENT_CASH,
   SETTLEMENT_CREDIT,
@@ -76,6 +85,47 @@ import type { MemoryCatalog } from '../products/memory-catalog';
 import type { MemoryStock } from '../inventory/memory-stock';
 import type { MemoryRoster } from '../students/memory-roster';
 import type { MemoryCash } from '../cash/memory-cash';
+import {
+  CREDIT_REFUND_ALREADY_REVERSED_ERROR,
+  CREDIT_REFUND_NOT_FOUND_ERROR,
+  PAYMENT_ALREADY_REVERSED_ERROR,
+  PAYMENT_NOT_FOUND_ERROR,
+  REVERSAL_CREDIT_USED_ERROR,
+  REVERSAL_CREDIT_WITH_DEBT_ERROR,
+  REVERSAL_DIFFERENT_METHOD_ERROR,
+  REVERSAL_EFFECT_CASH_RECOVERY,
+  REVERSAL_EFFECT_CASH_REFUND,
+  REVERSAL_EFFECT_CREDIT_REMOVE,
+  REVERSAL_EFFECT_CREDIT_RESTORE,
+  REVERSAL_EFFECT_DEBT_CANCELLED,
+  REVERSAL_EFFECT_DEBT_REOPENED,
+  REVERSAL_EFFECT_PIX_RECOVERY,
+  REVERSAL_EFFECT_PIX_REFUND,
+  REVERSAL_EFFECT_STOCK_RETURN,
+  REVERSAL_NEGATIVE_CREDIT_ERROR,
+  REVERSAL_NO_EXTERNAL_REFUND_ERROR,
+  REVERSAL_OPERATION_CREDIT_REFUND,
+  REVERSAL_OPERATION_PAYMENT,
+  REVERSAL_OPERATION_SALE,
+  REVERSAL_PAYMENTS_FIRST_ERROR,
+  REVERSAL_REFUND_METHOD_REQUIRED_ERROR,
+  REVERSAL_STOCK_DAY_REQUIRED_ERROR,
+  SALE_ALREADY_REVERSED_ERROR,
+  SALE_NOT_FOUND_ERROR,
+  externalAmountFromSettlements,
+  originalMethodsFromSettlements,
+  parseDifferentMethodConfirmed,
+  parseNullableReversalRefundMethod,
+  parseReturnItemsToStock,
+  parseReversalReason,
+  parseReversalRefundMethod,
+  paymentDestinationLabel,
+  requiresDifferentMethodConfirmation,
+  reversalEffectSummary,
+  type ReversalEffectType,
+  type ReversalOperationType,
+  type ReversalRefundMethod,
+} from '../../domain/reversal';
 
 const LOCAL_ACTOR_ID = 'aaaaaaaa-bbbb-4ccc-8ddd-000000000099';
 
@@ -97,7 +147,7 @@ export interface SaleView {
   id: string;
   consumerStudentId: string | null;
   consumerLabel: string;
-  status: typeof SALE_STATUS_PAID;
+  status: typeof SALE_STATUS_PAID | typeof SALE_STATUS_REVERSED;
   paymentKind: PaymentKind;
   grossTotalCents: number;
   discountTotalCents: number;
@@ -136,9 +186,67 @@ export interface PaymentView {
   method: PaymentMethod;
   amountCents: number;
   amountLabel: string;
-  status: typeof PAYMENT_STATUS_COMPLETED;
+  status: typeof PAYMENT_STATUS_COMPLETED | typeof PAYMENT_STATUS_REVERSED;
   summaryLabel: string;
   createdAt: string;
+}
+
+export interface ReversibleSaleView {
+  id: string;
+  displayName: string;
+  amountCents: number;
+  externalAmountCents: number;
+  originalMethods: ReversalRefundMethod[];
+  hasTrackedItems: boolean;
+  status: typeof SALE_STATUS_PAID | typeof SALE_STATUS_REVERSED;
+  createdAt: string;
+}
+
+export interface ReversiblePaymentView {
+  id: string;
+  payerName: string;
+  amountCents: number;
+  method: PaymentMethod;
+  destinationLabel: string;
+  status: typeof PAYMENT_STATUS_COMPLETED | typeof PAYMENT_STATUS_REVERSED;
+  createdAt: string;
+}
+
+export interface ReversibleCreditRefundView {
+  id: string;
+  ownerName: string;
+  amountCents: number;
+  method: ReversalRefundMethod;
+  ownerType: typeof CREDIT_OWNER_STUDENT | typeof CREDIT_OWNER_GUARDIAN;
+  reversed: boolean;
+  createdAt: string;
+}
+
+export interface ReversalEffectView {
+  type: ReversalEffectType;
+  amountDeltaCents: number | null;
+  quantityDelta: number | null;
+  summaryLabel: string;
+}
+
+export interface ReversalRecordView {
+  id: string;
+  operationType: ReversalOperationType;
+  operationId: string;
+  reason: string;
+  refundMethod: ReversalRefundMethod | null;
+  differentMethodConfirmed: boolean;
+  returnedToStock: boolean | null;
+  createdByName: string;
+  createdAt: string;
+  effects: ReversalEffectView[];
+}
+
+export interface ReversalsSetupView {
+  sales: ReversibleSaleView[];
+  payments: ReversiblePaymentView[];
+  creditRefunds: ReversibleCreditRefundView[];
+  recentReversals: ReversalRecordView[];
 }
 
 export interface CreditView {
@@ -235,7 +343,7 @@ interface PaymentRecord {
   payer_student_id: string;
   method: PaymentMethod;
   amount_received_cents: string;
-  status: typeof PAYMENT_STATUS_COMPLETED;
+  status: string;
   created_by: string;
   created_at: string;
   note: string;
@@ -291,6 +399,29 @@ interface DueDateHistoryRecord {
   changed_at: string;
 }
 
+interface OperationReversalRecord {
+  id: string;
+  operation_type: ReversalOperationType;
+  operation_id: string;
+  reason: string;
+  original_methods: string;
+  refund_method: string;
+  different_method_confirmed: string;
+  returned_to_stock: string;
+  created_by: string;
+  created_at: string;
+}
+
+interface ReversalEffectRecord {
+  id: string;
+  reversal_id: string;
+  effect_type: ReversalEffectType;
+  entity_type: string;
+  entity_id: string;
+  amount_delta_cents: string;
+  quantity_delta: string;
+}
+
 function fail(error: AppError): never {
   throw new Error(`${error.code}: ${error.message}`);
 }
@@ -300,6 +431,14 @@ function unwrap<T>(result: Result<T>): T {
     fail(result.error);
   }
   return result.data;
+}
+
+function latestById<T extends { id: string }>(records: readonly T[]): T[] {
+  const latest = new Map<string, T>();
+  for (const record of records) {
+    latest.set(record.id, record);
+  }
+  return [...latest.values()];
 }
 
 export class MemorySales {
@@ -315,6 +454,8 @@ export class MemorySales {
   private creditMovements: CreditMovementRecord[] = [];
   private paymentCreditAllocations: PaymentCreditAllocationRecord[] = [];
   private dueDateHistory: DueDateHistoryRecord[] = [];
+  private operationReversals: OperationReversalRecord[] = [];
+  private reversalEffects: ReversalEffectRecord[] = [];
 
   constructor(
     private readonly catalog: MemoryCatalog,
@@ -340,7 +481,7 @@ export class MemorySales {
 
   listSales(): Result<SaleView[]> {
     return ok(
-      this.sales
+      latestById(this.sales)
         .slice()
         .reverse()
         .map((sale) => this.toSale(sale)),
@@ -352,7 +493,7 @@ export class MemorySales {
     const overdue: ReceivableView[] = [];
     const dueToday: ReceivableView[] = [];
     const upcoming: ReceivableView[] = [];
-    for (const receivable of this.receivables) {
+    for (const receivable of latestById(this.receivables)) {
       if (this.remainingCents(receivable.id) <= 0) {
         continue;
       }
@@ -381,7 +522,7 @@ export class MemorySales {
 
   listPayments(): Result<PaymentView[]> {
     return ok(
-      this.payments
+      latestById(this.payments)
         .slice()
         .reverse()
         .map((payment) => this.toPayment(payment)),
@@ -709,7 +850,7 @@ export class MemorySales {
       kind: CREDIT_KIND_REFUND,
       amount_delta_cents: String(-Number(planned.data.amount_cents)),
       source_type: CREDIT_SOURCE_REFUND,
-      source_id: '',
+      source_id: this.createId(),
       student_id: student.data.id,
       created_by: LOCAL_ACTOR_ID,
       created_at: this.nowIso(),
@@ -846,13 +987,515 @@ export class MemorySales {
       kind: CREDIT_KIND_REFUND,
       amount_delta_cents: String(-Number(planned.data.amount_cents)),
       source_type: CREDIT_SOURCE_REFUND,
-      source_id: '',
+      source_id: this.createId(),
       student_id: '',
       created_by: LOCAL_ACTOR_ID,
       created_at: this.nowIso(),
       note: planned.data.note,
     });
     return ok(this.toCredit(account));
+  }
+
+  getReversalsSetup(): Result<ReversalsSetupView> {
+    return ok(this.toReversalsSetup());
+  }
+
+  reverseSale(input: {
+    saleId?: string | null;
+    refundMethod?: unknown;
+    confirmDifferentMethod?: unknown;
+    returnItemsToStock?: unknown;
+    reason?: unknown;
+  }): Result<ReversalsSetupView> {
+    const sale = latestById(this.sales).find(
+      (item) => item.id === input.saleId,
+    );
+    if (!sale) {
+      return err(SALE_NOT_FOUND_ERROR);
+    }
+    if (sale.status === SALE_STATUS_REVERSED) {
+      return err(SALE_ALREADY_REVERSED_ERROR);
+    }
+    const reason = parseReversalReason(input.reason);
+    if (!reason.ok) {
+      return err(reason.error);
+    }
+    const returnItems = parseReturnItemsToStock(input.returnItemsToStock);
+    if (!returnItems.ok) {
+      return err(returnItems.error);
+    }
+    const refundMethod = parseNullableReversalRefundMethod(input.refundMethod);
+    if (!refundMethod.ok) {
+      return err(refundMethod.error);
+    }
+    const confirmed = parseDifferentMethodConfirmed(
+      input.confirmDifferentMethod,
+    );
+    if (!confirmed.ok) {
+      return err(confirmed.error);
+    }
+    const settlementRows = this.settlements.filter(
+      (item) => item.sale_id === sale.id,
+    );
+    const settlements = settlementRows.map((item) => ({
+      kind: item.kind,
+      amountCents: Number(item.amount_cents),
+    }));
+    const originalMethods = originalMethodsFromSettlements(settlements);
+    const externalAmountCents = externalAmountFromSettlements(settlements);
+    if (externalAmountCents > 0 && refundMethod.data === null) {
+      return err(REVERSAL_REFUND_METHOD_REQUIRED_ERROR);
+    }
+    if (externalAmountCents === 0 && refundMethod.data !== null) {
+      return err(REVERSAL_NO_EXTERNAL_REFUND_ERROR);
+    }
+    const different = requiresDifferentMethodConfirmation({
+      originalMethods,
+      refundMethod: refundMethod.data,
+      externalAmountCents,
+    });
+    if (different && !confirmed.data) {
+      return err(REVERSAL_DIFFERENT_METHOD_ERROR);
+    }
+    const saleReceivables = latestById(this.receivables).filter(
+      (item) => item.source_sale_id === sale.id,
+    );
+    for (const receivable of saleReceivables) {
+      if (this.paidCents(receivable.id) > 0) {
+        return err(REVERSAL_PAYMENTS_FIRST_ERROR);
+      }
+    }
+    const trackedReturns = this.trackedReturnQuantities(sale.id);
+    if (returnItems.data && trackedReturns.size > 0) {
+      const sample = [...trackedReturns.keys()][0];
+      if (!sample) {
+        return err(REVERSAL_STOCK_DAY_REQUIRED_ERROR);
+      }
+      const available = this.stock.availableQuantity(sample);
+      if (!available.ok) {
+        return err(REVERSAL_STOCK_DAY_REQUIRED_ERROR);
+      }
+    }
+    if (refundMethod.data === PAYMENT_METHOD_CASH && externalAmountCents > 0) {
+      const allowed = this.cash.assertCanMove(-externalAmountCents);
+      if (!allowed.ok) {
+        return err(allowed.error);
+      }
+    }
+    const creditMovements = this.creditMovements.filter(
+      (item) =>
+        item.source_type === CREDIT_SOURCE_SALE && item.source_id === sale.id,
+    );
+    for (const movement of creditMovements) {
+      const account = this.creditAccounts.find(
+        (item) => item.id === movement.credit_account_id,
+      );
+      if (
+        !account ||
+        account.owner_type !== CREDIT_OWNER_STUDENT ||
+        !account.owner_student_id
+      ) {
+        continue;
+      }
+      const future =
+        this.creditBalanceCents(account.id) +
+        Math.abs(Number(movement.amount_delta_cents));
+      if (future < 0) {
+        return err(REVERSAL_NEGATIVE_CREDIT_ERROR);
+      }
+      if (future > 0) {
+        const allowed = this.assertStudentCanReceiveCredit(
+          account.owner_student_id,
+          sale.id,
+        );
+        if (!allowed.ok) {
+          return err(allowed.error);
+        }
+      }
+    }
+    const now = this.nowIso();
+    const reversalId = this.createId();
+    this.operationReversals.push({
+      id: reversalId,
+      operation_type: REVERSAL_OPERATION_SALE,
+      operation_id: sale.id,
+      reason: reason.data,
+      original_methods: originalMethods.join(','),
+      refund_method: refundMethod.data ?? '',
+      different_method_confirmed: different ? 'true' : 'false',
+      returned_to_stock: returnItems.data ? 'true' : 'false',
+      created_by: LOCAL_ACTOR_ID,
+      created_at: now,
+    });
+    this.sales.push({
+      ...sale,
+      status: SALE_STATUS_REVERSED,
+      reversal_id: reversalId,
+    });
+    for (const receivable of saleReceivables) {
+      this.receivables.push({
+        ...receivable,
+        status: RECEIVABLE_STATUS_REVERSED,
+      });
+      this.addEffect({
+        reversalId,
+        type: REVERSAL_EFFECT_DEBT_CANCELLED,
+        entityType: 'receivable',
+        entityId: receivable.id,
+        amountDeltaCents: -this.chargeCents(receivable.id),
+        quantityDelta: null,
+      });
+    }
+    for (const movement of creditMovements) {
+      const restored = Math.abs(Number(movement.amount_delta_cents));
+      this.creditMovements.push({
+        credit_account_id: movement.credit_account_id,
+        kind: CREDIT_KIND_REVERSAL,
+        amount_delta_cents: String(restored),
+        source_type: CREDIT_SOURCE_OPERATION_REVERSAL,
+        source_id: reversalId,
+        student_id: movement.student_id,
+        created_by: LOCAL_ACTOR_ID,
+        created_at: now,
+        note: reason.data,
+      });
+      this.addEffect({
+        reversalId,
+        type: REVERSAL_EFFECT_CREDIT_RESTORE,
+        entityType: 'credit_account',
+        entityId: movement.credit_account_id,
+        amountDeltaCents: restored,
+        quantityDelta: null,
+      });
+    }
+    if (externalAmountCents > 0 && refundMethod.data) {
+      const outgoing = this.recordOutgoingRefund({
+        reversalId,
+        amountCents: externalAmountCents,
+        method: refundMethod.data,
+        reason: reason.data,
+      });
+      if (!outgoing.ok) {
+        return err(outgoing.error);
+      }
+    }
+    if (returnItems.data) {
+      for (const [productId, quantity] of trackedReturns) {
+        const moved = this.stock.recordSourceMovement({
+          productId,
+          quantityDelta: quantity,
+          kind: INVENTORY_SALE_RETURN_KIND,
+          sourceType: CREDIT_SOURCE_OPERATION_REVERSAL,
+          sourceId: reversalId,
+          reason: reason.data,
+        });
+        if (!moved.ok) {
+          return err(moved.error);
+        }
+        this.addEffect({
+          reversalId,
+          type: REVERSAL_EFFECT_STOCK_RETURN,
+          entityType: 'product',
+          entityId: productId,
+          amountDeltaCents: null,
+          quantityDelta: quantity,
+        });
+      }
+    }
+    return ok(this.toReversalsSetup());
+  }
+
+  reversePayment(input: {
+    paymentId?: string | null;
+    refundMethod?: unknown;
+    confirmDifferentMethod?: unknown;
+    reason?: unknown;
+  }): Result<ReversalsSetupView> {
+    const payment = latestById(this.payments).find(
+      (item) => item.id === input.paymentId,
+    );
+    if (!payment) {
+      return err(PAYMENT_NOT_FOUND_ERROR);
+    }
+    if (payment.status === PAYMENT_STATUS_REVERSED) {
+      return err(PAYMENT_ALREADY_REVERSED_ERROR);
+    }
+    const reason = parseReversalReason(input.reason);
+    if (!reason.ok) {
+      return err(reason.error);
+    }
+    const refundMethod = parseReversalRefundMethod(input.refundMethod);
+    if (!refundMethod.ok) {
+      return err(refundMethod.error);
+    }
+    const confirmed = parseDifferentMethodConfirmed(
+      input.confirmDifferentMethod,
+    );
+    if (!confirmed.ok) {
+      return err(confirmed.error);
+    }
+    const different = payment.method !== refundMethod.data;
+    if (different && !confirmed.data) {
+      return err(REVERSAL_DIFFERENT_METHOD_ERROR);
+    }
+    const deposits = this.creditMovements.filter(
+      (item) =>
+        item.source_type === CREDIT_SOURCE_PAYMENT &&
+        item.source_id === payment.id &&
+        item.kind === CREDIT_KIND_DEPOSIT,
+    );
+    for (const movement of deposits) {
+      const next =
+        this.creditBalanceCents(movement.credit_account_id) -
+        Number(movement.amount_delta_cents);
+      if (next < 0) {
+        return err(REVERSAL_CREDIT_USED_ERROR);
+      }
+      const account = this.creditAccounts.find(
+        (item) => item.id === movement.credit_account_id,
+      );
+      if (
+        next > 0 &&
+        account?.owner_type === CREDIT_OWNER_STUDENT &&
+        account.owner_student_id
+      ) {
+        const allowed = this.assertStudentCanReceiveCredit(
+          account.owner_student_id,
+          undefined,
+          payment.id,
+        );
+        if (!allowed.ok) {
+          return err(allowed.error);
+        }
+      }
+    }
+    if (payment.payer_student_id) {
+      const account = this.findPersonalCreditAccount(payment.payer_student_id);
+      const depositForPayer = deposits
+        .filter((item) => item.student_id === payment.payer_student_id)
+        .reduce((total, item) => total + Number(item.amount_delta_cents), 0);
+      const future = account
+        ? this.creditBalanceCents(account.id) - depositForPayer
+        : 0;
+      if (future > 0) {
+        const allowed = this.assertStudentCanReceiveCredit(
+          payment.payer_student_id,
+          undefined,
+          payment.id,
+        );
+        if (!allowed.ok) {
+          return err(allowed.error);
+        }
+      }
+    }
+    const amountCents = Number(payment.amount_received_cents);
+    if (refundMethod.data === PAYMENT_METHOD_CASH) {
+      const allowed = this.cash.assertCanMove(-amountCents);
+      if (!allowed.ok) {
+        return err(allowed.error);
+      }
+    }
+    const now = this.nowIso();
+    const reversalId = this.createId();
+    this.operationReversals.push({
+      id: reversalId,
+      operation_type: REVERSAL_OPERATION_PAYMENT,
+      operation_id: payment.id,
+      reason: reason.data,
+      original_methods: payment.method,
+      refund_method: refundMethod.data,
+      different_method_confirmed: different ? 'true' : 'false',
+      returned_to_stock: '',
+      created_by: LOCAL_ACTOR_ID,
+      created_at: now,
+    });
+    this.payments.push({
+      ...payment,
+      status: PAYMENT_STATUS_REVERSED,
+    });
+    for (const movement of deposits) {
+      this.creditMovements.push({
+        credit_account_id: movement.credit_account_id,
+        kind: CREDIT_KIND_REVERSAL,
+        amount_delta_cents: String(-Number(movement.amount_delta_cents)),
+        source_type: CREDIT_SOURCE_OPERATION_REVERSAL,
+        source_id: reversalId,
+        student_id: movement.student_id,
+        created_by: LOCAL_ACTOR_ID,
+        created_at: now,
+        note: reason.data,
+      });
+      this.addEffect({
+        reversalId,
+        type:
+          Number(movement.amount_delta_cents) > 0
+            ? REVERSAL_EFFECT_CREDIT_REMOVE
+            : REVERSAL_EFFECT_CREDIT_RESTORE,
+        entityType: 'credit_account',
+        entityId: movement.credit_account_id,
+        amountDeltaCents: -Number(movement.amount_delta_cents),
+        quantityDelta: null,
+      });
+    }
+    const seenReceivables = new Set<string>();
+    for (const allocation of this.allocations.filter(
+      (item) => item.payment_id === payment.id,
+    )) {
+      if (seenReceivables.has(allocation.receivable_id)) {
+        continue;
+      }
+      seenReceivables.add(allocation.receivable_id);
+      const receivable = latestById(this.receivables).find(
+        (item) => item.id === allocation.receivable_id,
+      );
+      if (!receivable || receivable.status === RECEIVABLE_STATUS_REVERSED) {
+        continue;
+      }
+      this.addEffect({
+        reversalId,
+        type: REVERSAL_EFFECT_DEBT_REOPENED,
+        entityType: 'receivable',
+        entityId: allocation.receivable_id,
+        amountDeltaCents: Number(allocation.amount_cents),
+        quantityDelta: null,
+      });
+    }
+    const outgoing = this.recordOutgoingRefund({
+      reversalId,
+      amountCents,
+      method: refundMethod.data,
+      reason: reason.data,
+    });
+    if (!outgoing.ok) {
+      return err(outgoing.error);
+    }
+    return ok(this.toReversalsSetup());
+  }
+
+  reverseCreditRefund(input: {
+    creditMovementId?: string | null;
+    recoveryMethod?: unknown;
+    confirmDifferentMethod?: unknown;
+    reason?: unknown;
+  }): Result<ReversalsSetupView> {
+    const refund = this.creditMovements.find(
+      (item) =>
+        item.kind === CREDIT_KIND_REFUND &&
+        item.source_id === input.creditMovementId,
+    );
+    if (!refund || !refund.source_id) {
+      return err(CREDIT_REFUND_NOT_FOUND_ERROR);
+    }
+    if (
+      this.operationReversals.some(
+        (item) =>
+          item.operation_type === REVERSAL_OPERATION_CREDIT_REFUND &&
+          item.operation_id === refund.source_id,
+      )
+    ) {
+      return err(CREDIT_REFUND_ALREADY_REVERSED_ERROR);
+    }
+    const reason = parseReversalReason(input.reason);
+    if (!reason.ok) {
+      return err(reason.error);
+    }
+    const recoveryMethod = parseReversalRefundMethod(input.recoveryMethod);
+    if (!recoveryMethod.ok) {
+      return err(recoveryMethod.error);
+    }
+    const confirmed = parseDifferentMethodConfirmed(
+      input.confirmDifferentMethod,
+    );
+    if (!confirmed.ok) {
+      return err(confirmed.error);
+    }
+    const originalMethod = PAYMENT_METHOD_PIX;
+    const different = originalMethod !== recoveryMethod.data;
+    if (different && !confirmed.data) {
+      return err(REVERSAL_DIFFERENT_METHOD_ERROR);
+    }
+    const amountCents = Math.abs(Number(refund.amount_delta_cents));
+    if (recoveryMethod.data === PAYMENT_METHOD_CASH) {
+      const allowed = this.cash.assertCanMove(amountCents);
+      if (!allowed.ok) {
+        return err(allowed.error);
+      }
+    }
+    const account = this.creditAccounts.find(
+      (item) => item.id === refund.credit_account_id,
+    );
+    if (
+      account?.owner_type === CREDIT_OWNER_STUDENT &&
+      account.owner_student_id
+    ) {
+      const debtCheck = this.assertStudentCanReceiveCredit(
+        account.owner_student_id,
+      );
+      if (!debtCheck.ok) {
+        return err(debtCheck.error);
+      }
+    }
+    const now = this.nowIso();
+    const reversalId = this.createId();
+    this.operationReversals.push({
+      id: reversalId,
+      operation_type: REVERSAL_OPERATION_CREDIT_REFUND,
+      operation_id: refund.source_id,
+      reason: reason.data,
+      original_methods: originalMethod,
+      refund_method: recoveryMethod.data,
+      different_method_confirmed: different ? 'true' : 'false',
+      returned_to_stock: '',
+      created_by: LOCAL_ACTOR_ID,
+      created_at: now,
+    });
+    this.creditMovements.push({
+      credit_account_id: refund.credit_account_id,
+      kind: CREDIT_KIND_REVERSAL,
+      amount_delta_cents: String(amountCents),
+      source_type: CREDIT_SOURCE_OPERATION_REVERSAL,
+      source_id: reversalId,
+      student_id: refund.student_id,
+      created_by: LOCAL_ACTOR_ID,
+      created_at: now,
+      note: reason.data,
+    });
+    this.addEffect({
+      reversalId,
+      type: REVERSAL_EFFECT_CREDIT_RESTORE,
+      entityType: 'credit_account',
+      entityId: refund.credit_account_id,
+      amountDeltaCents: amountCents,
+      quantityDelta: null,
+    });
+    if (recoveryMethod.data === PAYMENT_METHOD_CASH) {
+      const recorded = this.cash.recordReversalCash({
+        reversalId,
+        amountDeltaCents: amountCents,
+        note: reason.data,
+      });
+      if (!recorded.ok) {
+        return err(recorded.error);
+      }
+      this.addEffect({
+        reversalId,
+        type: REVERSAL_EFFECT_CASH_RECOVERY,
+        entityType: 'credit_movement',
+        entityId: refund.source_id,
+        amountDeltaCents: amountCents,
+        quantityDelta: null,
+      });
+    } else {
+      this.addEffect({
+        reversalId,
+        type: REVERSAL_EFFECT_PIX_RECOVERY,
+        entityType: 'credit_movement',
+        entityId: refund.source_id,
+        amountDeltaCents: amountCents,
+        quantityDelta: null,
+      });
+    }
+    return ok(this.toReversalsSetup());
   }
 
   addReceivableInterest(input: {
@@ -1209,14 +1852,296 @@ export class MemorySales {
       .map((item) => item.due_date);
   }
 
-  private remainingCents(receivableId: string): number {
-    const charged = this.charges
-      .filter((item) => item.receivable_id === receivableId)
-      .reduce((total, item) => total + Number(item.amount_cents), 0);
+  private remainingCents(
+    receivableId: string,
+    ignorePaymentId?: string,
+  ): number {
+    const receivable = latestById(this.receivables).find(
+      (item) => item.id === receivableId,
+    );
+    if (!receivable || receivable.status === RECEIVABLE_STATUS_REVERSED) {
+      return 0;
+    }
+    const charged = this.chargeCents(receivableId);
+    const reversedPaymentIds = new Set(
+      latestById(this.payments)
+        .filter((item) => item.status === PAYMENT_STATUS_REVERSED)
+        .map((item) => item.id),
+    );
+    if (ignorePaymentId) {
+      reversedPaymentIds.add(ignorePaymentId);
+    }
     const allocated = this.allocations
-      .filter((item) => item.receivable_id === receivableId)
+      .filter(
+        (item) =>
+          item.receivable_id === receivableId &&
+          !reversedPaymentIds.has(item.payment_id),
+      )
       .reduce((total, item) => total + Number(item.amount_cents), 0);
     return charged - allocated;
+  }
+
+  private chargeCents(receivableId: string): number {
+    return this.charges
+      .filter((item) => item.receivable_id === receivableId)
+      .reduce((total, item) => total + Number(item.amount_cents), 0);
+  }
+
+  private paidCents(receivableId: string): number {
+    return this.chargeCents(receivableId) - this.remainingCents(receivableId);
+  }
+
+  private trackedReturnQuantities(saleId: string): Map<string, number> {
+    const products = unwrap(
+      this.catalog.listProducts({ includeInactive: true }),
+    );
+    const quantities = new Map<string, number>();
+    for (const item of this.items.filter((row) => row.sale_id === saleId)) {
+      if (!item.product_id) {
+        continue;
+      }
+      const product = products.find((entry) => entry.id === item.product_id);
+      if (!product?.stockTracked) {
+        continue;
+      }
+      quantities.set(
+        item.product_id,
+        (quantities.get(item.product_id) ?? 0) + Number(item.quantity),
+      );
+    }
+    return quantities;
+  }
+
+  private addEffect(input: {
+    reversalId: string;
+    type: ReversalEffectType;
+    entityType: string;
+    entityId: string;
+    amountDeltaCents: number | null;
+    quantityDelta: number | null;
+  }): void {
+    this.reversalEffects.push({
+      id: this.createId(),
+      reversal_id: input.reversalId,
+      effect_type: input.type,
+      entity_type: input.entityType,
+      entity_id: input.entityId,
+      amount_delta_cents:
+        input.amountDeltaCents === null ? '' : String(input.amountDeltaCents),
+      quantity_delta:
+        input.quantityDelta === null ? '' : String(input.quantityDelta),
+    });
+  }
+
+  private recordOutgoingRefund(input: {
+    reversalId: string;
+    amountCents: number;
+    method: ReversalRefundMethod;
+    reason: string;
+  }): Result<void> {
+    if (input.method === PAYMENT_METHOD_CASH) {
+      const recorded = this.cash.recordReversalCash({
+        reversalId: input.reversalId,
+        amountDeltaCents: -input.amountCents,
+        note: input.reason,
+      });
+      if (!recorded.ok) {
+        return err(recorded.error);
+      }
+      this.addEffect({
+        reversalId: input.reversalId,
+        type: REVERSAL_EFFECT_CASH_REFUND,
+        entityType: 'operation_reversal',
+        entityId: input.reversalId,
+        amountDeltaCents: -input.amountCents,
+        quantityDelta: null,
+      });
+      return ok(undefined);
+    }
+    this.addEffect({
+      reversalId: input.reversalId,
+      type: REVERSAL_EFFECT_PIX_REFUND,
+      entityType: 'operation_reversal',
+      entityId: input.reversalId,
+      amountDeltaCents: -input.amountCents,
+      quantityDelta: null,
+    });
+    return ok(undefined);
+  }
+
+  private studentRemainingDebt(
+    studentId: string,
+    exceptSaleId?: string,
+    ignorePaymentId?: string,
+  ): number {
+    return latestById(this.receivables)
+      .filter(
+        (item) =>
+          item.charged_student_id === studentId &&
+          item.source_sale_id !== exceptSaleId,
+      )
+      .reduce(
+        (total, item) => total + this.remainingCents(item.id, ignorePaymentId),
+        0,
+      );
+  }
+
+  private assertStudentCanReceiveCredit(
+    studentId: string,
+    exceptSaleId?: string,
+    ignorePaymentId?: string,
+  ): Result<void> {
+    if (
+      this.studentRemainingDebt(studentId, exceptSaleId, ignorePaymentId) > 0
+    ) {
+      return err(REVERSAL_CREDIT_WITH_DEBT_ERROR);
+    }
+    return ok(undefined);
+  }
+
+  private toReversalsSetup(): ReversalsSetupView {
+    const products = unwrap(
+      this.catalog.listProducts({ includeInactive: true }),
+    );
+    const reversedRefundIds = new Set(
+      this.operationReversals
+        .filter(
+          (item) => item.operation_type === REVERSAL_OPERATION_CREDIT_REFUND,
+        )
+        .map((item) => item.operation_id),
+    );
+    return {
+      sales: latestById(this.sales)
+        .slice()
+        .reverse()
+        .map((sale) => {
+          const view = this.toSale(sale);
+          const settlements = view.settlements.map((item) => ({
+            kind: item.kind,
+            amountCents: item.amountCents,
+          }));
+          return {
+            id: sale.id,
+            displayName: `${view.consumerLabel} • ${view.items.map((item) => item.description).join(', ')}`,
+            amountCents: view.netTotalCents,
+            externalAmountCents: externalAmountFromSettlements(settlements),
+            originalMethods: originalMethodsFromSettlements(settlements),
+            hasTrackedItems: this.items.some(
+              (item) =>
+                item.sale_id === sale.id &&
+                Boolean(
+                  products.find((product) => product.id === item.product_id)
+                    ?.stockTracked,
+                ),
+            ),
+            status: view.status,
+            createdAt: sale.created_at,
+          };
+        }),
+      payments: latestById(this.payments)
+        .slice()
+        .reverse()
+        .map((payment) => {
+          const debtCents = this.allocations
+            .filter((item) => item.payment_id === payment.id)
+            .reduce((total, item) => total + Number(item.amount_cents), 0);
+          const creditCents = this.paymentCreditAllocations
+            .filter((item) => item.payment_id === payment.id)
+            .reduce((total, item) => total + Number(item.amount_cents), 0);
+          return {
+            id: payment.id,
+            payerName: payment.payer_guardian_id
+              ? this.guardianLabel(payment.payer_guardian_id)
+              : this.studentLabel(payment.payer_student_id),
+            amountCents: Number(payment.amount_received_cents),
+            method: payment.method,
+            destinationLabel: paymentDestinationLabel({
+              debtCents,
+              creditCents,
+            }),
+            status:
+              payment.status === PAYMENT_STATUS_REVERSED
+                ? PAYMENT_STATUS_REVERSED
+                : PAYMENT_STATUS_COMPLETED,
+            createdAt: payment.created_at,
+          };
+        }),
+      creditRefunds: this.creditMovements
+        .filter(
+          (item) => item.kind === CREDIT_KIND_REFUND && item.source_id !== '',
+        )
+        .slice()
+        .reverse()
+        .map((item) => {
+          const account = this.creditAccounts.find(
+            (entry) => entry.id === item.credit_account_id,
+          );
+          const ownerType =
+            account?.owner_type === CREDIT_OWNER_GUARDIAN
+              ? CREDIT_OWNER_GUARDIAN
+              : CREDIT_OWNER_STUDENT;
+          return {
+            id: item.source_id,
+            ownerName:
+              ownerType === CREDIT_OWNER_GUARDIAN
+                ? this.guardianLabel(account?.owner_guardian_id ?? '')
+                : this.studentLabel(
+                    item.student_id || account?.owner_student_id || '',
+                  ),
+            amountCents: Math.abs(Number(item.amount_delta_cents)),
+            method: PAYMENT_METHOD_PIX,
+            ownerType,
+            reversed: reversedRefundIds.has(item.source_id),
+            createdAt: item.created_at,
+          };
+        }),
+      recentReversals: this.operationReversals
+        .slice()
+        .reverse()
+        .map((item) => this.toReversalRecord(item)),
+    };
+  }
+
+  private toReversalRecord(item: OperationReversalRecord): ReversalRecordView {
+    const effects = this.reversalEffects
+      .filter((effect) => effect.reversal_id === item.id)
+      .map((effect) => {
+        const amountDeltaCents =
+          effect.amount_delta_cents === ''
+            ? null
+            : Number(effect.amount_delta_cents);
+        const quantityDelta =
+          effect.quantity_delta === '' ? null : Number(effect.quantity_delta);
+        return {
+          type: effect.effect_type,
+          amountDeltaCents,
+          quantityDelta,
+          summaryLabel: reversalEffectSummary({
+            type: effect.effect_type,
+            amountDeltaCents,
+            quantityDelta,
+          }),
+        };
+      });
+    return {
+      id: item.id,
+      operationType: item.operation_type,
+      operationId: item.operation_id,
+      reason: item.reason,
+      refundMethod:
+        item.refund_method === PAYMENT_METHOD_PIX ||
+        item.refund_method === PAYMENT_METHOD_CASH
+          ? item.refund_method
+          : null,
+      differentMethodConfirmed: item.different_method_confirmed === 'true',
+      returnedToStock:
+        item.returned_to_stock === ''
+          ? null
+          : item.returned_to_stock === 'true',
+      createdByName: 'Dona',
+      createdAt: item.created_at,
+      effects,
+    };
   }
 
   private findPersonalCreditAccount(
@@ -1505,7 +2430,10 @@ export class MemorySales {
         method: payment.method,
         amountCents,
         amountLabel,
-        status: PAYMENT_STATUS_COMPLETED,
+        status:
+          payment.status === PAYMENT_STATUS_REVERSED
+            ? PAYMENT_STATUS_REVERSED
+            : PAYMENT_STATUS_COMPLETED,
         summaryLabel: familyPaymentSummaryLabel({
           guardianLabel,
           amountLabel,
@@ -1525,7 +2453,10 @@ export class MemorySales {
       method: payment.method,
       amountCents,
       amountLabel,
-      status: PAYMENT_STATUS_COMPLETED,
+      status:
+        payment.status === PAYMENT_STATUS_REVERSED
+          ? PAYMENT_STATUS_REVERSED
+          : PAYMENT_STATUS_COMPLETED,
       summaryLabel: paymentSummaryLabel({
         studentLabel,
         amountLabel,
@@ -1608,7 +2539,10 @@ export class MemorySales {
       id: sale.id,
       consumerStudentId: sale.consumer_student_id || null,
       consumerLabel,
-      status: SALE_STATUS_PAID,
+      status:
+        sale.status === SALE_STATUS_REVERSED
+          ? SALE_STATUS_REVERSED
+          : SALE_STATUS_PAID,
       paymentKind,
       grossTotalCents: Number(sale.gross_total_cents),
       discountTotalCents: Number(sale.discount_total_cents),

@@ -61,8 +61,9 @@ export const RECEIVABLES_MIGRATION_ID = '010_receivables';
 export const PAYMENTS_MIGRATION_ID = '011_payments';
 export const CREDITS_MIGRATION_ID = '012_credits';
 export const CASH_MIGRATION_ID = '013_cash';
+export const REVERSALS_MIGRATION_ID = '014_reversals';
 export const FOUNDATION_SCHEMA_VERSION = 1;
-export const CURRENT_SCHEMA_VERSION = 13;
+export const CURRENT_SCHEMA_VERSION = 14;
 
 export const USERS_SHEET: SheetSchema = {
   name: '_users',
@@ -400,5 +401,34 @@ export const CASH_MOVEMENTS_SHEET: SheetSchema = {
     'created_by',
     'created_at',
     'note',
+  ],
+};
+
+export const OPERATION_REVERSALS_SHEET: SheetSchema = {
+  name: '_operation_reversals',
+  headers: [
+    'id',
+    'operation_type',
+    'operation_id',
+    'reason',
+    'original_methods',
+    'refund_method',
+    'different_method_confirmed',
+    'returned_to_stock',
+    'created_by',
+    'created_at',
+  ],
+};
+
+export const REVERSAL_EFFECTS_SHEET: SheetSchema = {
+  name: '_reversal_effects',
+  headers: [
+    'id',
+    'reversal_id',
+    'effect_type',
+    'entity_type',
+    'entity_id',
+    'amount_delta_cents',
+    'quantity_delta',
   ],
 };

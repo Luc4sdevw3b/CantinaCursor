@@ -11,9 +11,11 @@ export const CREDIT_OWNER_GUARDIAN = 'guardian';
 export const CREDIT_KIND_DEPOSIT = 'deposit';
 export const CREDIT_KIND_SALE = 'sale';
 export const CREDIT_KIND_REFUND = 'refund';
+export const CREDIT_KIND_REVERSAL = 'reversal';
 export const CREDIT_SOURCE_PAYMENT = 'payment';
 export const CREDIT_SOURCE_SALE = 'sale';
 export const CREDIT_SOURCE_REFUND = 'refund';
+export const CREDIT_SOURCE_OPERATION_REVERSAL = 'operation_reversal';
 
 export const CREDIT_STUDENT_REQUIRED_ERROR = {
   code: 'CREDIT_STUDENT_REQUIRED',

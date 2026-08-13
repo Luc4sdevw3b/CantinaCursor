@@ -9,6 +9,44 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-13 18:40 — Implementada a Fase 22: estornos
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 22
+
+### Pedido / objetivo
+
+- Iniciar a Fase 22: estorno de venda/pagamento/crédito, PIX/dinheiro, devolução em meio diferente, escolha de estoque e auditoria.
+
+### Tentativa / implementação
+
+- Migration `014_reversals`, schema 14: `_operation_reversals` e `_reversal_effects`.
+- Originais permanecem. Estorno cria reversão e efeitos. Só a dona estorna; funcionário consulta a auditoria.
+- Venda com PIX/dinheiro exige forma de devolução. Forma diferente ou misto exige confirmação explícita. Fiado pago exige estornar o pagamento antes.
+- Estoque: **Sim, devolver ao estoque** / **Não, manter fora do estoque**. Com retorno, o dia de estoque precisa estar aberto.
+- Devolução em dinheiro usa o caixa aberto. PIX de estorno não mexe no caixa.
+- Botões **Confirmar estorno da venda**, **Confirmar estorno do pagamento** e **Confirmar cancelamento da devolução**. Confirmar venda, Registrar pagamento e Registrar pagamento familiar não mudam de rótulo.
+
+### Resultado
+
+- Fase 22 concluída sobre o ambiente E2E isolado e o preview local.
+- Reservas reais são a Fase 23. WhatsApp permanece nas fases seguintes.
+
+### Diferenças do pedido
+
+- Devolução de crédito atual continua sem sair do caixa no momento do **Devolver crédito**; o estorno dessa devolução pode recuperar PIX ou dinheiro.
+
+### Impacto técnico
+
+- `getReversalsSetup`, `reverseSale`, `reversePayment` e `reverseCreditRefund` entram no `AppApi`. `reversals.read` é dona e funcionário; `reversals.write` é só da dona.
+
+### Testes
+
+- typecheck, lint, format, Vitest (198) e E2E local (31) passaram.
+- E2E remoto: smoke de health no deployment novo após `clasp push` + `clasp deploy`.
+
 ## 2026-08-13 17:20 — Implementada a Fase 21: caixa físico
 
 **Origem:** Pedido do usuário

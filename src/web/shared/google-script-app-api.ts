@@ -40,6 +40,10 @@ import type {
   ReactivateStudentInput,
   ReceivableAgenda,
   Receivable,
+  ReversalsSetup,
+  ReverseCreditRefundInput,
+  ReversePaymentInput,
+  ReverseSaleInput,
   Sale,
   SchoolYear,
   SiblingAuthorization,
@@ -124,6 +128,10 @@ export interface GoogleScriptRunner {
   addCashForChange(token: string, payload: unknown): void;
   removeCash(token: string, payload: unknown): void;
   closeCashSession(token: string, payload: unknown): void;
+  getReversalsSetup(token: string): void;
+  reverseSale(token: string, payload: unknown): void;
+  reversePayment(token: string, payload: unknown): void;
+  reverseCreditRefund(token: string, payload: unknown): void;
 }
 
 export type SessionTokenStorage = Pick<
@@ -678,6 +686,32 @@ export class GoogleScriptAppApi implements AppApi {
   }): Promise<CashSetup> {
     return this.callWithToken((runner, token) =>
       runner.closeCashSession(token, input),
+    );
+  }
+
+  getReversalsSetup(): Promise<ReversalsSetup> {
+    return this.callWithToken((runner, token) =>
+      runner.getReversalsSetup(token),
+    );
+  }
+
+  reverseSale(input: ReverseSaleInput): Promise<ReversalsSetup> {
+    return this.callWithToken((runner, token) =>
+      runner.reverseSale(token, input),
+    );
+  }
+
+  reversePayment(input: ReversePaymentInput): Promise<ReversalsSetup> {
+    return this.callWithToken((runner, token) =>
+      runner.reversePayment(token, input),
+    );
+  }
+
+  reverseCreditRefund(
+    input: ReverseCreditRefundInput,
+  ): Promise<ReversalsSetup> {
+    return this.callWithToken((runner, token) =>
+      runner.reverseCreditRefund(token, input),
     );
   }
 

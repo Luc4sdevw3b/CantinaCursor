@@ -46,6 +46,10 @@ import type {
   ReactivateStudentInput,
   ReceivableAgenda,
   Receivable,
+  ReversalsSetup,
+  ReverseCreditRefundInput,
+  ReversePaymentInput,
+  ReverseSaleInput,
   Sale,
   SchoolYear,
   SiblingAuthorization,
@@ -474,6 +478,28 @@ export class FakeAppApi implements AppApi {
   }): Promise<CashSetup> {
     this.assertAction('cash.close');
     return throwResult(this.cash.close(input));
+  }
+
+  async getReversalsSetup(): Promise<ReversalsSetup> {
+    this.assertAction('reversals.read');
+    return throwResult(this.sales.getReversalsSetup());
+  }
+
+  async reverseSale(input: ReverseSaleInput): Promise<ReversalsSetup> {
+    this.assertAction('reversals.write');
+    return throwResult(this.sales.reverseSale(input));
+  }
+
+  async reversePayment(input: ReversePaymentInput): Promise<ReversalsSetup> {
+    this.assertAction('reversals.write');
+    return throwResult(this.sales.reversePayment(input));
+  }
+
+  async reverseCreditRefund(
+    input: ReverseCreditRefundInput,
+  ): Promise<ReversalsSetup> {
+    this.assertAction('reversals.write');
+    return throwResult(this.sales.reverseCreditRefund(input));
   }
 
   private assertSession(): void {

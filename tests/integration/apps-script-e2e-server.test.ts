@@ -264,7 +264,9 @@ interface ServerContext {
     changeCents: number;
     settlements: Array<{ kind: string; amountCents: number }>;
   };
-  listSales(sessionToken: string): Array<{ summaryLabel: string }>;
+  listSales(
+    sessionToken: string,
+  ): Array<{ summaryLabel: string; status: string }>;
   getPixCopyText(sessionToken: string): { text: string };
   getDueDateShortcuts(sessionToken: string): {
     today: string;
@@ -349,6 +351,27 @@ interface ServerContext {
       countedCents: number | null;
       differenceCents: number | null;
       closeNote: string;
+    }>;
+  };
+  getReversalsSetup(sessionToken: string): {
+    sales: Array<{
+      id: string;
+      displayName: string;
+      status: string;
+      hasTrackedItems: boolean;
+    }>;
+    recentReversals: Array<{
+      reason: string;
+      effects: Array<{ type: string; summaryLabel: string }>;
+    }>;
+  };
+  reverseSale(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): {
+    recentReversals: Array<{
+      reason: string;
+      effects: Array<{ type: string; summaryLabel: string }>;
     }>;
   };
 }
@@ -673,7 +696,7 @@ describe('Apps Script E2E server', () => {
     expect(health.status).toBe('ready');
     expect(health.adapter).toBe('google-script');
     expect(health.spreadsheetConfigured).toBe(true);
-    expect(health.schemaVersion).toBe(13);
+    expect(health.schemaVersion).toBe(14);
     expect(health.backupConfigured).toBe(true);
     expect(health.lastBackupAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(JSON.stringify(health)).not.toContain('private-e2e-sheet-id');
@@ -756,7 +779,7 @@ describe('Apps Script E2E server', () => {
     const second = server.setupSchema();
 
     expect(first).toEqual(second);
-    expect(first.schemaVersion).toBe(13);
+    expect(first.schemaVersion).toBe(14);
     expect(first.appliedMigrations).toEqual([
       '001_foundation',
       '002_operation_requests',
@@ -771,6 +794,7 @@ describe('Apps Script E2E server', () => {
       '011_payments',
       '012_credits',
       '013_cash',
+      '014_reversals',
     ]);
     expect(sheets.get('_meta')?.rows[0]).toEqual(['key', 'value']);
     expect(sheets.get('_schema_migrations')?.rows[0]).toEqual([
@@ -991,6 +1015,32 @@ describe('Apps Script E2E server', () => {
         .get('_schema_migrations')
         ?.rows.filter((row) => row[0] === '013_cash'),
     ).toHaveLength(1);
+    expect(sheets.get('_operation_reversals')?.rows[0]).toEqual([
+      'id',
+      'operation_type',
+      'operation_id',
+      'reason',
+      'original_methods',
+      'refund_method',
+      'different_method_confirmed',
+      'returned_to_stock',
+      'created_by',
+      'created_at',
+    ]);
+    expect(sheets.get('_reversal_effects')?.rows[0]).toEqual([
+      'id',
+      'reversal_id',
+      'effect_type',
+      'entity_type',
+      'entity_id',
+      'amount_delta_cents',
+      'quantity_delta',
+    ]);
+    expect(
+      sheets
+        .get('_schema_migrations')
+        ?.rows.filter((row) => row[0] === '014_reversals'),
+    ).toHaveLength(1);
   });
 
   it('refuses schema setup on PROD', () => {
@@ -1132,7 +1182,7 @@ describe('Apps Script E2E server', () => {
     const backup = server.runBackup(token, 'manual');
 
     expect(backup.reason).toBe('manual');
-    expect(backup.schemaVersion).toBe(13);
+    expect(backup.schemaVersion).toBe(14);
     expect(JSON.stringify(backup)).not.toContain('e2e-sheet-id');
     expect(JSON.stringify(backup)).not.toContain('e2e-backup-folder');
     expect(projectTriggers).toEqual(['runScheduledBackup']);
@@ -2522,5 +2572,64 @@ describe('Apps Script E2E server', () => {
       countedCents: 800,
       differenceCents: 0,
     });
+  });
+
+  it('reverses a PIX sale with stock return and keeps the original sale', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const staff = server.loginE2E('staff').token;
+    const coxinha = server
+      .listProducts(owner)
+      .find((item) => item.name === 'Coxinha');
+    if (!coxinha) {
+      throw new Error('coxinha E2E ausente');
+    }
+    expect(
+      server.createSale(owner, {
+        items: [{ productId: coxinha.id, quantity: 1 }],
+        paymentKind: 'pix',
+      }).summaryLabel,
+    ).toBe('Anônima • Coxinha • R$ 5,50');
+    expect(
+      server
+        .listInventoryBalances(owner)
+        .items.find((item) => item.productName === 'Coxinha')?.physicalQuantity,
+    ).toBe(9);
+    const sale = server
+      .getReversalsSetup(owner)
+      .sales.find((item) => item.status !== 'reversed');
+    if (!sale) {
+      throw new Error('venda para estorno ausente');
+    }
+    expect(() =>
+      server.reverseSale(staff, {
+        saleId: sale.id,
+        refundMethod: 'pix',
+        confirmDifferentMethod: false,
+        returnItemsToStock: true,
+        reason: 'Venda lançada em duplicidade',
+      }),
+    ).toThrow('FORBIDDEN');
+    const reversed = server.reverseSale(owner, {
+      saleId: sale.id,
+      refundMethod: 'pix',
+      confirmDifferentMethod: false,
+      returnItemsToStock: true,
+      reason: 'Venda lançada em duplicidade',
+    });
+    expect(
+      reversed.recentReversals[0]?.effects.map((item) => item.summaryLabel),
+    ).toContain('Produto retornado ao estoque: +1');
+    expect(
+      server
+        .listInventoryBalances(owner)
+        .items.find((item) => item.productName === 'Coxinha')?.physicalQuantity,
+    ).toBe(10);
+    expect(server.listSales(owner)[0]?.status).toBe('reversed');
   });
 });
