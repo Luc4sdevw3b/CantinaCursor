@@ -9,6 +9,42 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-13 15:50 — Hero com atalhos e uma área visível por vez
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 17
+
+### Pedido / objetivo
+
+- Deixar tudo em uma tela só, com o mínimo de rolagem, tipo hero com botões para as áreas principais na mesma tela.
+
+### Tentativa / implementação
+
+- Hero compacto com saúde, login e atalhos. Depois do login, só uma área aparece (padrão: Vendas). Os botões trocam a área sem sair da página. Juros some do menu do funcionário.
+- Listas longas rolam só no espaço da área. PIX/dinheiro/fiado/crédito e os textos de health não mudam.
+
+### Resultado
+
+- Layout de uma tela no preview local. Sem mudança de schema nem de API.
+
+### Diferenças do pedido
+
+- Não é âncora com scroll até o fim da página: o botão troca o painel no mesmo lugar, para caber melhor.
+
+### Impacto técnico
+
+- `AppApi` igual. E2E local passa a clicar o atalho da área antes de conferir aquele bloco.
+
+### Testes
+
+- Unit, typecheck, lint, format, build e E2E local.
+
+### Pendências / próxima versão
+
+- Não iniciar a Fase 18 (crédito de responsável) sem pedido explícito.
+
 ## 2026-08-13 15:40 — Implementada a Fase 17: crédito pessoal
 
 **Origem:** Pedido do usuário

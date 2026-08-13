@@ -40,39 +40,49 @@ app.innerHTML = `
     </header>
 
     <section class="hero" id="inicio" aria-labelledby="page-title">
-      <p class="eyebrow">Web App em preparação</p>
-      <h1 id="page-title">Cantina V2 AppScript</h1>
-      <p class="intro">
-        Uma base simples e confiável para a operação diária da cantina.
-      </p>
-      <div class="status-card" id="health-card" aria-live="polite">
-        <span class="status-dot" aria-hidden="true"></span>
-        <div>
-          <strong id="health-status">Verificando ambiente…</strong>
-          <p id="health-detail">Conectando à API local de demonstração.</p>
+      <div class="hero-copy">
+        <p class="eyebrow">Web App em preparação</p>
+        <div class="hero-title-row">
+          <h1 id="page-title">Cantina V2 AppScript</h1>
+          <span class="phase-badge">Fase 17</span>
+        </div>
+        <p class="intro">
+          Uma base simples e confiável para a operação diária da cantina.
+        </p>
+      </div>
+      <div class="hero-status">
+        <div class="status-card" id="health-card" aria-live="polite">
+          <span class="status-dot" aria-hidden="true"></span>
+          <div>
+            <strong id="health-status">Verificando ambiente…</strong>
+            <p id="health-detail">Conectando à API local de demonstração.</p>
+          </div>
+        </div>
+        <div class="session-card" id="session-card" hidden>
+          <div id="session-login">
+            <button type="button" id="login-owner">Entrar como dona</button>
+            <button type="button" id="login-staff">Entrar como funcionário</button>
+          </div>
+          <div id="session-active" hidden>
+            <p id="session-label"></p>
+            <button type="button" id="logout">Sair</button>
+          </div>
         </div>
       </div>
-      <div class="session-card" id="session-card" hidden>
-        <div id="session-login">
-          <button type="button" id="login-owner">Entrar como dona</button>
-          <button type="button" id="login-staff">Entrar como funcionário</button>
-        </div>
-        <div id="session-active" hidden>
-          <p id="session-label"></p>
-          <button type="button" id="logout">Sair</button>
-        </div>
-      </div>
+      <nav class="area-nav" id="area-nav" hidden aria-label="Áreas da cantina">
+        <button type="button" data-area="sales">Vendas</button>
+        <button type="button" data-area="agenda">Agenda</button>
+        <button type="button" data-area="payments">Pagamentos</button>
+        <button type="button" data-area="credits">Crédito</button>
+        <button type="button" data-area="inventory">Estoque</button>
+        <button type="button" data-area="students">Alunos</button>
+        <button type="button" data-area="family">Responsáveis</button>
+        <button type="button" data-area="products">Cardápio</button>
+        <button type="button" data-area="adjust" data-owner-only>Juros</button>
+      </nav>
     </section>
 
-    <section class="next-step" aria-labelledby="next-step-title">
-      <p class="step-number">01</p>
-      <div>
-        <h2 id="next-step-title">Juros e renegociação</h2>
-        <p>A dona lança juros em uma cobrança e troca o vencimento com motivo e histórico.</p>
-      </div>
-      <span class="phase-badge">Fase 17</span>
-    </section>
-
+    <div class="workspace" id="workspace">
     <section class="students-panel" id="students-panel" hidden>
       <h2>Alunos</h2>
       <p id="students-status">Entre para ver o cadastro.</p>
@@ -411,6 +421,7 @@ app.innerHTML = `
       <h3>Histórico de vencimento</h3>
       <ul id="due-date-history"></ul>
     </section>
+    </div>
 
     <footer>
       <span>Versão ${APP_VERSION}</span>
@@ -424,6 +435,86 @@ const storedTheme = localStorage.getItem(THEME_STORAGE_KEY);
 let theme: ThemePreference = isThemePreference(storedTheme)
   ? storedTheme
   : 'system';
+
+type AppArea =
+  | 'sales'
+  | 'agenda'
+  | 'payments'
+  | 'credits'
+  | 'inventory'
+  | 'students'
+  | 'family'
+  | 'products'
+  | 'adjust';
+
+const AREA_PANELS: Record<AppArea, string> = {
+  sales: '#sales-panel',
+  agenda: '#agenda-panel',
+  payments: '#payments-panel',
+  credits: '#credits-panel',
+  inventory: '#inventory-panel',
+  students: '#students-panel',
+  family: '#family-panel',
+  products: '#products-panel',
+  adjust: '#adjust-panel',
+};
+
+const DEFAULT_AREA: AppArea = 'sales';
+let currentSession: AppSession | null = null;
+let activeArea: AppArea = DEFAULT_AREA;
+
+function isAppArea(value: string | undefined): value is AppArea {
+  return Boolean(value && value in AREA_PANELS);
+}
+
+function syncWorkspace(session: AppSession | null): void {
+  currentSession = session;
+  const shell = document.querySelector('.shell');
+  if (shell instanceof HTMLElement) {
+    shell.classList.toggle('is-authenticated', Boolean(session));
+  }
+  const nav = document.querySelector('#area-nav');
+  if (nav instanceof HTMLElement) {
+    nav.hidden = !session;
+  }
+  if (session?.role !== 'owner' && activeArea === 'adjust') {
+    activeArea = DEFAULT_AREA;
+  }
+  if (!session) {
+    activeArea = DEFAULT_AREA;
+  }
+  document
+    .querySelectorAll<HTMLButtonElement>('#area-nav [data-area]')
+    .forEach((button) => {
+      const area = button.dataset.area;
+      const ownerOnly = button.hasAttribute('data-owner-only');
+      button.hidden = Boolean(ownerOnly && session?.role !== 'owner');
+      button.setAttribute(
+        'aria-current',
+        area === activeArea ? 'page' : 'false',
+      );
+    });
+  for (const [area, selector] of Object.entries(AREA_PANELS)) {
+    const panel = document.querySelector(selector);
+    if (!(panel instanceof HTMLElement)) {
+      continue;
+    }
+    if (!session) {
+      panel.hidden = true;
+      continue;
+    }
+    if (area === 'adjust' && session.role !== 'owner') {
+      panel.hidden = true;
+      continue;
+    }
+    panel.hidden = area !== activeArea;
+  }
+}
+
+function openArea(area: AppArea): void {
+  activeArea = area;
+  syncWorkspace(currentSession);
+}
 
 function renderTheme(): void {
   applyTheme(document.documentElement, theme, systemTheme.matches);
@@ -483,6 +574,10 @@ async function loginAs(role: UserRole): Promise<void> {
 }
 
 async function showAuthenticated(session: AppSession | null): Promise<void> {
+  if (!session) {
+    activeArea = DEFAULT_AREA;
+  }
+  syncWorkspace(session);
   renderSession(session, true);
   await renderStudents(Boolean(session));
   await renderFamily(session);
@@ -504,6 +599,16 @@ document.querySelector('#login-staff')?.addEventListener('click', () => {
 document.querySelector('#logout')?.addEventListener('click', () => {
   void api.logout().then(() => showAuthenticated(null));
 });
+
+document
+  .querySelectorAll<HTMLButtonElement>('#area-nav [data-area]')
+  .forEach((button) => {
+    button.addEventListener('click', () => {
+      if (isAppArea(button.dataset.area)) {
+        openArea(button.dataset.area);
+      }
+    });
+  });
 
 const studentsPanel = document.querySelector('#students-panel');
 const studentsStatus = document.querySelector('#students-status');
@@ -529,7 +634,6 @@ async function renderStudents(authenticated: boolean): Promise<void> {
   ) {
     return;
   }
-  studentsPanel.hidden = !authenticated;
   studentsList.replaceChildren();
   if (!authenticated) {
     studentsStatus.textContent = 'Entre para ver o cadastro.';
@@ -626,7 +730,6 @@ async function renderFamily(session: AppSession | null): Promise<void> {
   ) {
     return;
   }
-  familyPanel.hidden = !session;
   guardiansList.replaceChildren();
   authorizationsList.replaceChildren();
   if (!session) {
@@ -692,7 +795,6 @@ async function renderProducts(session: AppSession | null): Promise<void> {
   ) {
     return;
   }
-  productsPanel.hidden = !session;
   productsList.replaceChildren();
   if (adHocList instanceof HTMLElement) {
     adHocList.replaceChildren();
@@ -778,7 +880,6 @@ async function renderInventory(session: AppSession | null): Promise<void> {
   ) {
     return;
   }
-  inventoryPanel.hidden = !session;
   inventoryList.replaceChildren();
   if (inventoryAdjustForm instanceof HTMLElement) {
     inventoryAdjustForm.hidden = true;
@@ -891,7 +992,6 @@ async function renderSales(session: AppSession | null): Promise<void> {
   ) {
     return;
   }
-  salesPanel.hidden = !session;
   salesList.replaceChildren();
   if (saleDiscountFields instanceof HTMLElement) {
     saleDiscountFields.hidden = session?.role !== 'owner';
@@ -975,7 +1075,6 @@ async function renderAgenda(session: AppSession | null): Promise<void> {
   ) {
     return;
   }
-  panel.hidden = !session;
   overdueList.replaceChildren();
   todayList.replaceChildren();
   upcomingList.replaceChildren();
@@ -1079,7 +1178,6 @@ async function renderPayments(session: AppSession | null): Promise<void> {
   ) {
     return;
   }
-  panel.hidden = !session;
   list.replaceChildren();
   if (!session) {
     status.textContent = 'Entre para registrar pagamentos.';
@@ -1159,7 +1257,6 @@ async function renderCredits(session: AppSession | null): Promise<void> {
   ) {
     return;
   }
-  panel.hidden = !session;
   list.replaceChildren();
   if (refundForm instanceof HTMLElement) {
     refundForm.hidden = session?.role !== 'owner';
@@ -1234,7 +1331,6 @@ async function renderAdjust(session: AppSession | null): Promise<void> {
     return;
   }
   const isOwner = session?.role === 'owner';
-  panel.hidden = !isOwner;
   history.replaceChildren();
   const current = select.value;
   select.replaceChildren();
@@ -2071,16 +2167,12 @@ void api
     const canLogin =
       health.environment === 'LOCAL' || health.environment === 'E2E';
     const session = canLogin ? await api.getSession() : null;
-    renderSession(session, canLogin);
-    await renderStudents(Boolean(session));
-    await renderFamily(session);
-    await renderProducts(session);
-    await renderInventory(session);
-    await renderSales(session);
-    await renderAgenda(session);
-    await renderPayments(session);
-    await renderCredits(session);
-    await renderAdjust(session);
+    if (canLogin) {
+      await showAuthenticated(session);
+    } else {
+      renderSession(null, false);
+      syncWorkspace(null);
+    }
   })
   .catch(() => {
     const status = document.querySelector('#health-status');

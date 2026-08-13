@@ -41,13 +41,16 @@
 
 html {
   min-width: 320px;
-  min-height: 100%;
+  height: 100%;
   background: var(--bg);
 }
 
 body {
   min-height: 100vh;
+  min-height: 100dvh;
+  height: 100%;
   margin: 0;
+  overflow: hidden;
   color: var(--text);
   background:
     radial-gradient(
@@ -60,6 +63,10 @@ body {
       var(--bg),
       color-mix(in srgb, var(--accent-soft) 48%, var(--bg))
     );
+}
+
+#app {
+  height: 100%;
 }
 
 button,
@@ -75,10 +82,11 @@ a:focus-visible {
 
 .shell {
   width: min(1120px, calc(100% - 2rem));
-  min-height: 100vh;
+  height: 100dvh;
   margin: 0 auto;
   display: grid;
-  grid-template-rows: auto 1fr auto auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  overflow: hidden;
 }
 
 .topbar {
@@ -86,7 +94,7 @@ a:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1.4rem 0;
+  padding: 0.7rem 0 0.4rem;
 }
 
 .brand {
@@ -135,34 +143,51 @@ a:focus-visible {
 }
 
 .hero {
-  align-self: center;
-  max-width: 760px;
-  padding: 5rem 0 4rem;
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.4rem 0 0.75rem;
+}
+
+.hero-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 0.8rem;
 }
 
 .eyebrow {
-  margin: 0 0 1rem;
+  margin: 0 0 0.35rem;
   color: var(--accent);
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   font-weight: 800;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
 h1 {
-  max-width: 720px;
   margin: 0;
-  font-size: clamp(3.1rem, 9vw, 7.6rem);
-  line-height: 0.88;
-  letter-spacing: -0.075em;
+  font-size: clamp(1.55rem, 4vw, 2.35rem);
+  line-height: 1.05;
+  letter-spacing: -0.05em;
 }
 
 .intro {
   max-width: 600px;
-  margin: 2rem 0;
+  margin: 0.35rem 0 0;
   color: var(--muted);
-  font-size: clamp(1.05rem, 2vw, 1.35rem);
-  line-height: 1.6;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.shell.is-authenticated .intro {
+  display: none;
+}
+
+.hero-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .status-card {
@@ -187,7 +212,7 @@ h1 {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
-  margin-top: 1rem;
+  margin: 0;
 }
 
 .session-card[hidden] {
@@ -230,35 +255,35 @@ h1 {
   box-shadow: 0 0 0 5px var(--accent-soft);
 }
 
-.next-step {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 1.2rem;
-  padding: 1.4rem 0;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
+.area-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
 }
 
-.step-number,
-.next-step h2,
-.next-step p {
-  margin: 0;
+.area-nav[hidden] {
+  display: none;
 }
 
-.step-number {
-  color: var(--highlight);
-  font-weight: 800;
+.area-nav button {
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text);
+  background: var(--surface);
+  cursor: pointer;
 }
 
-.next-step h2 {
-  font-size: 1rem;
+.area-nav button[aria-current='page'] {
+  color: var(--surface-strong);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
-.next-step div p {
-  margin-top: 0.25rem;
-  color: var(--muted);
-  font-size: 0.9rem;
+.workspace {
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: 0.5rem;
 }
 
 .phase-badge {
@@ -274,14 +299,14 @@ footer {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1.25rem 0 1.75rem;
+  padding: 0.55rem 0 0.7rem;
   color: var(--muted);
   font-size: 0.78rem;
 }
 
 .students-panel,
 .family-panel {
-  padding: 1.5rem 0 2rem;
+  padding: 0.4rem 0 0.75rem;
 }
 
 .students-panel[hidden],
@@ -390,16 +415,11 @@ footer {
   }
 
   .hero {
-    padding: 3rem 0;
+    padding: 0.25rem 0 0.6rem;
   }
 
-  .next-step {
-    grid-template-columns: auto 1fr;
-  }
-
-  .phase-badge {
-    grid-column: 2;
-    justify-self: start;
+  .area-nav button {
+    flex: 1 1 6.5rem;
   }
 
   footer {
