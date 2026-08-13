@@ -9,6 +9,56 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-13 12:40 — Implementada a Fase 5: locks, batch e idempotência
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 5
+
+### Pedido / objetivo
+
+- Iniciar a Fase 5: `withScriptLock`, Advanced Sheets Service, batch mutation builder, `spreadsheets.batchUpdate`, `request_id` e `_operation_requests`, com testes de retry e double submit.
+
+### Tentativa / implementação
+
+- `request_id` é UUID; número da linha é recusado.
+- `withScriptLock` adquire `LockService`, executa o trabalho e libera no `finally`; timeout é retryable.
+- Builder de `spreadsheets.batchUpdate` (`appendCells`) e aplicação em lote.
+- Aba `_operation_requests` via migration `002_operation_requests` (schema version 2). A migration `001_foundation` não foi reescrita.
+- Operação crítica grava o resultado `completed` no mesmo batch; retry/double submit com o mesmo `request_id` devolvem o resultado já gravado sem duplicar.
+- Probe E2E `probeIdempotentOperation` no Apps Script (não entrou no `AppApi`).
+- Advanced Sheets Service habilitado no manifesto E2E. `AppApi` continua só com `getHealth`.
+
+### Resultado
+
+- Fase 5 concluída sobre o ambiente E2E isolado.
+- Nenhum ID Google, token ou dado de planilha foi versionado.
+
+### Diferenças do pedido
+
+- O probe de idempotência é função de servidor E2E, não contrato de frontend. Vendas/pagamentos reais continuam nas fases posteriores.
+
+### Impacto técnico
+
+- `src/domain/request-id.ts`, `src/server/locks/*`, `src/server/sheets/batch.ts`, `src/server/operations/idempotent.ts`
+- `src/server/sheets/schema.ts`, `migrations.ts`, `setup-schema.ts`
+- `apps-script/src/Code.gs`, `apps-script/src/appsscript.json`
+- testes unitários/integração de lock, batch, retry e double submit
+- README, Implementation Plan, convenções e referências de arquitetura/testes
+
+### Testes
+
+- `npm run format:check` / `lint` / `typecheck` / `version:check` / `validate:skill`: passou.
+- `npm test`: 70 testes passaram.
+- `npm run build`: passou.
+- `npm run test:e2e:local`: 9 testes Chromium passaram.
+- `npm run test:e2e:remote`: 1 teste Chromium passou (Web App E2E isolado; `getHealth` aplica a migration 002).
+
+### Pendências / próxima versão
+
+- Não iniciar a Fase 6 (backup e saúde) sem pedido explícito.
+
 ## 2026-08-13 12:34 — Implementada a Fase 4: schema, migrations e repositório genérico
 
 **Origem:** Pedido do usuário

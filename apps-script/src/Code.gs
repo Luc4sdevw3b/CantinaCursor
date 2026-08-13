@@ -5,6 +5,7 @@ const E2E_META_SHEET = '_e2e_meta';
 const E2E_SEED_MARKER = 'cantina-e2e-fictitious';
 const META_SHEET = '_meta';
 const MIGRATIONS_SHEET = '_schema_migrations';
+const OPERATION_REQUESTS_SHEET = '_operation_requests';
 const META_HEADERS = ['key', 'value'];
 const MIGRATION_HEADERS = [
   'migration_id',
@@ -13,8 +14,24 @@ const MIGRATION_HEADERS = [
   'checksum',
   'description',
 ];
+const OPERATION_REQUESTS_HEADERS = [
+  'request_id',
+  'operation_type',
+  'result_entity_id',
+  'status',
+  'created_at',
+];
 const FOUNDATION_MIGRATION_ID = '001_foundation';
 const FOUNDATION_MIGRATION_CHECKSUM = 'meta|schema_migrations';
+const OPERATION_REQUESTS_MIGRATION_ID = '002_operation_requests';
+const OPERATION_REQUESTS_MIGRATION_CHECKSUM =
+  'request_id|operation_type|result_entity_id|status|created_at';
+const CURRENT_SCHEMA_VERSION = 2;
+const E2E_PROBE_OPERATION = 'e2e.probe';
+const OPERATION_COMPLETED = 'completed';
+const REQUEST_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SCRIPT_LOCK_TIMEOUT_MS = 30000;
 
 function doGet() {
   ensureE2EConfigured();
@@ -66,6 +83,22 @@ function openConfiguredSpreadsheet() {
     throw new Error('CONFIGURATION_ERROR: SPREADSHEET_ID não configurado.');
   }
   return SpreadsheetApp.openById(spreadsheetId);
+}
+
+function withScriptLock(work) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(SCRIPT_LOCK_TIMEOUT_MS)) {
+    throw new Error('LOCK_TIMEOUT: não foi possível obter o lock.');
+  }
+  try {
+    return work();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function isRequestId(value) {
+  return typeof value === 'string' && REQUEST_ID_PATTERN.test(value);
 }
 
 function buildHealth() {
@@ -145,29 +178,44 @@ function getOrCreateE2EMetaSheet(spreadsheet) {
   return getOrCreateSheet(spreadsheet, E2E_META_SHEET, ['key', 'value']);
 }
 
-function resetE2E() {
-  assertE2EEnvironment();
-  const spreadsheet = openConfiguredSpreadsheet();
-  const sheet = getOrCreateE2EMetaSheet(spreadsheet);
+function clearSheetData(sheet) {
   const lastRow = sheet.getLastRow();
   if (lastRow > 1) {
     sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).clearContent();
   }
+}
+
+function resetE2EUnlocked() {
+  const spreadsheet = openConfiguredSpreadsheet();
+  clearSheetData(getOrCreateE2EMetaSheet(spreadsheet));
+  const operations = spreadsheet.getSheetByName(OPERATION_REQUESTS_SHEET);
+  if (operations) {
+    clearSheetData(operations);
+  }
   return { reset: true, environment: CANTINA_ENVIRONMENT };
+}
+
+function resetE2E() {
+  assertE2EEnvironment();
+  return withScriptLock(function () {
+    return resetE2EUnlocked();
+  });
 }
 
 function seedE2E() {
   assertE2EEnvironment();
-  resetE2E();
-  const spreadsheet = openConfiguredSpreadsheet();
-  const sheet = getOrCreateE2EMetaSheet(spreadsheet);
-  sheet.appendRow(['marker', E2E_SEED_MARKER]);
-  sheet.appendRow(['seeded', 'true']);
-  return {
-    marker: E2E_SEED_MARKER,
-    seeded: true,
-    environment: CANTINA_ENVIRONMENT,
-  };
+  return withScriptLock(function () {
+    resetE2EUnlocked();
+    const spreadsheet = openConfiguredSpreadsheet();
+    const sheet = getOrCreateE2EMetaSheet(spreadsheet);
+    sheet.appendRow(['marker', E2E_SEED_MARKER]);
+    sheet.appendRow(['seeded', 'true']);
+    return {
+      marker: E2E_SEED_MARKER,
+      seeded: true,
+      environment: CANTINA_ENVIRONMENT,
+    };
+  });
 }
 
 function listAppliedMigrationIds(sheet) {
@@ -185,7 +233,7 @@ function listAppliedMigrationIds(sheet) {
 }
 
 function assertKnownMigrations(applied) {
-  const catalog = [FOUNDATION_MIGRATION_ID];
+  const catalog = [FOUNDATION_MIGRATION_ID, OPERATION_REQUESTS_MIGRATION_ID];
   applied.forEach(function (id) {
     if (catalog.indexOf(id) === -1) {
       throw new Error(
@@ -206,8 +254,8 @@ function setupSchema() {
   );
   const applied = listAppliedMigrationIds(migrations);
   assertKnownMigrations(applied);
+  const createdAt = new Date().toISOString();
   if (applied.indexOf(FOUNDATION_MIGRATION_ID) === -1) {
-    const createdAt = new Date().toISOString();
     meta.appendRow(['schema_version', '1']);
     meta.appendRow(['app_version', CANTINA_APP_VERSION]);
     meta.appendRow(['environment', CANTINA_ENVIRONMENT]);
@@ -220,9 +268,132 @@ function setupSchema() {
       'Cria _meta e _schema_migrations',
     ]);
   }
+  if (applied.indexOf(OPERATION_REQUESTS_MIGRATION_ID) === -1) {
+    getOrCreateSheet(
+      spreadsheet,
+      OPERATION_REQUESTS_SHEET,
+      OPERATION_REQUESTS_HEADERS,
+    );
+    meta.appendRow(['schema_version', String(CURRENT_SCHEMA_VERSION)]);
+    migrations.appendRow([
+      OPERATION_REQUESTS_MIGRATION_ID,
+      createdAt,
+      CANTINA_APP_VERSION,
+      OPERATION_REQUESTS_MIGRATION_CHECKSUM,
+      'Cria _operation_requests',
+    ]);
+  }
   return {
-    schemaVersion: 1,
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     appliedMigrations: listAppliedMigrationIds(migrations),
     environment: CANTINA_ENVIRONMENT,
   };
+}
+
+function findOperationRequest(sheet, requestId) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return null;
+  }
+  const rows = sheet
+    .getRange(2, 1, lastRow - 1, OPERATION_REQUESTS_HEADERS.length)
+    .getValues();
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index] || [];
+    if (String(row[0] || '') === requestId) {
+      return {
+        request_id: String(row[0] || ''),
+        operation_type: String(row[1] || ''),
+        result_entity_id: String(row[2] || ''),
+        status: String(row[3] || ''),
+        created_at: String(row[4] || ''),
+      };
+    }
+  }
+  return null;
+}
+
+function applyBatchAppend(sheetName, rows) {
+  const spreadsheetId = getConfiguredSpreadsheetId();
+  const sheet = openConfiguredSpreadsheet().getSheetByName(sheetName);
+  if (!spreadsheetId || !sheet) {
+    throw new Error('SHEET_NOT_FOUND: aba necessária para o batch não existe.');
+  }
+  if (typeof Sheets === 'undefined' || !Sheets.Spreadsheets) {
+    throw new Error(
+      'CONFIGURATION_ERROR: Advanced Sheets Service não habilitado.',
+    );
+  }
+  Sheets.Spreadsheets.batchUpdate(
+    {
+      requests: [
+        {
+          appendCells: {
+            sheetId: sheet.getSheetId(),
+            rows: rows.map(function (row) {
+              return {
+                values: row.map(function (value) {
+                  return { userEnteredValue: { stringValue: String(value) } };
+                }),
+              };
+            }),
+            fields: 'userEnteredValue',
+          },
+        },
+      ],
+    },
+    spreadsheetId,
+  );
+}
+
+function probeIdempotentOperation(requestId) {
+  assertE2EEnvironment();
+  return withScriptLock(function () {
+    setupSchema();
+    if (!isRequestId(requestId)) {
+      throw new Error(
+        'INVALID_REQUEST_ID: request_id deve ser UUID, nunca número da linha.',
+      );
+    }
+    const sheet = getOrCreateSheet(
+      openConfiguredSpreadsheet(),
+      OPERATION_REQUESTS_SHEET,
+      OPERATION_REQUESTS_HEADERS,
+    );
+    const existing = findOperationRequest(sheet, requestId);
+    if (existing) {
+      if (existing.operation_type !== E2E_PROBE_OPERATION) {
+        throw new Error(
+          'REQUEST_CONFLICT: este request_id já foi usado em outra operação.',
+        );
+      }
+      if (existing.status !== OPERATION_COMPLETED) {
+        throw new Error(
+          'REQUEST_INCOMPLETE: a operação ainda não concluiu. Tente de novo.',
+        );
+      }
+      return {
+        requestId: existing.request_id,
+        resultEntityId: existing.result_entity_id,
+        replayed: true,
+        status: existing.status,
+      };
+    }
+    const resultEntityId = Utilities.getUuid();
+    applyBatchAppend(OPERATION_REQUESTS_SHEET, [
+      [
+        requestId,
+        E2E_PROBE_OPERATION,
+        resultEntityId,
+        OPERATION_COMPLETED,
+        new Date().toISOString(),
+      ],
+    ]);
+    return {
+      requestId: requestId,
+      resultEntityId: resultEntityId,
+      replayed: false,
+      status: OPERATION_COMPLETED,
+    };
+  });
 }

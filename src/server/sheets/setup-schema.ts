@@ -2,9 +2,12 @@ import { RESET_PROD_FORBIDDEN_ERROR } from '../../domain/e2e-lifecycle';
 import { err, ok, type Result } from '../../domain/result';
 import { pendingMigrations } from './migrations';
 import {
+  CURRENT_SCHEMA_VERSION,
   FOUNDATION_MIGRATION_ID,
   FOUNDATION_SCHEMA_VERSION,
   META_SHEET,
+  OPERATION_REQUESTS_MIGRATION_ID,
+  OPERATION_REQUESTS_SHEET,
   SCHEMA_MIGRATIONS_SHEET,
 } from './schema';
 import { deserializeRecord, serializeRecord } from './serialize';
@@ -81,6 +84,22 @@ export function setupSchema(
       );
     }
 
+    if (migration.id === OPERATION_REQUESTS_MIGRATION_ID) {
+      const operations = ensureSheet(
+        input.spreadsheet,
+        OPERATION_REQUESTS_SHEET,
+      );
+      if (!operations.ok) {
+        return err(operations.error);
+      }
+      meta.data.appendRow(
+        serializeRecord(META_SHEET.headers, {
+          key: 'schema_version',
+          value: String(CURRENT_SCHEMA_VERSION),
+        }),
+      );
+    }
+
     migrations.data.appendRow(
       serializeRecord(SCHEMA_MIGRATIONS_SHEET.headers, {
         migration_id: migration.id,
@@ -93,7 +112,7 @@ export function setupSchema(
   }
 
   return ok({
-    schemaVersion: FOUNDATION_SCHEMA_VERSION,
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     appliedMigrations: listAppliedMigrationIds(migrations.data.listRows()),
   });
 }

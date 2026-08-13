@@ -27,11 +27,18 @@ interface ServerContext {
     appliedMigrations: string[];
     environment: string;
   };
+  probeIdempotentOperation(requestId: string): {
+    requestId: string;
+    resultEntityId: string;
+    replayed: boolean;
+    status: string;
+  };
 }
 
-function createSheet(rows: unknown[][] = [[]]) {
+function createSheet(rows: unknown[][] = [[]], sheetId = 1) {
   const sheet = {
     rows,
+    getSheetId: () => sheetId,
     getLastRow: () => rows.length,
     getLastColumn: () =>
       rows.reduce((max, row) => Math.max(max, row.length), 0) || 1,
@@ -67,33 +74,64 @@ function createSheet(rows: unknown[][] = [[]]) {
 
 function loadServer(
   properties: Record<string, string> = {},
-  options: { hasSpreadsheet?: boolean } = {},
+  options: { hasSpreadsheet?: boolean; lockAcquired?: boolean } = {},
 ) {
   const hasSpreadsheet = options.hasSpreadsheet ?? true;
+  const lockAcquired = options.lockAcquired ?? true;
   const sheets = new Map<string, ReturnType<typeof createSheet>>();
+  let nextSheetId = 1;
   const setProperties = vi.fn((values: Record<string, string>) =>
     Object.assign(properties, values),
   );
   const spreadsheet = {
     getSheetByName: (name: string) => sheets.get(name) ?? null,
     insertSheet: (name: string) => {
-      const sheet = createSheet([[]]);
+      const sheet = createSheet([[]], nextSheetId);
+      nextSheetId += 1;
       sheets.set(name, sheet);
       return sheet;
     },
   };
   const openById = vi.fn(() => spreadsheet);
+  const releaseLock = vi.fn();
   const output = {
     setTitle: vi.fn(() => output),
     addMetaTag: vi.fn(() => output),
     setXFrameOptionsMode: vi.fn(() => output),
   };
+  const batchUpdate = vi.fn(
+    (resource: {
+      requests: Array<{
+        appendCells: {
+          sheetId: number;
+          rows: Array<{
+            values: Array<{ userEnteredValue: { stringValue: string } }>;
+          }>;
+        };
+      }>;
+    }) => {
+      for (const request of resource.requests) {
+        const target = [...sheets.values()].find(
+          (sheet) => sheet.getSheetId() === request.appendCells.sheetId,
+        );
+        for (const row of request.appendCells.rows) {
+          target?.appendRow(
+            row.values.map((cell) => cell.userEnteredValue.stringValue),
+          );
+        }
+      }
+    },
+  );
+  let uuidCount = 0;
   const context = {
     Date,
     String,
     Array,
     Math,
     JSON,
+    Boolean,
+    Error,
+    parseInt,
     HtmlService: {
       createHtmlOutputFromFile: vi.fn(() => output),
       XFrameOptionsMode: { ALLOWALL: 'ALLOWALL' },
@@ -109,6 +147,23 @@ function loadServer(
       getActiveSpreadsheet: () =>
         hasSpreadsheet ? { getId: () => 'e2e-sheet-id' } : null,
     },
+    LockService: {
+      getScriptLock: () => ({
+        tryLock: () => lockAcquired,
+        releaseLock,
+      }),
+    },
+    Sheets: {
+      Spreadsheets: {
+        batchUpdate,
+      },
+    },
+    Utilities: {
+      getUuid: () => {
+        uuidCount += 1;
+        return `aaaaaaaa-bbbb-4ccc-8ddd-${String(uuidCount).padStart(12, '0')}`;
+      },
+    },
   };
 
   runInNewContext(source, context);
@@ -119,6 +174,8 @@ function loadServer(
     properties,
     setProperties,
     sheets,
+    releaseLock,
+    batchUpdate,
   };
 }
 
@@ -230,7 +287,11 @@ describe('Apps Script E2E server', () => {
     const second = server.setupSchema();
 
     expect(first).toEqual(second);
-    expect(first.appliedMigrations).toEqual(['001_foundation']);
+    expect(first.schemaVersion).toBe(2);
+    expect(first.appliedMigrations).toEqual([
+      '001_foundation',
+      '002_operation_requests',
+    ]);
     expect(sheets.get('_meta')?.rows[0]).toEqual(['key', 'value']);
     expect(sheets.get('_schema_migrations')?.rows[0]).toEqual([
       'migration_id',
@@ -239,10 +300,22 @@ describe('Apps Script E2E server', () => {
       'checksum',
       'description',
     ]);
+    expect(sheets.get('_operation_requests')?.rows[0]).toEqual([
+      'request_id',
+      'operation_type',
+      'result_entity_id',
+      'status',
+      'created_at',
+    ]);
     expect(
       sheets
         .get('_schema_migrations')
         ?.rows.filter((row) => row[0] === '001_foundation'),
+    ).toHaveLength(1);
+    expect(
+      sheets
+        .get('_schema_migrations')
+        ?.rows.filter((row) => row[0] === '002_operation_requests'),
     ).toHaveLength(1);
   });
 
@@ -292,5 +365,75 @@ describe('Apps Script E2E server', () => {
       ]),
     );
     expect(() => server.setupSchema()).toThrow('UNKNOWN_MIGRATION');
+  });
+
+  it('replays the same probe result on retry and double submit', () => {
+    const { server, sheets, batchUpdate, releaseLock } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    const requestId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+
+    const first = server.probeIdempotentOperation(requestId);
+    const retry = server.probeIdempotentOperation(requestId);
+    const doubleSubmit = server.probeIdempotentOperation(requestId);
+
+    expect(first.replayed).toBe(false);
+    expect(retry).toEqual({ ...first, replayed: true });
+    expect(doubleSubmit).toEqual(retry);
+    expect(batchUpdate).toHaveBeenCalledTimes(1);
+    expect(releaseLock).toHaveBeenCalled();
+    expect(
+      sheets
+        .get('_operation_requests')
+        ?.rows.filter((row) => row[0] === requestId),
+    ).toHaveLength(1);
+  });
+
+  it('clears fictitious operation requests on E2E reset', () => {
+    const { server, sheets } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.probeIdempotentOperation('aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee');
+    expect(server.resetE2E()).toEqual({ reset: true, environment: 'E2E' });
+    expect(sheets.get('_operation_requests')?.rows).toEqual([
+      [
+        'request_id',
+        'operation_type',
+        'result_entity_id',
+        'status',
+        'created_at',
+      ],
+    ]);
+  });
+
+  it('rejects a row number as probe request_id and still releases the lock', () => {
+    const { server, releaseLock } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    expect(() => server.probeIdempotentOperation('2')).toThrow(
+      'INVALID_REQUEST_ID',
+    );
+    expect(releaseLock).toHaveBeenCalled();
+  });
+
+  it('times out when the script lock is busy', () => {
+    const { server, releaseLock } = loadServer(
+      {
+        ENVIRONMENT: 'E2E',
+        SPREADSHEET_ID: 'e2e-sheet-id',
+        APP_VERSION: '0.1.0-dev',
+      },
+      { lockAcquired: false },
+    );
+    expect(() =>
+      server.probeIdempotentOperation('aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'),
+    ).toThrow('LOCK_TIMEOUT');
+    expect(releaseLock).not.toHaveBeenCalled();
   });
 });

@@ -28,8 +28,9 @@ Testar:
 - serialização de rows;
 - schemas e validação de cabeçalhos;
 - `setupSchema` idempotente (recusa PROD);
-- construção de batch requests;
-- idempotência;
+- construção de batch requests (`spreadsheets.batchUpdate`);
+- `withScriptLock` e timeout retryable;
+- retry/double submit com o mesmo `request_id`;
 - validações.
 
 ## Integração remota — E2E env

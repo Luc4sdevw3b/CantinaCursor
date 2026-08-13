@@ -32,7 +32,7 @@ Versão canônica: arquivo `VERSION` na raiz. `package.json.version` e `src/app-
 
 ## Request IDs
 
-Operações mutáveis críticas terão `request_id` para idempotência quando essa infraestrutura entrar (locks/batch). Não antecipar o mecanismo agora.
+Operações mutáveis críticas recebem `request_id` (UUID). Retry e double submit com o mesmo `request_id` reutilizam o resultado em `_operation_requests`; não duplicam a mutação. Número da linha nunca é `request_id`.
 
 ## Erros
 

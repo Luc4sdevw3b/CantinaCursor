@@ -97,6 +97,8 @@ Este ambiente Google isolado é distinto do E2E local da Fase 1.
 
 Testar retry e double submit.
 
+`AppApi` permanece mínimo. Backup Drive é a Fase 6.
+
 ## Fase 6 — Backup e saúde
 
 - backup Drive;

@@ -1,5 +1,10 @@
 import { err, ok, type Result } from '../../domain/result';
-import { FOUNDATION_MIGRATION_ID } from './schema';
+import { checksumHeaders } from './serialize';
+import {
+  FOUNDATION_MIGRATION_ID,
+  OPERATION_REQUESTS_MIGRATION_ID,
+  OPERATION_REQUESTS_SHEET,
+} from './schema';
 
 export interface Migration {
   id: string;
@@ -13,7 +18,16 @@ export const FOUNDATION_MIGRATION: Migration = {
   checksum: 'meta|schema_migrations',
 };
 
-export const MIGRATION_CATALOG: readonly Migration[] = [FOUNDATION_MIGRATION];
+export const OPERATION_REQUESTS_MIGRATION: Migration = {
+  id: OPERATION_REQUESTS_MIGRATION_ID,
+  description: 'Cria _operation_requests',
+  checksum: checksumHeaders(OPERATION_REQUESTS_SHEET.headers),
+};
+
+export const MIGRATION_CATALOG: readonly Migration[] = [
+  FOUNDATION_MIGRATION,
+  OPERATION_REQUESTS_MIGRATION,
+];
 
 export function pendingMigrations(
   appliedIds: readonly string[],
