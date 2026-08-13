@@ -176,7 +176,8 @@ app.innerHTML = `
           <input id="product-reservable" type="checkbox" />
           Reservável
         </label>
-        <button type="submit">Cadastrar produto</button>
+        <button type="submit" id="product-submit">Cadastrar produto</button>
+        <button type="button" id="product-cancel" hidden>Cancelar</button>
       </form>
       <div id="ad-hoc-block">
         <h2>Item avulso</h2>
@@ -576,6 +577,7 @@ async function loginAs(role: UserRole): Promise<void> {
 async function showAuthenticated(session: AppSession | null): Promise<void> {
   if (!session) {
     activeArea = DEFAULT_AREA;
+    fillProductForm(null);
   }
   syncWorkspace(session);
   renderSession(session, true);
@@ -787,6 +789,46 @@ function productLine(product: Product): string {
   return `${product.name} • ${product.categoryName} • ${product.priceLabel}${inactive}`;
 }
 
+function priceInputFromCents(cents: number): string {
+  return `${Math.floor(cents / 100)},${String(cents % 100).padStart(2, '0')}`;
+}
+
+let editingProductId: string | null = null;
+
+function fillProductForm(product: Product | null): void {
+  const name = document.querySelector('#product-name');
+  const price = document.querySelector('#product-price');
+  const discount = document.querySelector('#product-discount');
+  const stock = document.querySelector('#product-stock');
+  const reservable = document.querySelector('#product-reservable');
+  const submit = document.querySelector('#product-submit');
+  const cancel = document.querySelector('#product-cancel');
+  editingProductId = product?.id ?? null;
+  if (
+    !(name instanceof HTMLInputElement) ||
+    !(price instanceof HTMLInputElement) ||
+    !(discount instanceof HTMLInputElement) ||
+    !(stock instanceof HTMLInputElement) ||
+    !(reservable instanceof HTMLInputElement)
+  ) {
+    return;
+  }
+  if (productCategorySelect instanceof HTMLSelectElement && product) {
+    productCategorySelect.value = product.categoryId;
+  }
+  name.value = product?.name ?? '';
+  price.value = product ? priceInputFromCents(product.priceCents) : '';
+  discount.checked = product?.discountAllowed ?? false;
+  stock.checked = product?.stockTracked ?? false;
+  reservable.checked = product?.reservable ?? false;
+  if (submit instanceof HTMLButtonElement) {
+    submit.textContent = product ? 'Salvar produto' : 'Cadastrar produto';
+  }
+  if (cancel instanceof HTMLButtonElement) {
+    cancel.hidden = !product;
+  }
+}
+
 async function renderProducts(session: AppSession | null): Promise<void> {
   if (
     !(productsPanel instanceof HTMLElement) ||
@@ -821,22 +863,44 @@ async function renderProducts(session: AppSession | null): Promise<void> {
       option.textContent = category.name;
       productCategorySelect.append(option);
     }
+    if (editingProductId) {
+      const editing = products.find((item) => item.id === editingProductId);
+      if (editing) {
+        productCategorySelect.value = editing.categoryId;
+      }
+    }
   }
 
   for (const product of products) {
     const item = document.createElement('li');
     item.textContent = productLine(product);
+    const actions = document.createElement('div');
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.textContent = 'Editar';
+    edit.addEventListener('click', () => {
+      fillProductForm(product);
+      const nameField = document.querySelector('#product-name');
+      if (nameField instanceof HTMLInputElement) {
+        nameField.focus();
+      }
+    });
+    actions.append(edit);
     if (product.active) {
       const deactivate = document.createElement('button');
       deactivate.type = 'button';
       deactivate.textContent = 'Desativar';
       deactivate.addEventListener('click', () => {
-        void api
-          .deactivateProduct(product.id)
-          .then(() => api.getSession().then(renderProducts));
+        void api.deactivateProduct(product.id).then(() => {
+          if (editingProductId === product.id) {
+            fillProductForm(null);
+          }
+          return api.getSession().then(renderProducts);
+        });
       });
-      item.append(deactivate);
+      actions.append(deactivate);
     }
+    item.append(actions);
     productsList.append(item);
   }
 
@@ -2047,31 +2111,42 @@ document.querySelector('#product-form')?.addEventListener('submit', (event) => {
     }
     return;
   }
-  void api
-    .createProduct({
-      name: name.value,
-      categoryId: productCategorySelect.value,
-      priceCents: cents.data,
-      discountAllowed: discount.checked,
-      stockTracked: stock.checked,
-      reservable: reservable.checked,
-    })
+  const fields = {
+    name: name.value,
+    categoryId: productCategorySelect.value,
+    priceCents: cents.data,
+    discountAllowed: discount.checked,
+    stockTracked: stock.checked,
+    reservable: reservable.checked,
+  };
+  const saved = editingProductId
+    ? api.updateProduct(editingProductId, fields)
+    : api.createProduct(fields);
+  void saved
     .then(() => {
-      name.value = '';
-      price.value = '';
-      discount.checked = false;
-      stock.checked = false;
-      reservable.checked = false;
-      return api.getSession().then(renderProducts);
+      fillProductForm(null);
+      return api
+        .getSession()
+        .then((session) =>
+          Promise.all([
+            renderProducts(session),
+            renderSales(session),
+            renderInventory(session),
+          ]),
+        );
     })
     .catch((error: unknown) => {
       if (productsStatus) {
         productsStatus.textContent =
           error instanceof Error
             ? error.message.replace(/^[A-Z_]+:\s*/, '')
-            : 'Não foi possível cadastrar o produto.';
+            : 'Não foi possível salvar o produto.';
       }
     });
+});
+
+document.querySelector('#product-cancel')?.addEventListener('click', () => {
+  fillProductForm(null);
 });
 
 document.querySelector('#ad-hoc-form')?.addEventListener('submit', (event) => {

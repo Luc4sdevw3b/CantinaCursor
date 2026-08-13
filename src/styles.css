@@ -340,6 +340,14 @@ footer {
   background: var(--surface);
 }
 
+.students-panel li > div,
+.family-panel li > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .students-panel form,
 .family-panel form {
   display: grid;
@@ -350,6 +358,7 @@ footer {
 .students-panel form[hidden],
 .family-panel form[hidden],
 .students-panel #sale-discount-fields[hidden],
+.students-panel #product-cancel[hidden],
 .students-panel label[hidden] {
   display: none;
 }

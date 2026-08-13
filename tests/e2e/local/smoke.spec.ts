@@ -218,6 +218,39 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await goToArea(page, 'Cardápio');
     await expect(page.getByText('Coxinha • Salgados • R$ 5,50')).toBeVisible();
     await expect(page.locator('#ad-hoc-block')).toBeHidden();
+    await expect(
+      page.getByRole('button', { name: 'Editar' }).first(),
+    ).toBeVisible();
+  });
+
+  test('edits an existing catalog product from the cardápio', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await goToArea(page, 'Cardápio');
+    const coxinha = page
+      .locator('#products-list')
+      .getByRole('listitem')
+      .filter({ hasText: 'Coxinha • Salgados • R$ 5,50' });
+    await coxinha.getByRole('button', { name: 'Editar' }).click();
+    await expect(page.locator('#product-name')).toHaveValue('Coxinha');
+    await expect(page.locator('#product-price')).toHaveValue('5,50');
+    await expect(page.locator('#product-discount')).toBeChecked();
+    await expect(page.locator('#product-stock')).toBeChecked();
+    await expect(page.locator('#product-reservable')).not.toBeChecked();
+    await page.locator('#product-price').fill('6,00');
+    await page.getByRole('button', { name: 'Salvar produto' }).click();
+    await expect(
+      page.locator('#products-list').getByText('Coxinha • Salgados • R$ 6,00'),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Cadastrar produto' }),
+    ).toBeVisible();
+    await goToArea(page, 'Vendas');
+    await expect(page.locator('#sale-product')).toContainText(
+      'Coxinha • R$ 6,00',
+    );
   });
 
   test('shows daily stock after login and keeps adjustments to the owner', async ({

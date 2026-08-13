@@ -9,6 +9,42 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-13 16:10 — Editar produtos no cardápio
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 17
+
+### Pedido / objetivo
+
+- Colocar uma opção de editar produtos já criados.
+
+### Tentativa / implementação
+
+- Botão **Editar** em cada produto do Cardápio. O mesmo formulário de cadastro recebe nome, categoria, preço e flags; o envio vira **Salvar produto** (`updateProduct`). **Cancelar** volta ao cadastro.
+- Mudança de preço continua append-only: venda antiga não muda. Dona e funcionário podem editar (`products.write`). Depois de salvar, vendas e estoque atualizam o nome/preço na tela.
+
+### Resultado
+
+- Produto existente pode ser corrigido na UI, sem recadastrar.
+
+### Diferenças do pedido
+
+- Nenhuma. A API já existia; faltava só a tela.
+
+### Impacto técnico
+
+- Sem schema novo. HTML do Web App muda; precisa `clasp push` + deploy.
+
+### Testes
+
+- E2E local: editar Coxinha de R$ 5,50 para R$ 6,00 e ver o preço novo no cardápio e no select de vendas.
+
+### Pendências / próxima versão
+
+- Deploy Apps Script da UI nova.
+
 ## 2026-08-13 15:50 — Hero com atalhos e uma área visível por vez
 
 **Origem:** Pedido do usuário
