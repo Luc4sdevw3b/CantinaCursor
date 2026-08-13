@@ -7,10 +7,30 @@ export const PAYMENT_METHOD_CASH = 'cash';
 export const PAYMENT_MODE_OLDEST_FIRST = 'oldest_first';
 export const PAYMENT_MODE_SELECTED = 'selected';
 export const PAYMENT_MODE_MANUAL = 'manual';
+export const PAYMENT_MODE_CREDIT_REMAINDER = 'credit_remainder';
+export const PAYMENT_MODE_ALL_CREDIT = 'all_credit';
 
 export const PAYMENT_STUDENT_REQUIRED_ERROR = {
   code: 'PAYMENT_STUDENT_REQUIRED',
   message: 'Escolha o aluno da dívida.',
+  retryable: false,
+} as const;
+
+export const PAYMENT_GUARDIAN_REQUIRED_ERROR = {
+  code: 'PAYMENT_GUARDIAN_REQUIRED',
+  message: 'Escolha o responsável do pagamento.',
+  retryable: false,
+} as const;
+
+export const PAYMENT_FAMILY_CHILD_REQUIRED_ERROR = {
+  code: 'PAYMENT_FAMILY_CHILD_REQUIRED',
+  message: 'Escolha o filho para quitar.',
+  retryable: false,
+} as const;
+
+export const PAYMENT_LEFTOVER_UNEXPLAINED_ERROR = {
+  code: 'PAYMENT_LEFTOVER_UNEXPLAINED',
+  message: 'A sobra precisa ir para o crédito do responsável.',
   retryable: false,
 } as const;
 
@@ -64,6 +84,24 @@ export type PaymentMode =
   | typeof PAYMENT_MODE_SELECTED
   | typeof PAYMENT_MODE_MANUAL;
 
+export type FamilyPaymentMode =
+  | PaymentMode
+  | typeof PAYMENT_MODE_CREDIT_REMAINDER
+  | typeof PAYMENT_MODE_ALL_CREDIT;
+
+export const FAMILY_PAYMENT_MODE_UNSUPPORTED_ERROR = {
+  code: 'PAYMENT_MODE_UNSUPPORTED',
+  message:
+    'Use quitar um filho, selecionadas, alocação manual, dívida + crédito ou tudo crédito.',
+  retryable: false,
+} as const;
+
+export const PAYMENT_CHILD_NOT_LINKED_ERROR = {
+  code: 'PAYMENT_CHILD_NOT_LINKED',
+  message: 'Este responsável não está vinculado a esse aluno.',
+  retryable: false,
+} as const;
+
 export interface AllocatableReceivable {
   id: string;
   charged_student_id: string;
@@ -76,6 +114,11 @@ export interface PlannedPaymentAllocation {
   receivable_id: string;
   student_id: string;
   amount_cents: string;
+}
+
+export interface PlannedFamilyPayment {
+  allocations: PlannedPaymentAllocation[];
+  creditCents: number;
 }
 
 export function parsePaymentMethod(value: unknown): Result<PaymentMethod> {
@@ -94,6 +137,22 @@ export function parsePaymentMode(value: unknown): Result<PaymentMode> {
     return ok(value);
   }
   return err(PAYMENT_MODE_UNSUPPORTED_ERROR);
+}
+
+export function parseFamilyPaymentMode(
+  value: unknown,
+): Result<FamilyPaymentMode> {
+  const studentMode = parsePaymentMode(value);
+  if (studentMode.ok) {
+    return studentMode;
+  }
+  if (
+    value === PAYMENT_MODE_CREDIT_REMAINDER ||
+    value === PAYMENT_MODE_ALL_CREDIT
+  ) {
+    return ok(value);
+  }
+  return err(FAMILY_PAYMENT_MODE_UNSUPPORTED_ERROR);
 }
 
 export function sortOldestFirst(
@@ -223,6 +282,144 @@ export function planPaymentAllocations(input: {
   return allocateOldestFirst(amount.data, pool);
 }
 
+function parsePaymentAmount(value: unknown): Result<number> {
+  const amount = parseCents(value);
+  if (!amount.ok || amount.data <= 0) {
+    return err({
+      code: 'INVALID_CENTS',
+      message:
+        'O valor do pagamento precisa ser um valor em centavos, número inteiro.',
+      retryable: false,
+    });
+  }
+  return ok(amount.data);
+}
+
+function planManualAllocations(
+  amountCents: number,
+  receivables: readonly AllocatableReceivable[],
+  allocations: readonly { receivableId?: unknown; amountCents?: unknown }[],
+  leftoverAllowed: boolean,
+): Result<PlannedFamilyPayment> {
+  if (!allocations.length) {
+    return err(PAYMENT_ALLOCATION_MISMATCH_ERROR);
+  }
+  const byId = new Map(receivables.map((item) => [item.id, item]));
+  const rows: PlannedPaymentAllocation[] = [];
+  let total = 0;
+  for (const line of allocations) {
+    const receivableId =
+      typeof line.receivableId === 'string' ? line.receivableId : '';
+    const receivable = byId.get(receivableId);
+    if (!receivable || receivable.remaining_cents <= 0) {
+      return err(RECEIVABLE_NOT_FOUND_ERROR);
+    }
+    const lineAmount = parseCents(line.amountCents);
+    if (!lineAmount.ok || lineAmount.data <= 0) {
+      return err(PAYMENT_ALLOCATION_MISMATCH_ERROR);
+    }
+    if (lineAmount.data > receivable.remaining_cents) {
+      return err(PAYMENT_EXCEEDS_BALANCE_ERROR);
+    }
+    if (rows.some((row) => row.receivable_id === receivable.id)) {
+      return err(PAYMENT_ALLOCATION_MISMATCH_ERROR);
+    }
+    total += lineAmount.data;
+    rows.push({
+      receivable_id: receivable.id,
+      student_id: receivable.charged_student_id,
+      amount_cents: String(lineAmount.data),
+    });
+  }
+  if (leftoverAllowed) {
+    if (total <= 0 || total >= amountCents) {
+      return err(PAYMENT_LEFTOVER_UNEXPLAINED_ERROR);
+    }
+    return ok({ allocations: rows, creditCents: amountCents - total });
+  }
+  if (total < amountCents) {
+    return err(PAYMENT_LEFTOVER_UNEXPLAINED_ERROR);
+  }
+  if (total !== amountCents) {
+    return err(PAYMENT_ALLOCATION_MISMATCH_ERROR);
+  }
+  return ok({ allocations: rows, creditCents: 0 });
+}
+
+export function planFamilyPayment(input: {
+  amountCents: unknown;
+  mode: unknown;
+  receivables: readonly AllocatableReceivable[];
+  studentId?: string | null;
+  selectedReceivableIds?: readonly string[];
+  allocations?: readonly { receivableId?: unknown; amountCents?: unknown }[];
+}): Result<PlannedFamilyPayment> {
+  const mode = parseFamilyPaymentMode(input.mode);
+  if (!mode.ok) {
+    return err(mode.error);
+  }
+  const amount = parsePaymentAmount(input.amountCents);
+  if (!amount.ok) {
+    return err(amount.error);
+  }
+  if (mode.data === PAYMENT_MODE_ALL_CREDIT) {
+    return ok({ allocations: [], creditCents: amount.data });
+  }
+  if (mode.data === PAYMENT_MODE_CREDIT_REMAINDER) {
+    if (input.allocations?.length) {
+      return planManualAllocations(
+        amount.data,
+        input.receivables,
+        input.allocations,
+        true,
+      );
+    }
+    const open = input.receivables.filter((item) => item.remaining_cents > 0);
+    const total = open.reduce((sum, item) => sum + item.remaining_cents, 0);
+    if (!open.length || amount.data <= total) {
+      return err(PAYMENT_LEFTOVER_UNEXPLAINED_ERROR);
+    }
+    const rows = allocateOldestFirst(total, open);
+    if (!rows.ok) {
+      return err(rows.error);
+    }
+    return ok({
+      allocations: rows.data,
+      creditCents: amount.data - total,
+    });
+  }
+  if (mode.data === PAYMENT_MODE_OLDEST_FIRST && !input.studentId) {
+    return err(PAYMENT_FAMILY_CHILD_REQUIRED_ERROR);
+  }
+  const pool =
+    mode.data === PAYMENT_MODE_OLDEST_FIRST
+      ? input.receivables.filter(
+          (item) => item.charged_student_id === input.studentId,
+        )
+      : input.receivables;
+  if (mode.data === PAYMENT_MODE_MANUAL) {
+    return planManualAllocations(
+      amount.data,
+      pool,
+      input.allocations ?? [],
+      false,
+    );
+  }
+  const planned = planPaymentAllocations({
+    amountCents: amount.data,
+    mode: mode.data,
+    receivables: pool,
+    selectedReceivableIds: input.selectedReceivableIds,
+  });
+  if (!planned.ok) {
+    if (planned.error.code === PAYMENT_EXCEEDS_BALANCE_ERROR.code) {
+      return err(PAYMENT_LEFTOVER_UNEXPLAINED_ERROR);
+    }
+    return err(planned.error);
+  }
+  return ok({ allocations: planned.data, creditCents: 0 });
+}
+
 export function paymentSummaryLabel(input: {
   studentLabel: string;
   amountLabel: string;
@@ -230,4 +427,22 @@ export function paymentSummaryLabel(input: {
 }): string {
   const methodLabel = input.method === PAYMENT_METHOD_CASH ? 'Dinheiro' : 'PIX';
   return `${input.studentLabel} • ${input.amountLabel} • ${methodLabel}`;
+}
+
+export function familyPaymentSummaryLabel(input: {
+  guardianLabel: string;
+  amountLabel: string;
+  method: PaymentMethod;
+  childLines: readonly { studentLabel: string; amountLabel: string }[];
+  creditLabel?: string | null;
+}): string {
+  const methodLabel = input.method === PAYMENT_METHOD_CASH ? 'Dinheiro' : 'PIX';
+  const parts = [input.guardianLabel, input.amountLabel, methodLabel];
+  for (const line of input.childLines) {
+    parts.push(`${line.studentLabel} ${line.amountLabel}`);
+  }
+  if (input.creditLabel) {
+    parts.push(`crédito ${input.creditLabel}`);
+  }
+  return parts.join(' • ');
 }

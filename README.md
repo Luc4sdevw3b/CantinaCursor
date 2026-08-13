@@ -2,7 +2,7 @@
 
 Aplicação web da cantina, planejada para Google Apps Script + Google Sheets + Google Drive.
 
-O projeto está na Fase 18 (`0.1.0-dev`): crédito de responsável com conta própria, autorização por filho e autoquitação. Pagamento familiar fica na Fase 19. O caixa físico fica na Fase 21.
+O projeto está na Fase 19 (`0.1.0-dev`): pagamento familiar, com cada centavo do responsável alocado em filhos escolhidos ou no crédito da conta. O caixa físico fica na Fase 21.
 
 Consulte:
 

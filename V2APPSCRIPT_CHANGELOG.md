@@ -9,6 +9,37 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-13 16:45 — Implementada a Fase 19: pagamento familiar
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 19
+
+### Pedido / objetivo
+
+- Iniciar a Fase 19: responsável paga filhos (quitar um, selecionados, manual, dívida + crédito, tudo crédito), cada centavo explicado, sobra só no crédito do responsável.
+
+### Tentativa / implementação
+
+- Sem migration nova: `payer_guardian_id` em `_payments`, `_payment_allocations` e `_payment_credit_allocations`. Schema continua 12.
+- API nova `createFamilyPayment`. O botão **Registrar pagamento** do aluno não muda. Família usa **Registrar pagamento familiar**.
+- Showcase local: dois fiados Coxinha (Ana ~8 e Bruno) amanhã; Maria paga `R$ 2,00` como dívida + crédito `0,20` + `0,15` + `1,65`. Lista `Maria Souza • mãe • R$ 2,00 • PIX • Ana Souza • ~8 R$ 0,20 • Bruno Lima • 11 R$ 0,15 • crédito R$ 1,65`. Agenda `R$ 5,30` e `R$ 5,35`. Crédito `Maria Souza • mãe • R$ 1,65`.
+- Paulo não paga Ana ~8. Sobra sem modo crédito é recusada. Funcionário pode registrar. Pagamentos do responsável passam a aparecer na lista.
+
+### Resultado
+
+- Fase 19 concluída sobre o ambiente E2E isolado e o preview local.
+- Autorizações entre irmãos (lançar na conta) são a Fase 20. Caixa, reservas reais e WhatsApp permanecem nas fases seguintes.
+
+### Diferenças do pedido
+
+- Depósito de crédito do responsável (Fase 18) continua separado do pagamento familiar; a autoquitação do depósito não substitui a alocação explícita desta fase.
+
+### Impacto técnico
+
+- `createFamilyPayment` entra no `AppApi`. Confirmar venda e Registrar pagamento não mudam de rótulo.
+
 ## 2026-08-13 16:20 — Implementada a Fase 18: crédito de responsável
 
 **Origem:** Pedido do usuário

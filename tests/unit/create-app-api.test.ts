@@ -83,6 +83,7 @@ function runnerWith(
     listReceivables() {},
     getDueDateShortcuts() {},
     createPayment() {},
+    createFamilyPayment() {},
     listPayments() {},
     addReceivableInterest() {},
     renegotiateReceivable() {},

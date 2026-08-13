@@ -29,6 +29,7 @@ import type {
   AdjustInventoryInput,
   Payment,
   CreatePaymentInput,
+  CreateFamilyPaymentInput,
   CreditAccount,
   DepositPersonalCreditInput,
   DepositGuardianCreditInput,
@@ -376,6 +377,11 @@ export class FakeAppApi implements AppApi {
   async createPayment(input: CreatePaymentInput): Promise<Payment> {
     this.assertAction('payments.write');
     return throwResult(this.sales.createPayment(input));
+  }
+
+  async createFamilyPayment(input: CreateFamilyPaymentInput): Promise<Payment> {
+    this.assertAction('payments.write');
+    return throwResult(this.sales.createFamilyPayment(input));
   }
 
   async listPayments(): Promise<Payment[]> {

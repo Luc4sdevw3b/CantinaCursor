@@ -23,10 +23,15 @@ import {
 import { INVENTORY_SALE_KIND } from '../../domain/inventory';
 import { formatBrl } from '../../domain/money';
 import {
+  familyPaymentSummaryLabel,
   parsePaymentMethod,
+  PAYMENT_CHILD_NOT_LINKED_ERROR,
+  PAYMENT_GUARDIAN_REQUIRED_ERROR,
+  PAYMENT_MODE_OLDEST_FIRST,
   PAYMENT_STATUS_COMPLETED,
   PAYMENT_STUDENT_REQUIRED_ERROR,
   paymentSummaryLabel,
+  planFamilyPayment,
   planPaymentAllocations,
   type PaymentMethod,
 } from '../../domain/payment';
@@ -373,7 +378,6 @@ export class MemorySales {
   listPayments(): Result<PaymentView[]> {
     return ok(
       this.payments
-        .filter((payment) => payment.payer_student_id)
         .slice()
         .reverse()
         .map((payment) => this.toPayment(payment)),
@@ -436,6 +440,104 @@ export class MemorySales {
         receivable_id: row.receivable_id,
         student_id: row.student_id,
         amount_cents: row.amount_cents,
+      });
+    }
+    return ok(this.toPayment(payment));
+  }
+
+  createFamilyPayment(input: {
+    guardianId?: string | null;
+    studentId?: string | null;
+    amountCents: unknown;
+    method: unknown;
+    mode: unknown;
+    selectedReceivableIds?: readonly string[];
+    allocations?: readonly { receivableId?: unknown; amountCents?: unknown }[];
+  }): Result<PaymentView> {
+    if (!input.guardianId) {
+      return err(PAYMENT_GUARDIAN_REQUIRED_ERROR);
+    }
+    const guardian = this.roster.getGuardian(input.guardianId);
+    if (!guardian.ok) {
+      return err(guardian.error);
+    }
+    const method = parsePaymentMethod(input.method);
+    if (!method.ok) {
+      return err(method.error);
+    }
+    const linkedStudentIds = new Set(
+      this.roster
+        .listActiveGuardianLinks()
+        .filter((link) => link.guardianId === guardian.data.id)
+        .map((link) => link.studentId),
+    );
+    if (input.mode === PAYMENT_MODE_OLDEST_FIRST && input.studentId) {
+      if (!linkedStudentIds.has(input.studentId)) {
+        return err(PAYMENT_CHILD_NOT_LINKED_ERROR);
+      }
+    }
+    const planned = planFamilyPayment({
+      amountCents: input.amountCents,
+      mode: input.mode,
+      studentId: input.studentId,
+      receivables: this.receivables
+        .filter((item) => linkedStudentIds.has(item.charged_student_id))
+        .map((item) => ({
+          id: item.id,
+          charged_student_id: item.charged_student_id,
+          due_date: item.due_date,
+          created_at: item.created_at,
+          remaining_cents: this.remainingCents(item.id),
+        })),
+      selectedReceivableIds: input.selectedReceivableIds,
+      allocations: input.allocations,
+    });
+    if (!planned.ok) {
+      return err(planned.error);
+    }
+    const receivedCents =
+      planned.data.allocations.reduce(
+        (total, row) => total + Number(row.amount_cents),
+        0,
+      ) + planned.data.creditCents;
+    const now = this.nowIso();
+    const payment: PaymentRecord = {
+      id: this.createId(),
+      payer_guardian_id: guardian.data.id,
+      payer_student_id: '',
+      method: method.data,
+      amount_received_cents: String(receivedCents),
+      status: PAYMENT_STATUS_COMPLETED,
+      created_by: LOCAL_ACTOR_ID,
+      created_at: now,
+      note: '',
+    };
+    this.payments.push(payment);
+    for (const row of planned.data.allocations) {
+      this.allocations.push({
+        payment_id: payment.id,
+        receivable_id: row.receivable_id,
+        student_id: row.student_id,
+        amount_cents: row.amount_cents,
+      });
+    }
+    if (planned.data.creditCents > 0) {
+      const account = this.ensureGuardianCreditAccount(guardian.data.id, now);
+      this.creditMovements.push({
+        credit_account_id: account.id,
+        kind: CREDIT_KIND_DEPOSIT,
+        amount_delta_cents: String(planned.data.creditCents),
+        source_type: CREDIT_SOURCE_PAYMENT,
+        source_id: payment.id,
+        student_id: '',
+        created_by: LOCAL_ACTOR_ID,
+        created_at: now,
+        note: '',
+      });
+      this.paymentCreditAllocations.push({
+        payment_id: payment.id,
+        credit_account_id: account.id,
+        amount_cents: String(planned.data.creditCents),
       });
     }
     return ok(this.toPayment(payment));
@@ -1241,10 +1343,34 @@ export class MemorySales {
   }
 
   private toPayment(payment: PaymentRecord): PaymentView {
-    const student = unwrap(this.roster.getStudent(payment.payer_student_id));
-    const studentLabel = `${student.fullName} • ${student.ageLabel}`;
     const amountCents = Number(payment.amount_received_cents);
     const amountLabel = formatBrl(amountCents);
+    if (payment.payer_guardian_id) {
+      const guardianLabel = this.guardianLabel(payment.payer_guardian_id);
+      const childLines = this.familyPaymentChildLines(payment.id);
+      const creditCents = this.paymentCreditAllocations
+        .filter((item) => item.payment_id === payment.id)
+        .reduce((total, item) => total + Number(item.amount_cents), 0);
+      return {
+        id: payment.id,
+        payerStudentId: '',
+        studentLabel: guardianLabel,
+        method: payment.method,
+        amountCents,
+        amountLabel,
+        status: PAYMENT_STATUS_COMPLETED,
+        summaryLabel: familyPaymentSummaryLabel({
+          guardianLabel,
+          amountLabel,
+          method: payment.method,
+          childLines,
+          creditLabel: creditCents > 0 ? formatBrl(creditCents) : null,
+        }),
+        createdAt: payment.created_at,
+      };
+    }
+    const student = unwrap(this.roster.getStudent(payment.payer_student_id));
+    const studentLabel = `${student.fullName} • ${student.ageLabel}`;
     return {
       id: payment.id,
       payerStudentId: payment.payer_student_id,
@@ -1260,6 +1386,29 @@ export class MemorySales {
       }),
       createdAt: payment.created_at,
     };
+  }
+
+  private familyPaymentChildLines(
+    paymentId: string,
+  ): Array<{ studentLabel: string; amountLabel: string }> {
+    const order: string[] = [];
+    const sums = new Map<string, number>();
+    for (const row of this.allocations.filter(
+      (item) => item.payment_id === paymentId,
+    )) {
+      if (!sums.has(row.student_id)) {
+        order.push(row.student_id);
+        sums.set(row.student_id, 0);
+      }
+      sums.set(
+        row.student_id,
+        (sums.get(row.student_id) ?? 0) + Number(row.amount_cents),
+      );
+    }
+    return order.map((studentId) => ({
+      studentLabel: this.studentLabel(studentId),
+      amountLabel: formatBrl(sums.get(studentId) ?? 0),
+    }));
   }
 
   private toSale(sale: SaleRecord): SaleView {

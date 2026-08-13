@@ -401,7 +401,9 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
       .locator('#payment-student')
       .selectOption({ label: 'Ana Souza • ~8' });
     await page.locator('#payment-amount').fill('5,50');
-    await page.getByRole('button', { name: 'Registrar pagamento' }).click();
+    await page
+      .getByRole('button', { name: 'Registrar pagamento', exact: true })
+      .click();
     await expect(
       page
         .locator('#payments-list')
@@ -469,7 +471,9 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
       .filter({ hasText: 'Sexta-feira • 14/08/26' })
       .locator('input')
       .fill('2,50');
-    await page.getByRole('button', { name: 'Registrar pagamento' }).click();
+    await page
+      .getByRole('button', { name: 'Registrar pagamento', exact: true })
+      .click();
     await expect(
       page
         .locator('#payments-list')
@@ -724,6 +728,79 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
       .click();
     await expect(
       page.locator('#credits-list').getByText('Ana Souza • ~8 • R$ 0,00', {
+        exact: true,
+      }),
+    ).toBeVisible();
+  });
+
+  test('records a family payment as debt plus leftover guardian credit', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click();
+    await page
+      .locator('#sale-student')
+      .selectOption({ label: 'Ana Souza • ~8' });
+    await page.locator('#sale-payment-kind').selectOption('fiado');
+    await page.locator('#sale-due-tomorrow').click();
+    await page.getByRole('button', { name: 'Confirmar venda' }).click();
+
+    await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click();
+    await page
+      .locator('#sale-student')
+      .selectOption({ label: 'Bruno Lima • 11' });
+    await page.locator('#sale-payment-kind').selectOption('fiado');
+    await page.locator('#sale-due-tomorrow').click();
+    await page.getByRole('button', { name: 'Confirmar venda' }).click();
+    await goToArea(page, 'Estoque');
+    await expect(page.getByText('Coxinha • 8', { exact: true })).toBeVisible();
+
+    await goToArea(page, 'Pagamentos');
+    await page.locator('#family-payment-guardian').selectOption({
+      label: 'Maria Souza • mãe • WhatsApp',
+    });
+    await page.locator('#family-payment-amount').fill('2,00');
+    await page.locator('#family-payment-mode').selectOption('credit_remainder');
+    await page
+      .locator('#family-payment-debts li')
+      .filter({ hasText: 'Ana Souza • ~8' })
+      .locator('input')
+      .fill('0,20');
+    await page
+      .locator('#family-payment-debts li')
+      .filter({ hasText: 'Bruno Lima • 11' })
+      .locator('input')
+      .fill('0,15');
+    await page
+      .getByRole('button', { name: 'Registrar pagamento familiar' })
+      .click();
+    await expect(
+      page
+        .locator('#payments-list')
+        .getByText(
+          'Maria Souza • mãe • R$ 2,00 • PIX • Ana Souza • ~8 R$ 0,20 • Bruno Lima • 11 R$ 0,15 • crédito R$ 1,65',
+          { exact: true },
+        ),
+    ).toBeVisible();
+    await goToArea(page, 'Agenda');
+    await expect(
+      page
+        .locator('#agenda-upcoming')
+        .getByText('Ana Souza • ~8 • R$ 5,30 • Sexta-feira • 14/08/26', {
+          exact: true,
+        }),
+    ).toBeVisible();
+    await expect(
+      page
+        .locator('#agenda-upcoming')
+        .getByText('Bruno Lima • 11 • R$ 5,35 • Sexta-feira • 14/08/26', {
+          exact: true,
+        }),
+    ).toBeVisible();
+    await goToArea(page, 'Crédito');
+    await expect(
+      page.locator('#credits-list').getByText('Maria Souza • mãe • R$ 1,65', {
         exact: true,
       }),
     ).toBeVisible();

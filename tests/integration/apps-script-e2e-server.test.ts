@@ -277,6 +277,10 @@ interface ServerContext {
     sessionToken: string,
     payload: Record<string, unknown>,
   ): { summaryLabel: string };
+  createFamilyPayment(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): { summaryLabel: string };
   listPayments(sessionToken: string): Array<{ summaryLabel: string }>;
   addReceivableInterest(
     sessionToken: string,
@@ -2120,5 +2124,133 @@ describe('Apps Script E2E server', () => {
       }).summaryLabel,
     ).toBe('Maria Souza • mãe • R$ 2,50');
     expect(server.listReceivables(owner).upcoming).toHaveLength(0);
+  });
+
+  it('records a family payment as debt plus leftover guardian credit', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const coxinha = server
+      .listProducts(owner)
+      .find((item) => item.name === 'Coxinha');
+    const students = server.listStudents(owner);
+    const ana = students.find(
+      (student) =>
+        student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+    );
+    const bruno = students.find((student) => student.fullName === 'Bruno Lima');
+    const maria = server
+      .listGuardians(owner)
+      .find((item) => item.fullName === 'Maria Souza');
+    const paulo = server
+      .listGuardians(owner)
+      .find((item) => item.fullName === 'Paulo Nunes');
+    if (!coxinha || !ana || !bruno || !maria || !paulo) {
+      throw new Error('pagamento familiar E2E incompleto');
+    }
+    const shortcuts = server.getDueDateShortcuts(owner);
+    const upcomingLabel = formatCivilDisplay(shortcuts.tomorrow);
+
+    server.createSale(owner, {
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: shortcuts.tomorrow }],
+    });
+    server.createSale(owner, {
+      consumerStudentId: bruno.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: shortcuts.tomorrow }],
+    });
+    const upcoming = server.listReceivables(owner).upcoming;
+    const anaDebt = upcoming.find((item) =>
+      item.summaryLabel.startsWith('Ana Souza • ~8'),
+    );
+    const brunoDebt = upcoming.find((item) =>
+      item.summaryLabel.startsWith('Bruno Lima • 11'),
+    );
+    if (!anaDebt || !brunoDebt) {
+      throw new Error('dívidas familiares E2E ausentes');
+    }
+
+    expect(() =>
+      server.createFamilyPayment(owner, {
+        guardianId: paulo.id,
+        studentId: ana.id,
+        amountCents: 550,
+        method: 'pix',
+        mode: 'oldest_first',
+      }),
+    ).toThrow('PAYMENT_CHILD_NOT_LINKED');
+    expect(() =>
+      server.createFamilyPayment(owner, {
+        guardianId: maria.id,
+        studentId: ana.id,
+        amountCents: 600,
+        method: 'pix',
+        mode: 'oldest_first',
+      }),
+    ).toThrow('PAYMENT_LEFTOVER_UNEXPLAINED');
+
+    const payment = server.createFamilyPayment(owner, {
+      guardianId: maria.id,
+      amountCents: 200,
+      method: 'pix',
+      mode: 'credit_remainder',
+      allocations: [
+        { receivableId: anaDebt.id, amountCents: 20 },
+        { receivableId: brunoDebt.id, amountCents: 15 },
+      ],
+    });
+    expect(payment.summaryLabel).toBe(
+      `Maria Souza • mãe • R$ 2,00 • PIX • Ana Souza • ~8 R$ 0,20 • Bruno Lima • 11 R$ 0,15 • crédito R$ 1,65`,
+    );
+    expect(server.listPayments(owner)[0]?.summaryLabel).toBe(
+      payment.summaryLabel,
+    );
+    expect(
+      server.listReceivables(owner).upcoming.map((item) => item.summaryLabel),
+    ).toEqual(
+      expect.arrayContaining([
+        `Ana Souza • ~8 • R$ 5,30 • ${upcomingLabel}`,
+        `Bruno Lima • 11 • R$ 5,35 • ${upcomingLabel}`,
+      ]),
+    );
+    expect(
+      server.listCreditAccounts(owner).map((item) => item.summaryLabel),
+    ).toContain('Maria Souza • mãe • R$ 1,65');
+  });
+
+  it('lets staff send a family payment entirely to guardian credit', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const staff = server.loginE2E('staff').token;
+    const maria = server
+      .listGuardians(owner)
+      .find((item) => item.fullName === 'Maria Souza');
+    if (!maria) {
+      throw new Error('pagamento familiar E2E incompleto');
+    }
+    expect(
+      server.createFamilyPayment(staff, {
+        guardianId: maria.id,
+        amountCents: 200,
+        method: 'pix',
+        mode: 'all_credit',
+      }).summaryLabel,
+    ).toBe('Maria Souza • mãe • R$ 2,00 • PIX • crédito R$ 2,00');
+    expect(
+      server.listCreditAccounts(owner).map((item) => item.summaryLabel),
+    ).toContain('Maria Souza • mãe • R$ 2,00');
   });
 });

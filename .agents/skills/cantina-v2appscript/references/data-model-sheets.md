@@ -131,7 +131,7 @@ Saldo é derivado de charges, pagamentos e reversões; não de um campo editáve
 
 `_payment_allocations`: payment_id, receivable_id, student_id, amount_cents.
 
-Todo valor recebido precisa ser alocado. Na Fase 15 o pagador é o aluno da dívida (`payer_student_id`); `payer_guardian_id` fica vazio até a Fase 19. Métodos: `pix` ou `cash`. Status: `completed`. Modos: dívida mais antiga, selecionadas ou alocação manual. Na Fase 17, sobra de depósito de crédito pessoal vai para `_payment_credit_allocations`.
+Todo valor recebido precisa ser alocado. Pagamento de aluno usa `payer_student_id` (`payer_guardian_id` vazio). Pagamento familiar (Fase 19) usa `payer_guardian_id` (`payer_student_id` vazio) e explica cada centavo em `_payment_allocations` e, se houver sobra, `_payment_credit_allocations` no crédito do responsável. Métodos: `pix` ou `cash`. Status: `completed`. Modos do aluno: dívida mais antiga, selecionadas ou alocação manual. Modos da família: quitar um filho, selecionadas, manual, dívida + crédito, tudo crédito. Sobra nunca vai sozinha para um filho.
 
 ## Créditos
 

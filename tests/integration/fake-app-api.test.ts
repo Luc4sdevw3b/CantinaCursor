@@ -810,4 +810,121 @@ describe('FakeAppApi', () => {
     ).toBe('Maria Souza • mãe • R$ 2,50');
     expect((await api.listReceivables()).upcoming).toHaveLength(0);
   });
+
+  it('records a family payment as debt plus leftover guardian credit', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const coxinha = (await api.listProducts()).find(
+      (item) => item.name === 'Coxinha',
+    );
+    const students = await api.listStudents();
+    const ana = students.find(
+      (student) =>
+        student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+    );
+    const bruno = students.find((student) => student.fullName === 'Bruno Lima');
+    const maria = (await api.listGuardians()).find(
+      (item) => item.fullName === 'Maria Souza',
+    );
+    const paulo = (await api.listGuardians()).find(
+      (item) => item.fullName === 'Paulo Nunes',
+    );
+    if (!coxinha || !ana || !bruno || !maria || !paulo) {
+      throw new Error('pagamento familiar local incompleto');
+    }
+
+    await api.createSale({
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: '2026-08-14' }],
+    });
+    await api.createSale({
+      consumerStudentId: bruno.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: '2026-08-14' }],
+    });
+    const upcoming = await api.listReceivables();
+    const anaDebt = upcoming.upcoming.find((item) =>
+      item.summaryLabel.startsWith('Ana Souza • ~8'),
+    );
+    const brunoDebt = upcoming.upcoming.find((item) =>
+      item.summaryLabel.startsWith('Bruno Lima • 11'),
+    );
+    if (!anaDebt || !brunoDebt) {
+      throw new Error('dívidas familiares ausentes');
+    }
+
+    await expect(
+      api.createFamilyPayment({
+        guardianId: paulo.id,
+        studentId: ana.id,
+        amountCents: 550,
+        method: 'pix',
+        mode: 'oldest_first',
+      }),
+    ).rejects.toThrow('PAYMENT_CHILD_NOT_LINKED');
+    await expect(
+      api.createFamilyPayment({
+        guardianId: maria.id,
+        studentId: ana.id,
+        amountCents: 600,
+        method: 'pix',
+        mode: 'oldest_first',
+      }),
+    ).rejects.toThrow('PAYMENT_LEFTOVER_UNEXPLAINED');
+
+    const payment = await api.createFamilyPayment({
+      guardianId: maria.id,
+      amountCents: 200,
+      method: 'pix',
+      mode: 'credit_remainder',
+      allocations: [
+        { receivableId: anaDebt.id, amountCents: 20 },
+        { receivableId: brunoDebt.id, amountCents: 15 },
+      ],
+    });
+    expect(payment.summaryLabel).toBe(
+      'Maria Souza • mãe • R$ 2,00 • PIX • Ana Souza • ~8 R$ 0,20 • Bruno Lima • 11 R$ 0,15 • crédito R$ 1,65',
+    );
+    expect((await api.listPayments())[0]?.summaryLabel).toBe(
+      payment.summaryLabel,
+    );
+    expect(
+      (await api.listReceivables()).upcoming.map((item) => item.summaryLabel),
+    ).toEqual(
+      expect.arrayContaining([
+        'Ana Souza • ~8 • R$ 5,30 • Sexta-feira • 14/08/26',
+        'Bruno Lima • 11 • R$ 5,35 • Sexta-feira • 14/08/26',
+      ]),
+    );
+    expect(
+      (await api.listCreditAccounts()).map((item) => item.summaryLabel),
+    ).toContain('Maria Souza • mãe • R$ 1,65');
+  });
+
+  it('lets staff send a family payment entirely to guardian credit', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('staff');
+    const maria = (await api.listGuardians()).find(
+      (item) => item.fullName === 'Maria Souza',
+    );
+    if (!maria) {
+      throw new Error('pagamento familiar local incompleto');
+    }
+    expect(
+      (
+        await api.createFamilyPayment({
+          guardianId: maria.id,
+          amountCents: 200,
+          method: 'pix',
+          mode: 'all_credit',
+        })
+      ).summaryLabel,
+    ).toBe('Maria Souza • mãe • R$ 2,00 • PIX • crédito R$ 2,00');
+    expect(
+      (await api.listCreditAccounts()).map((item) => item.summaryLabel),
+    ).toContain('Maria Souza • mãe • R$ 2,00');
+  });
 });

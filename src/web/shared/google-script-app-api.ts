@@ -24,6 +24,7 @@ import type {
   AdjustInventoryInput,
   Payment,
   CreatePaymentInput,
+  CreateFamilyPaymentInput,
   CreditAccount,
   DepositPersonalCreditInput,
   DepositGuardianCreditInput,
@@ -108,6 +109,7 @@ export interface GoogleScriptRunner {
   listReceivables(token: string): void;
   getDueDateShortcuts(token: string): void;
   createPayment(token: string, payload: unknown): void;
+  createFamilyPayment(token: string, payload: unknown): void;
   listPayments(token: string): void;
   addReceivableInterest(token: string, payload: unknown): void;
   renegotiateReceivable(token: string, payload: unknown): void;
@@ -572,6 +574,12 @@ export class GoogleScriptAppApi implements AppApi {
   createPayment(input: CreatePaymentInput): Promise<Payment> {
     return this.callWithToken((runner, token) =>
       runner.createPayment(token, input),
+    );
+  }
+
+  createFamilyPayment(input: CreateFamilyPaymentInput): Promise<Payment> {
+    return this.callWithToken((runner, token) =>
+      runner.createFamilyPayment(token, input),
     );
   }
 

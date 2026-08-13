@@ -361,6 +361,17 @@ export interface CreatePaymentInput {
   allocations?: Array<{ receivableId: string; amountCents: number }>;
 }
 
+export interface CreateFamilyPaymentInput {
+  guardianId: string;
+  amountCents: number;
+  method: 'pix' | 'cash';
+  mode:
+    'oldest_first' | 'selected' | 'manual' | 'credit_remainder' | 'all_credit';
+  studentId?: string;
+  selectedReceivableIds?: string[];
+  allocations?: Array<{ receivableId: string; amountCents: number }>;
+}
+
 export interface Payment {
   id: string;
   payerStudentId: string;
@@ -409,8 +420,8 @@ export interface RefundGuardianCreditInput {
 }
 
 /**
- * Contrato técnico da Fase 18.
- * Sem pagamento familiar, caixa físico, reservas reais ou envio de WhatsApp.
+ * Contrato técnico da Fase 19.
+ * Sem caixa físico, reservas reais ou envio de WhatsApp.
  */
 export interface AppApi {
   getHealth(): Promise<AppHealth>;
@@ -486,6 +497,7 @@ export interface AppApi {
   listReceivables(): Promise<ReceivableAgenda>;
   getDueDateShortcuts(): Promise<DueDateShortcuts>;
   createPayment(input: CreatePaymentInput): Promise<Payment>;
+  createFamilyPayment(input: CreateFamilyPaymentInput): Promise<Payment>;
   listPayments(): Promise<Payment[]>;
   addReceivableInterest(input: AddReceivableInterestInput): Promise<Receivable>;
   renegotiateReceivable(input: RenegotiateReceivableInput): Promise<Receivable>;

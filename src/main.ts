@@ -44,7 +44,7 @@ app.innerHTML = `
         <p class="eyebrow">Web App em preparação</p>
         <div class="hero-title-row">
           <h1 id="page-title">Cantina V2 AppScript</h1>
-          <span class="phase-badge">Fase 18</span>
+          <span class="phase-badge">Fase 19</span>
         </div>
         <p class="intro">
           Uma base simples e confiável para a operação diária da cantina.
@@ -356,6 +356,48 @@ app.innerHTML = `
         </label>
         <ul id="payment-debts" hidden></ul>
         <button type="submit">Registrar pagamento</button>
+      </form>
+      <h3>Pagamento familiar</h3>
+      <form id="family-payment-form">
+        <label>
+          Responsável
+          <select id="family-payment-guardian" required>
+            <option value="">Escolha o responsável</option>
+          </select>
+        </label>
+        <label>
+          Valor (R$)
+          <input
+            id="family-payment-amount"
+            inputmode="decimal"
+            placeholder="2,00"
+          />
+        </label>
+        <label>
+          Método
+          <select id="family-payment-method">
+            <option value="pix">PIX</option>
+            <option value="cash">Dinheiro</option>
+          </select>
+        </label>
+        <label>
+          Destino
+          <select id="family-payment-mode">
+            <option value="oldest_first">Quitar um filho</option>
+            <option value="selected">Selecionadas</option>
+            <option value="manual">Manual</option>
+            <option value="credit_remainder">Dívida + crédito</option>
+            <option value="all_credit">Tudo crédito</option>
+          </select>
+        </label>
+        <label id="family-payment-child-label">
+          Filho
+          <select id="family-payment-child">
+            <option value="">Escolha o filho</option>
+          </select>
+        </label>
+        <ul id="family-payment-debts" hidden></ul>
+        <button type="submit">Registrar pagamento familiar</button>
       </form>
       <ul id="payments-list"></ul>
     </section>
@@ -1143,6 +1185,8 @@ interface CartLine {
 const cart: CartLine[] = [];
 let dueDateShortcuts: DueDateShortcuts | null = null;
 let openReceivables: Receivable[] = [];
+let familyStudents: StudentSummary[] = [];
+let familyLinksByGuardian = new Map<string, Set<string>>();
 let dueDateHistoryLabels: string[] = [];
 
 function applyDueDateShortcut(civilDate: string): void {
@@ -1370,11 +1414,110 @@ function renderPaymentDebts(): void {
   }
 }
 
+function familyPaymentModeValue():
+  'oldest_first' | 'selected' | 'manual' | 'credit_remainder' | 'all_credit' {
+  const mode = document.querySelector('#family-payment-mode');
+  if (!(mode instanceof HTMLSelectElement)) {
+    return 'oldest_first';
+  }
+  if (mode.value === 'selected') {
+    return 'selected';
+  }
+  if (mode.value === 'manual') {
+    return 'manual';
+  }
+  if (mode.value === 'credit_remainder') {
+    return 'credit_remainder';
+  }
+  if (mode.value === 'all_credit') {
+    return 'all_credit';
+  }
+  return 'oldest_first';
+}
+
+function linkedFamilyStudentIds(guardianId: string): Set<string> {
+  return familyLinksByGuardian.get(guardianId) ?? new Set();
+}
+
+function fillFamilyPaymentChildren(): void {
+  const childSelect = document.querySelector('#family-payment-child');
+  const childLabel = document.querySelector('#family-payment-child-label');
+  const guardian = document.querySelector('#family-payment-guardian');
+  const mode = familyPaymentModeValue();
+  if (childLabel instanceof HTMLElement) {
+    childLabel.hidden = mode !== 'oldest_first';
+  }
+  if (!(childSelect instanceof HTMLSelectElement)) {
+    return;
+  }
+  const current = childSelect.value;
+  const guardianId =
+    guardian instanceof HTMLSelectElement ? guardian.value : '';
+  const linked = linkedFamilyStudentIds(guardianId);
+  childSelect.replaceChildren();
+  const empty = document.createElement('option');
+  empty.value = '';
+  empty.textContent = 'Escolha o filho';
+  childSelect.append(empty);
+  for (const student of familyStudents.filter((item) => linked.has(item.id))) {
+    const option = document.createElement('option');
+    option.value = student.id;
+    option.textContent = `${student.fullName} • ${student.ageLabel}`;
+    childSelect.append(option);
+  }
+  if (current && linked.has(current)) {
+    childSelect.value = current;
+  }
+}
+
+function renderFamilyPaymentDebts(): void {
+  const list = document.querySelector('#family-payment-debts');
+  const guardian = document.querySelector('#family-payment-guardian');
+  if (!(list instanceof HTMLElement)) {
+    return;
+  }
+  fillFamilyPaymentChildren();
+  const mode = familyPaymentModeValue();
+  const guardianId =
+    guardian instanceof HTMLSelectElement ? guardian.value : '';
+  const linked = linkedFamilyStudentIds(guardianId);
+  list.replaceChildren();
+  list.hidden = mode === 'oldest_first' || mode === 'all_credit' || !guardianId;
+  if (list.hidden) {
+    return;
+  }
+  const debts = openReceivables.filter((item) =>
+    linked.has(item.chargedStudentId),
+  );
+  for (const debt of debts) {
+    const row = document.createElement('li');
+    if (mode === 'selected') {
+      const label = document.createElement('label');
+      label.className = 'checkbox-label';
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.dataset.receivableId = debt.id;
+      label.append(box, document.createTextNode(` ${debt.summaryLabel}`));
+      row.append(label);
+    } else {
+      const label = document.createElement('label');
+      label.textContent = debt.summaryLabel;
+      const amount = document.createElement('input');
+      amount.dataset.receivableId = debt.id;
+      amount.inputMode = 'decimal';
+      amount.placeholder = '0,00';
+      row.append(label, amount);
+    }
+    list.append(row);
+  }
+}
+
 async function renderPayments(session: AppSession | null): Promise<void> {
   const panel = document.querySelector('#payments-panel');
   const status = document.querySelector('#payments-status');
   const list = document.querySelector('#payments-list');
   const studentSelect = document.querySelector('#payment-student');
+  const guardianSelect = document.querySelector('#family-payment-guardian');
   if (
     !(panel instanceof HTMLElement) ||
     !status ||
@@ -1385,6 +1528,8 @@ async function renderPayments(session: AppSession | null): Promise<void> {
   list.replaceChildren();
   if (!session) {
     status.textContent = 'Entre para registrar pagamentos.';
+    familyStudents = [];
+    familyLinksByGuardian = new Map();
     if (studentSelect instanceof HTMLSelectElement) {
       studentSelect.replaceChildren();
       const empty = document.createElement('option');
@@ -1392,14 +1537,38 @@ async function renderPayments(session: AppSession | null): Promise<void> {
       empty.textContent = 'Escolha o aluno';
       studentSelect.append(empty);
     }
+    if (guardianSelect instanceof HTMLSelectElement) {
+      guardianSelect.replaceChildren();
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = 'Escolha o responsável';
+      guardianSelect.append(empty);
+    }
     renderPaymentDebts();
+    renderFamilyPaymentDebts();
     return;
   }
   try {
-    const [students, payments] = await Promise.all([
+    const [students, payments, guardians] = await Promise.all([
       api.listStudents({ includeInactive: true }),
       api.listPayments(),
+      api.listGuardians({ includeInactive: true }),
     ]);
+    familyStudents = students;
+    const linkEntries = await Promise.all(
+      students.map(async (student) => ({
+        studentId: student.id,
+        links: await api.getStudentGuardians(student.id),
+      })),
+    );
+    familyLinksByGuardian = new Map();
+    for (const entry of linkEntries) {
+      for (const link of entry.links.filter((item) => item.active)) {
+        const current = familyLinksByGuardian.get(link.guardianId) ?? new Set();
+        current.add(entry.studentId);
+        familyLinksByGuardian.set(link.guardianId, current);
+      }
+    }
     if (studentSelect instanceof HTMLSelectElement) {
       const current = studentSelect.value;
       studentSelect.replaceChildren();
@@ -1417,6 +1586,23 @@ async function renderPayments(session: AppSession | null): Promise<void> {
         studentSelect.value = current;
       }
     }
+    if (guardianSelect instanceof HTMLSelectElement) {
+      const current = guardianSelect.value;
+      guardianSelect.replaceChildren();
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = 'Escolha o responsável';
+      guardianSelect.append(empty);
+      for (const guardian of guardians.filter((item) => item.active)) {
+        const option = document.createElement('option');
+        option.value = guardian.id;
+        option.textContent = guardianLine(guardian);
+        guardianSelect.append(option);
+      }
+      if (current && guardians.some((item) => item.id === current)) {
+        guardianSelect.value = current;
+      }
+    }
     status.textContent =
       payments.length === 0
         ? 'Nenhum pagamento registrado ainda.'
@@ -1427,6 +1613,7 @@ async function renderPayments(session: AppSession | null): Promise<void> {
       list.append(item);
     }
     renderPaymentDebts();
+    renderFamilyPaymentDebts();
   } catch (error: unknown) {
     status.textContent =
       error instanceof Error
@@ -1781,6 +1968,12 @@ document
 document
   .querySelector('#payment-mode')
   ?.addEventListener('change', renderPaymentDebts);
+document
+  .querySelector('#family-payment-guardian')
+  ?.addEventListener('change', renderFamilyPaymentDebts);
+document
+  .querySelector('#family-payment-mode')
+  ?.addEventListener('change', renderFamilyPaymentDebts);
 
 document.querySelector('#payment-form')?.addEventListener('submit', (event) => {
   event.preventDefault();
@@ -1887,6 +2080,117 @@ document.querySelector('#payment-form')?.addEventListener('submit', (event) => {
       }
     });
 });
+
+document
+  .querySelector('#family-payment-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const status = document.querySelector('#payments-status');
+    const guardian = document.querySelector('#family-payment-guardian');
+    const child = document.querySelector('#family-payment-child');
+    const amountInput = document.querySelector('#family-payment-amount');
+    const methodSelect = document.querySelector('#family-payment-method');
+    if (
+      !(guardian instanceof HTMLSelectElement) ||
+      !(child instanceof HTMLSelectElement) ||
+      !(amountInput instanceof HTMLInputElement) ||
+      !(methodSelect instanceof HTMLSelectElement)
+    ) {
+      return;
+    }
+    if (!guardian.value) {
+      if (status) {
+        status.textContent = 'Escolha o responsável do pagamento.';
+      }
+      return;
+    }
+    const method = methodSelect.value;
+    if (method !== 'pix' && method !== 'cash') {
+      return;
+    }
+    const mode = familyPaymentModeValue();
+    if (mode === 'oldest_first' && !child.value) {
+      if (status) {
+        status.textContent = 'Escolha o filho para quitar.';
+      }
+      return;
+    }
+    const selectedReceivableIds: string[] = [];
+    const allocations: Array<{ receivableId: string; amountCents: number }> =
+      [];
+    if (mode === 'selected') {
+      document
+        .querySelectorAll<HTMLInputElement>(
+          '#family-payment-debts input[type="checkbox"]',
+        )
+        .forEach((box) => {
+          if (box.checked && box.dataset.receivableId) {
+            selectedReceivableIds.push(box.dataset.receivableId);
+          }
+        });
+    }
+    if (mode === 'manual' || mode === 'credit_remainder') {
+      const inputs = document.querySelectorAll<HTMLInputElement>(
+        '#family-payment-debts input[data-receivable-id]',
+      );
+      for (const input of inputs) {
+        if (!input.value.trim() || !input.dataset.receivableId) {
+          continue;
+        }
+        const parsed = parseReaisToCents(input.value);
+        if (!parsed.ok) {
+          if (status) {
+            status.textContent = parsed.error.message;
+          }
+          return;
+        }
+        allocations.push({
+          receivableId: input.dataset.receivableId,
+          amountCents: parsed.data,
+        });
+      }
+    }
+    const parsed = parseReaisToCents(amountInput.value);
+    if (!parsed.ok) {
+      if (status) {
+        status.textContent = parsed.error.message;
+      }
+      return;
+    }
+    void api
+      .createFamilyPayment({
+        guardianId: guardian.value,
+        amountCents: parsed.data,
+        method,
+        mode,
+        studentId: mode === 'oldest_first' ? child.value : undefined,
+        selectedReceivableIds:
+          mode === 'selected' ? selectedReceivableIds : undefined,
+        allocations:
+          mode === 'manual' || mode === 'credit_remainder'
+            ? allocations
+            : undefined,
+      })
+      .then(() => {
+        amountInput.value = '';
+        return api.getSession();
+      })
+      .then((session) =>
+        renderAgenda(session).then(() =>
+          renderPayments(session).then(() =>
+            renderCredits(session).then(() => renderAdjust(session)),
+          ),
+        ),
+      )
+      .catch((error: unknown) => {
+        if (status) {
+          status.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível registrar o pagamento familiar.';
+        }
+      });
+  });
 
 document
   .querySelector('#credit-deposit-form')
