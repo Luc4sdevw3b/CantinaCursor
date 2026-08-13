@@ -30,17 +30,25 @@ Link enviado no WhatsApp. Não expõe alunos, responsáveis, dívidas, créditos
 
 ## Ambientes
 
+Há quatro contextos. **E2E local (Playwright + FakeAppApi)** não é o ambiente Google E2E da Fase 3.
+
+### LOCAL
+
+Preview Vite na máquina. `FakeAppApi`. Sem Apps Script, Sheets, Drive, clasp, login Google ou WhatsApp. É o alvo do `npm run test:e2e:local`.
+
 ### DEV
 
-Apps Script + Spreadsheet DEV com dados fictícios.
+Desenvolvimento com Google real quando necessário: Apps Script + Spreadsheet DEV com dados fictícios.
 
 ### E2E
 
-Apps Script/deployment + Spreadsheet E2E resetável, só para automação.
+Ambiente isolado de testes, criado na Fase 3: Apps Script/deployment + Spreadsheet E2E resetável, só para automação.
 
 ### PROD
 
-Apps Script + Spreadsheet PROD, nunca usado por testes destrutivos.
+Apps Script + Spreadsheet PROD, dados reais. **Testes automatizados destrutivos nunca rodam em PROD.**
+
+O futuro `smoke PROD` da fase de release é verificação manual, read-only, ou comprovadamente não destrutiva. Não é suíte de regressão contra a planilha real.
 
 IDs/configuração ficam em Script Properties/GitHub Secrets, não hardcoded.
 
@@ -71,7 +79,11 @@ scripts/
 
 ## Adapter do frontend
 
-Definir `AppApi` com funções específicas. Produção usa adapter de `google.script.run`; E2E local usa fake. Isso permite Playwright desde o início.
+Definir `AppApi` com funções específicas do domínio, nunca ranges/SQL/Sheets genéricos.
+
+Até a Fase 2 o contrato permanece mínimo (`getHealth` e dados técnicos de ambiente). Não antecipar alunos, produtos, vendas, estoque, fiado, crédito, caixa, reservas ou WhatsApp.
+
+Produção usará adapter de `google.script.run` quando a Fase 2 existir neste repositório. **E2E local usa somente `FakeAppApi`.** Isso permite Playwright desde o início sem Google.
 
 ## Escritas críticas
 
@@ -109,19 +121,45 @@ Electron, SQLite, offline completo, API bancária/PIX automática e ERP completo
 
 ## WhatsApp oficial V2.1
 
-Recepção oficial de mensagens via WhatsApp Business Platform/Cloud API.
+A arquitetura principal continua:
+
+```text
+Apps Script
+Google Sheets
+Google Drive
+```
+
+Exceção permitida, ainda não implementada: um **gateway mínimo** do webhook oficial do WhatsApp Business/Cloud API.
 
 ```text
 Meta webhook
   ↓
-gateway mínimo de validação de assinatura
+gateway mínimo (transporte/segurança)
   ↓
 Apps Script
   ↓
 Sheets Inbox
 ```
 
-O gateway não contém regra de negócio e não classifica mensagens. Ele valida a origem e encaminha. Se a persistência no Apps Script falhar, não deve mascarar sucesso definitivo; o mecanismo de retry oficial deve poder atuar.
+Esse gateway futuramente poderá:
+
+- receber o webhook;
+- validar a assinatura da Meta;
+- validar a estrutura do payload;
+- encaminhar o evento;
+- devolver status HTTP.
+
+Ele **não** poderá:
+
+- interpretar semanticamente a mensagem;
+- classificar reserva;
+- criar venda;
+- alterar estoque;
+- criar dívida;
+- calcular crédito;
+- armazenar banco de negócio.
+
+O gateway é infraestrutura de transporte/segurança, não o backend da Cantina. Se a persistência no Apps Script falhar, não deve mascarar sucesso definitivo; o retry oficial da Meta deve poder atuar.
 
 No modo Coexistence, observar eventos de mensagens enviadas pela dona no WhatsApp Business/linked devices para auxiliar o verificador de respostas. O programa V2.1 continua sem enviar mensagens ao WhatsApp.
 

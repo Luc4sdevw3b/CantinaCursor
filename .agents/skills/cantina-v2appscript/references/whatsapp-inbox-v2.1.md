@@ -25,7 +25,7 @@ Google Sheets
 Inbox privado da Cantina
 ```
 
-O gateway existe somente para validar/autenticar a origem do webhook e encaminhar o evento. O restante da lógica fica em Apps Script + Sheets.
+O gateway é exceção de transporte/segurança, não o backend da Cantina. Ele poderá receber webhook, validar assinatura da Meta, validar estrutura, encaminhar evento e devolver HTTP. Ele não poderá interpretar mensagem, classificar reserva, criar venda, alterar estoque, criar dívida, calcular crédito nem guardar banco de negócio. Não está implementado ainda.
 
 No modo Coexistence, assinar também eventos oficiais que permitam observar mensagens enviadas pela própria dona no WhatsApp Business ou em dispositivos vinculados, apenas para auxiliar o verificador de “respondida”.
 

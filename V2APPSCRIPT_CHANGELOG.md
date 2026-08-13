@@ -9,6 +9,68 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-13 12:10 — Revisão técnica pós-Fase 1 (hardening de convenções)
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Revisão das Fases 0–1; Fase 2 ausente neste repositório; Fase 3 não iniciada
+
+### Pedido / objetivo
+
+- Conectar o GitHub `Luc4sdevw3b/CantinaCursor`.
+- Auditar Fases 0–2 e incorporar melhorias de engenharia sem reimplementar fases nem avançar à Fase 3.
+
+### Tentativa / implementação
+
+- Confirmado: este repositório tem Fases 0 e 1. A Fase 2 (`clasp`, Web App DEV, `google.script.run`) **não existe aqui** e não foi reimplementada.
+- Remote `origin` apontado para o repositório vazio `CantinaCursor`.
+- Padronizados Node 22 LTS (`.nvmrc`), `engines`, `npm` e `package-lock.json`.
+- Completados scripts `lint:fix`, `test:watch`, `version:check` e `validate:skill`.
+- `VERSION` passou a ser checada contra `package.json` e `src/app-version.ts`.
+- Criada a referência `engineering-conventions.md` (dinheiro, estoque, datas, IDs, request_id, `Result`).
+- `AppApi` permanece mínimo (`getHealth`); marcado adapter `fake`.
+- E2E local expandido para preview + fake, temas, health, console limpo e bloqueio de rede externa.
+- `.gitignore` ampliado; nenhum secret encontrado no histórico.
+- CI passou a usar `.nvmrc`, `validate:skill` e `version:check`.
+- Documentados LOCAL/DEV/E2E/PROD, smoke PROD não destrutivo, segurança transversal e limites do gateway WhatsApp futuro.
+- Removido o `SKILL_VALIDATION.txt` estático; a validação reproduzível é o script.
+
+### Resultado
+
+- Fundação da Fase 1 endurecida e documentada.
+- Fase 2 não foi criada. Fase 3 não foi iniciada.
+
+### Diferenças do pedido
+
+- O pedido tratava a Fase 2 como concluída; neste workspace ela não estava presente. A revisão não a reimplementou.
+- `Result` foi definido e testado, mas `getHealth` não foi convertido para `Result` para não quebrar o contrato já estável.
+- Flash de tema reduzido com script inline simples, sem framework extra.
+
+### Impacto técnico
+
+- `.nvmrc`, `package.json`, `.gitignore`, `scripts/`
+- `src/domain/result.ts`, `src/web/shared/*`, `index.html`
+- `tests/e2e/local/smoke.spec.ts`, `tests/unit/result.test.ts`
+- `.github/workflows/ci.yml`
+- Skill, referências, Implementation Plan, README e changelog
+
+### Testes
+
+- `npm ci` em instalação limpa: passou.
+- `npm run validate:skill`: OK.
+- `npm run version:check`: `0.1.0-dev` consistente.
+- `npm run format:check` / `lint` / `typecheck`: passou.
+- `npm test`: 11 testes passaram.
+- `npm run build`: passou.
+- `npm run test:e2e:local`: 9 testes Chromium passaram.
+- `npm audit`: 0 vulnerabilidades.
+
+### Pendências / próxima versão
+
+- Push para `CantinaCursor` para o Actions hospedado rodar.
+- Fase 2 continua fora de escopo até pedido explícito.
+
 ## 2026-08-13 11:55 — Implementada a fundação testável da Fase 1
 
 **Origem:** Pedido do usuário

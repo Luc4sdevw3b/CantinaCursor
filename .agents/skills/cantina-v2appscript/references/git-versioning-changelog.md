@@ -83,7 +83,7 @@ SemVer operacional:
 - MAJOR incompatibilidade/arquitetura.
   Durante desenvolvimento: `0.x.y`.
 
-Manter `VERSION`.
+`VERSION` na raiz é a fonte canônica. `package.json.version` e `src/app-version.ts` devem coincidir. Falha reproduzível: `npm run version:check`.
 
 ## Toda nova versão/release
 

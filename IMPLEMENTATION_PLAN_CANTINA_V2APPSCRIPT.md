@@ -15,7 +15,8 @@
 - Toda mudança lógica: changelog + commit.
 - Toda tentativa falha: changelog + commit do registro.
 - Toda release: suíte verde + commit release + tag + deploy versionado.
-- Nunca testar contra PROD.
+- Nunca testar contra PROD. Testes automatizados destrutivos nunca usam a planilha PROD.
+- O futuro smoke PROD é verificação manual, read-only ou comprovadamente não destrutiva.
 
 # Marco A — Governança, Git e testes
 
@@ -58,9 +59,11 @@ Pronto quando tudo passa localmente.
 - healthcheck sem dados;
 - docs de login/push.
 
-E2E: smoke no deployment DEV.
+E2E: smoke no deployment DEV (não é o E2E local, que usa preview + FakeAppApi).
 
 ## Fase 3 — Ambiente E2E isolado
+
+Ainda não iniciada. Este ambiente Google isolado é distinto do E2E local da Fase 1.
 
 - Apps Script E2E;
 - Spreadsheet E2E;

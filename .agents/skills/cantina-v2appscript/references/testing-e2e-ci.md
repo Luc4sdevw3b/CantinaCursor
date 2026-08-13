@@ -47,12 +47,37 @@ Nunca PROD.
 
 ### Local
 
-Desde a Fase 1:
+Desde a Fase 1, e somente isto:
 
-- preview local;
+- preview local (`vite preview`);
 - `FakeAppApi`;
 - browser real;
-- smoke, tema, navegação e fluxos visuais.
+- smoke, tema, navegação e health técnico.
+
+E2E local **não depende** de:
+
+- Google Apps Script real;
+- `google.script.run`;
+- Google Sheets;
+- Google Drive;
+- `clasp`;
+- login Google;
+- WhatsApp;
+- internet externa.
+
+Mínimo obrigatório do smoke local:
+
+1. aplicação abre;
+2. título `Cantina V2 AppScript` aparece;
+3. nenhum erro inesperado no console;
+4. tema Sistema funciona;
+5. tema Claro funciona;
+6. tema Escuro funciona;
+7. preferência de tema persiste após reload;
+8. `AppApi fake` responde `health`;
+9. nenhuma chamada externa é realizada.
+
+Não confundir com o ambiente Google E2E da Fase 3.
 
 ### Remoto
 
@@ -116,18 +141,26 @@ Threshold progressivo.
 Meta inicial para domínio crítico: >= 80% quando houver volume suficiente.
 Não reduzir threshold apenas para passar CI sem registrar decisão.
 
-## Scripts esperados
+## Scripts oficiais
 
 ```text
+npm ci
 npm run lint
+npm run lint:fix
+npm run format:check
 npm run typecheck
 npm test
+npm run test:watch
 npm run test:unit
 npm run test:integration
-npm run test:e2e:local
-npm run test:e2e:remote
 npm run build
+npm run preview
+npm run test:e2e:local
+npm run version:check
+npm run validate:skill
 ```
+
+`test:e2e:remote` existe como placeholder e permanece ignorado até a Fase 3.
 
 ## GitHub Actions
 
@@ -151,7 +184,9 @@ Depois:
 PROD:
 
 - deploy somente por release/tag aprovada;
-- backup antes de mudança estrutural.
+- backup antes de mudança estrutural;
+- nenhum teste automatizado destrutivo;
+- smoke PROD futuro = manual / read-only / não destrutivo.
 
 ## Artefatos de falha
 

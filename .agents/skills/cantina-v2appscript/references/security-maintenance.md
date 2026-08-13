@@ -1,5 +1,22 @@
 # Segurança, backup, logs e manutenção
 
+## Regras transversais
+
+- Minimizar dados coletados e exibidos.
+- Testes usam somente dados fictícios; nunca dados reais de PROD.
+- Logs sem nomes, telefones, WhatsApp, mensagens integrais, notas, itens ou valores financeiros individuais.
+- A V2.1 não armazena mídia do WhatsApp.
+- Retenção de mensagens do Inbox é configurável (padrão 90 dias após tratamento/descartar; pendentes não expiram).
+- Toda mutação é validada de novo no servidor.
+- XSS: não interpolar dados não confiáveis em HTML; preferir `textContent` e templates estáticos.
+- Erro mostrado à dona não inclui stack trace nem payload.
+- Superfícies públicas (portal de reservas) podem exigir rate limit/honeypot quando o fluxo existir.
+- Códigos públicos de reserva não devem ser enumeráveis.
+- Secrets somente em Script Properties ou GitHub Secrets; nunca no Git.
+- Nenhuma senha mestra ou backdoor.
+
+Estas regras valem desde agora. Funcionalidades futuras (portal, Inbox, rate limit) não são implementadas nesta revisão.
+
 ## Privacidade
 
 Coletar o mínimo.
