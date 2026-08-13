@@ -129,4 +129,23 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await expect(page.getByText('Ambiente local funcionando')).toBeVisible();
     expect(externalRequests).toEqual([]);
   });
+
+  test('logs in as dona or staff and logs out without a password field', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await expect(page.getByText('Ambiente local funcionando')).toBeVisible();
+    expect(await page.locator('input[type="password"]').count()).toBe(0);
+
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await expect(page.getByText('Sessão: Dona')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Sair' }).click();
+    await expect(
+      page.getByRole('button', { name: 'Entrar como dona' }),
+    ).toBeVisible();
+
+    await page.getByRole('button', { name: 'Entrar como funcionário' }).click();
+    await expect(page.getByText('Sessão: Funcionário')).toBeVisible();
+  });
 });

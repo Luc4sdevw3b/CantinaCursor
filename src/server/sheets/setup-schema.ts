@@ -11,6 +11,9 @@ import {
   OPERATION_REQUESTS_MIGRATION_ID,
   OPERATION_REQUESTS_SHEET,
   SCHEMA_MIGRATIONS_SHEET,
+  SESSIONS_SHEET,
+  USERS_MIGRATION_ID,
+  USERS_SHEET,
 } from './schema';
 import { deserializeRecord, serializeRecord } from './serialize';
 import { ensureSheet } from './ensure-sheet';
@@ -114,6 +117,23 @@ export function setupSchema(
       const backups = ensureSheet(input.spreadsheet, BACKUPS_SHEET);
       if (!backups.ok) {
         return err(backups.error);
+      }
+      meta.data.appendRow(
+        serializeRecord(META_SHEET.headers, {
+          key: 'schema_version',
+          value: '3',
+        }),
+      );
+    }
+
+    if (migration.id === USERS_MIGRATION_ID) {
+      const users = ensureSheet(input.spreadsheet, USERS_SHEET);
+      if (!users.ok) {
+        return err(users.error);
+      }
+      const sessions = ensureSheet(input.spreadsheet, SESSIONS_SHEET);
+      if (!sessions.ok) {
+        return err(sessions.error);
       }
       meta.data.appendRow(
         serializeRecord(META_SHEET.headers, {

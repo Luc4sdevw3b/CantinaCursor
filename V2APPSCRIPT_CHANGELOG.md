@@ -9,6 +9,54 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-13 13:03 — Implementada a Fase 7: auth, papéis e sessão
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 7
+
+### Pedido / objetivo
+
+- Executar a Fase 7: dona, funcionário, sessão, autorização no backend, sem backdoor, com login/role no E2E.
+
+### Tentativa / implementação
+
+- Papéis `owner` (dona) e `staff` (funcionário), checados no servidor. Sem senha mestra, `skipAuth` ou promoção automática a dona.
+- Migration `004_users` cria `_users` e `_sessions` (schema version 4). IDs/tokens são UUID; número da linha é recusado.
+- `loginE2E` só no ambiente E2E e recusa PROD. `loginWithGoogle` usa o subject Google, não devolve e-mail e não cadastra usuário sozinho.
+- Funções privadas (`resetE2E`, `seedE2E`, probe, backup, restore) exigem sessão; `getHealth` continua público. Trigger de backup segue sem token de browser.
+- `AppApi` ganha `getSession`, `loginE2E` e `logout`. O token fica no adapter (`sessionStorage`); a UI mostra só o papel. Login local/E2E sem campo de senha.
+
+### Resultado
+
+- Fase 7 concluída sobre o ambiente E2E isolado.
+- Nenhum ID Google, token ou dado de planilha foi versionado.
+
+### Diferenças do pedido
+
+- Cadastro de alunos permanece na Fase 8. `loginE2E` é fixture de teste, não um atalho de PROD.
+
+### Impacto técnico
+
+- `src/domain/auth.ts`, `authorize.ts`, `session.ts`; `src/server/auth/e2e-users.ts`
+- `apps-script/src/Code.gs`, escopo `userinfo.email`
+- `AppApi` / Fake / `google.script.run`; UI de sessão
+- README, Implementation Plan e referências de arquitetura, segurança, modelo e testes
+
+### Testes
+
+- `npm run format:check` / `lint` / `typecheck` / `version:check` / `validate:skill`: passou.
+- `npm test`: 97 testes passaram.
+- `npm run build`: passou.
+- `npm run test:e2e:local`: 10 testes Chromium passaram.
+- `npm run test:e2e:remote`: 1 teste Chromium passou (health público, sem login).
+
+### Pendências / próxima versão
+
+- Não iniciar a Fase 8 (alunos) sem pedido explícito.
+- Em DEV/PROD futuro, cadastrar usuários reais em `_users` antes do login Google; o Web App E2E anônimo continua só com `loginE2E`.
+
 ## 2026-08-13 12:52 — Implementada a Fase 6: backup Drive, retenção e restore foundation
 
 **Origem:** Pedido do usuário

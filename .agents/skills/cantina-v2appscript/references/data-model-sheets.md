@@ -13,7 +13,9 @@ Abas técnicas sugeridas:
 _meta
 _schema_migrations
 _operation_requests
+_backups
 _users
+_sessions
 _school_years
 _classrooms
 _students
@@ -159,6 +161,14 @@ Chamadas críticas recebem `request_id`.
 - created_at
 
 Retry não pode duplicar venda, pagamento, reserva ou estorno.
+
+## Usuários e sessão
+
+`_users`: id, google_subject, role (`owner` | `staff`), active, created_at. Sem coluna de e-mail; o subject Google (ou o fixture E2E) é o vínculo.
+
+`_sessions`: id (token UUID), user_id, role, created_at, expires_at, revoked. A última linha com o mesmo id vence. Logout faz append com `revoked=true`. Número da linha nunca é token.
+
+`_backups`: id, created_at, app_version, schema_version, reason, status, drive_file_id.
 
 ## Integridade
 

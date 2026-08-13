@@ -6,6 +6,9 @@ import {
   FOUNDATION_MIGRATION_ID,
   OPERATION_REQUESTS_MIGRATION_ID,
   OPERATION_REQUESTS_SHEET,
+  SESSIONS_SHEET,
+  USERS_MIGRATION_ID,
+  USERS_SHEET,
 } from './schema';
 
 export interface Migration {
@@ -32,10 +35,20 @@ export const BACKUPS_MIGRATION: Migration = {
   checksum: checksumHeaders(BACKUPS_SHEET.headers),
 };
 
+export const USERS_MIGRATION: Migration = {
+  id: USERS_MIGRATION_ID,
+  description: 'Cria _users e _sessions',
+  checksum: checksumHeaders([
+    ...USERS_SHEET.headers,
+    ...SESSIONS_SHEET.headers,
+  ]),
+};
+
 export const MIGRATION_CATALOG: readonly Migration[] = [
   FOUNDATION_MIGRATION,
   OPERATION_REQUESTS_MIGRATION,
   BACKUPS_MIGRATION,
+  USERS_MIGRATION,
 ];
 
 export function pendingMigrations(

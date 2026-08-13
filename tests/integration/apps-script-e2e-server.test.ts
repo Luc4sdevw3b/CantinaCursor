@@ -23,25 +23,36 @@ interface ServerContext {
   doGet(): unknown;
   getHealth(): E2EHealth;
   configureE2EEnvironment(spreadsheetId?: string): E2EHealth;
-  resetE2E(): { reset: true; environment: string };
-  seedE2E(): { marker: string; seeded: true; environment: string };
+  resetE2E(sessionToken: string): { reset: true; environment: string };
+  seedE2E(sessionToken: string): {
+    marker: string;
+    seeded: true;
+    environment: string;
+  };
   setupSchema(): {
     schemaVersion: number;
     appliedMigrations: string[];
     environment: string;
   };
-  probeIdempotentOperation(requestId: string): {
+  probeIdempotentOperation(
+    sessionToken: string,
+    requestId: string,
+  ): {
     requestId: string;
     resultEntityId: string;
     replayed: boolean;
     status: string;
   };
-  runBackup(reason?: string): {
+  runBackup(
+    sessionToken: string,
+    reason?: string,
+  ): {
     createdAt: string;
     reason: string;
     schemaVersion: number;
   };
   prepareRestore(
+    sessionToken: string,
     backupId: string,
     confirmed: boolean,
   ): {
@@ -50,6 +61,10 @@ interface ServerContext {
     snapshotValid: true;
     currentBackupCreated: true;
   };
+  loginE2E(role: 'owner' | 'staff'): { token: string; role: 'owner' | 'staff' };
+  loginWithGoogle(): { token: string; role: 'owner' | 'staff' };
+  getSession(sessionToken: string): { role: 'owner' | 'staff' };
+  logout(sessionToken: string): { loggedOut: true };
 }
 
 interface DriveMockFile {
@@ -105,10 +120,14 @@ function createSheet(rows: unknown[][] = [[]], sheetId = 1) {
 
 function loadServer(
   properties: Record<string, string> = {},
-  options: { hasSpreadsheet?: boolean; lockAcquired?: boolean } = {},
+  options: {
+    hasSpreadsheet?: boolean;
+    lockAcquired?: boolean;
+    googleEmail?: string;
+  } = {},
 ) {
   const hasSpreadsheet = options.hasSpreadsheet ?? true;
-  const lockAcquired = options.lockAcquired ?? true;
+  const lockState = { acquired: options.lockAcquired ?? true };
   const sheets = new Map<string, ReturnType<typeof createSheet>>();
   let nextSheetId = 1;
   const setProperties = vi.fn((values: Record<string, string>) =>
@@ -221,7 +240,7 @@ function loadServer(
     },
     LockService: {
       getScriptLock: () => ({
-        tryLock: () => lockAcquired,
+        tryLock: () => lockState.acquired,
         releaseLock,
       }),
     },
@@ -294,6 +313,11 @@ function loadServer(
         }),
       }),
     },
+    Session: {
+      getActiveUser: () => ({
+        getEmail: () => options.googleEmail ?? '',
+      }),
+    },
   };
 
   runInNewContext(source, context);
@@ -308,7 +332,12 @@ function loadServer(
     batchUpdate,
     driveFolders,
     projectTriggers,
+    lockState,
   };
+}
+
+function ownerToken(server: ServerContext): string {
+  return server.loginE2E('owner').token;
 }
 
 describe('Apps Script E2E server', () => {
@@ -343,7 +372,7 @@ describe('Apps Script E2E server', () => {
     expect(health.status).toBe('ready');
     expect(health.adapter).toBe('google-script');
     expect(health.spreadsheetConfigured).toBe(true);
-    expect(health.schemaVersion).toBe(3);
+    expect(health.schemaVersion).toBe(4);
     expect(health.backupConfigured).toBe(true);
     expect(health.lastBackupAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(JSON.stringify(health)).not.toContain('private-e2e-sheet-id');
@@ -377,8 +406,8 @@ describe('Apps Script E2E server', () => {
       SPREADSHEET_ID: 'prod-sheet-id',
       APP_VERSION: '0.1.0-dev',
     });
-    expect(() => server.resetE2E()).toThrow('RESET_PROD_FORBIDDEN');
-    expect(() => server.seedE2E()).toThrow('RESET_PROD_FORBIDDEN');
+    expect(() => server.resetE2E('token')).toThrow('RESET_PROD_FORBIDDEN');
+    expect(() => server.seedE2E('token')).toThrow('RESET_PROD_FORBIDDEN');
   });
 
   it('refuses reset, seed and schema setup on DEV', () => {
@@ -387,8 +416,8 @@ describe('Apps Script E2E server', () => {
       SPREADSHEET_ID: 'dev-sheet-id',
       APP_VERSION: '0.1.0-dev',
     });
-    expect(() => server.resetE2E()).toThrow('E2E_ONLY');
-    expect(() => server.seedE2E()).toThrow('E2E_ONLY');
+    expect(() => server.resetE2E('token')).toThrow('E2E_ONLY');
+    expect(() => server.seedE2E('token')).toThrow('E2E_ONLY');
     expect(() => server.setupSchema()).toThrow('E2E_ONLY');
   });
 
@@ -399,8 +428,11 @@ describe('Apps Script E2E server', () => {
       APP_VERSION: '0.1.0-dev',
     });
 
-    expect(server.resetE2E()).toEqual({ reset: true, environment: 'E2E' });
-    expect(server.seedE2E()).toEqual({
+    expect(server.resetE2E(ownerToken(server))).toEqual({
+      reset: true,
+      environment: 'E2E',
+    });
+    expect(server.seedE2E(ownerToken(server))).toEqual({
       marker: 'cantina-e2e-fictitious',
       seeded: true,
       environment: 'E2E',
@@ -423,11 +455,12 @@ describe('Apps Script E2E server', () => {
     const second = server.setupSchema();
 
     expect(first).toEqual(second);
-    expect(first.schemaVersion).toBe(3);
+    expect(first.schemaVersion).toBe(4);
     expect(first.appliedMigrations).toEqual([
       '001_foundation',
       '002_operation_requests',
       '003_backups',
+      '004_users',
     ]);
     expect(sheets.get('_meta')?.rows[0]).toEqual(['key', 'value']);
     expect(sheets.get('_schema_migrations')?.rows[0]).toEqual([
@@ -467,6 +500,26 @@ describe('Apps Script E2E server', () => {
       sheets
         .get('_schema_migrations')
         ?.rows.filter((row) => row[0] === '003_backups'),
+    ).toHaveLength(1);
+    expect(sheets.get('_users')?.rows[0]).toEqual([
+      'id',
+      'google_subject',
+      'role',
+      'active',
+      'created_at',
+    ]);
+    expect(sheets.get('_sessions')?.rows[0]).toEqual([
+      'id',
+      'user_id',
+      'role',
+      'created_at',
+      'expires_at',
+      'revoked',
+    ]);
+    expect(
+      sheets
+        .get('_schema_migrations')
+        ?.rows.filter((row) => row[0] === '004_users'),
     ).toHaveLength(1);
   });
 
@@ -524,11 +577,12 @@ describe('Apps Script E2E server', () => {
       SPREADSHEET_ID: 'e2e-sheet-id',
       APP_VERSION: '0.1.0-dev',
     });
+    const token = ownerToken(server);
     const requestId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 
-    const first = server.probeIdempotentOperation(requestId);
-    const retry = server.probeIdempotentOperation(requestId);
-    const doubleSubmit = server.probeIdempotentOperation(requestId);
+    const first = server.probeIdempotentOperation(token, requestId);
+    const retry = server.probeIdempotentOperation(token, requestId);
+    const doubleSubmit = server.probeIdempotentOperation(token, requestId);
 
     expect(first.replayed).toBe(false);
     expect(retry).toEqual({ ...first, replayed: true });
@@ -548,8 +602,12 @@ describe('Apps Script E2E server', () => {
       SPREADSHEET_ID: 'e2e-sheet-id',
       APP_VERSION: '0.1.0-dev',
     });
-    server.probeIdempotentOperation('aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee');
-    expect(server.resetE2E()).toEqual({ reset: true, environment: 'E2E' });
+    const token = ownerToken(server);
+    server.probeIdempotentOperation(
+      token,
+      'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+    );
+    expect(server.resetE2E(token)).toEqual({ reset: true, environment: 'E2E' });
     expect(sheets.get('_operation_requests')?.rows).toEqual([
       [
         'request_id',
@@ -567,23 +625,26 @@ describe('Apps Script E2E server', () => {
       SPREADSHEET_ID: 'e2e-sheet-id',
       APP_VERSION: '0.1.0-dev',
     });
-    expect(() => server.probeIdempotentOperation('2')).toThrow(
-      'INVALID_REQUEST_ID',
-    );
+    expect(() =>
+      server.probeIdempotentOperation(ownerToken(server), '2'),
+    ).toThrow('INVALID_REQUEST_ID');
     expect(releaseLock).toHaveBeenCalled();
   });
 
   it('times out when the script lock is busy', () => {
-    const { server, releaseLock } = loadServer(
-      {
-        ENVIRONMENT: 'E2E',
-        SPREADSHEET_ID: 'e2e-sheet-id',
-        APP_VERSION: '0.1.0-dev',
-      },
-      { lockAcquired: false },
-    );
+    const { server, releaseLock, lockState } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    const token = ownerToken(server);
+    releaseLock.mockClear();
+    lockState.acquired = false;
     expect(() =>
-      server.probeIdempotentOperation('aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'),
+      server.probeIdempotentOperation(
+        token,
+        'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+      ),
     ).toThrow('LOCK_TIMEOUT');
     expect(releaseLock).not.toHaveBeenCalled();
   });
@@ -596,11 +657,12 @@ describe('Apps Script E2E server', () => {
     });
 
     server.setupSchema();
+    const token = ownerToken(server);
     server.setupSchema();
-    const backup = server.runBackup('manual');
+    const backup = server.runBackup(token, 'manual');
 
     expect(backup.reason).toBe('manual');
-    expect(backup.schemaVersion).toBe(3);
+    expect(backup.schemaVersion).toBe(4);
     expect(JSON.stringify(backup)).not.toContain('e2e-sheet-id');
     expect(JSON.stringify(backup)).not.toContain('e2e-backup-folder');
     expect(projectTriggers).toEqual(['runScheduledBackup']);
@@ -617,13 +679,16 @@ describe('Apps Script E2E server', () => {
       APP_VERSION: '0.1.0-dev',
     });
     server.setupSchema();
+    const token = ownerToken(server);
     const backupId = String(sheets.get('_backups')?.rows[1]?.[0] || '');
 
-    expect(() => server.prepareRestore(backupId, false)).toThrow(
+    expect(() => server.prepareRestore(token, backupId, false)).toThrow(
       'RESTORE_NOT_CONFIRMED',
     );
-    expect(() => server.prepareRestore('2', true)).toThrow('INVALID_BACKUP_ID');
-    expect(server.prepareRestore(backupId, true)).toEqual({
+    expect(() => server.prepareRestore(token, '2', true)).toThrow(
+      'INVALID_BACKUP_ID',
+    );
+    expect(server.prepareRestore(token, backupId, true)).toEqual({
       prepared: true,
       merge: false,
       snapshotValid: true,
@@ -637,9 +702,135 @@ describe('Apps Script E2E server', () => {
       SPREADSHEET_ID: 'prod-sheet-id',
       APP_VERSION: '0.1.0-dev',
     });
-    expect(() => server.runBackup('manual')).toThrow('RESET_PROD_FORBIDDEN');
+    expect(() => server.runBackup('token', 'manual')).toThrow(
+      'RESET_PROD_FORBIDDEN',
+    );
     expect(() =>
-      server.prepareRestore('aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', true),
+      server.prepareRestore(
+        'token',
+        'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+        true,
+      ),
     ).toThrow('RESET_PROD_FORBIDDEN');
+  });
+
+  it('creates E2E sessions without exposing email or a master password', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+
+    const owner = server.loginE2E('owner');
+    const staff = server.loginE2E('staff');
+
+    expect(owner.role).toBe('owner');
+    expect(staff.role).toBe('staff');
+    expect(owner.token).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    expect(owner).not.toHaveProperty('email');
+    expect(JSON.stringify(owner)).not.toContain('@');
+    expect(server.getSession(owner.token)).toEqual({ role: 'owner' });
+    expect(server.getHealth()).not.toHaveProperty('email');
+  });
+
+  it('refuses loginE2E on PROD and anonymous private actions on E2E', () => {
+    const prod = loadServer({
+      ENVIRONMENT: 'PROD',
+      SPREADSHEET_ID: 'prod-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    }).server;
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+
+    expect(() => prod.loginE2E('owner')).toThrow('RESET_PROD_FORBIDDEN');
+    expect(() => server.resetE2E('')).toThrow('UNAUTHENTICATED');
+    expect(() => server.resetE2E('2')).toThrow('UNAUTHENTICATED');
+    expect(() =>
+      server.probeIdempotentOperation(
+        'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+        'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+      ),
+    ).toThrow('UNAUTHENTICATED');
+  });
+
+  it('lets staff probe but not reset, backup or restore', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    const staff = server.loginE2E('staff').token;
+
+    expect(
+      server.probeIdempotentOperation(
+        staff,
+        'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+      ).replayed,
+    ).toBe(false);
+    expect(() => server.resetE2E(staff)).toThrow('FORBIDDEN');
+    expect(() => server.runBackup(staff, 'manual')).toThrow('FORBIDDEN');
+    expect(() =>
+      server.prepareRestore(
+        staff,
+        'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+        true,
+      ),
+    ).toThrow('FORBIDDEN');
+  });
+
+  it('expires and revokes sessions', () => {
+    const { server, sheets } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    const owner = server.loginE2E('owner');
+    const sessionRows = sheets.get('_sessions')?.rows ?? [];
+    const sessionRow = sessionRows[sessionRows.length - 1];
+    if (!sessionRow) {
+      throw new Error('sessão E2E não foi gravada');
+    }
+    sessionRow[4] = '2000-01-01T00:00:00.000Z';
+
+    expect(() => server.getSession(owner.token)).toThrow('SESSION_EXPIRED');
+
+    const fresh = server.loginE2E('owner');
+    expect(server.logout(fresh.token)).toEqual({ loggedOut: true });
+    expect(() => server.resetE2E(fresh.token)).toThrow('UNAUTHENTICATED');
+  });
+
+  it('does not auto-promote an unknown Google identity', () => {
+    const unknown = loadServer(
+      {
+        ENVIRONMENT: 'E2E',
+        SPREADSHEET_ID: 'e2e-sheet-id',
+        APP_VERSION: '0.1.0-dev',
+      },
+      { googleEmail: 'someone@example.test' },
+    ).server;
+    const empty = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    }).server;
+    const matching = loadServer(
+      {
+        ENVIRONMENT: 'E2E',
+        SPREADSHEET_ID: 'e2e-sheet-id',
+        APP_VERSION: '0.1.0-dev',
+      },
+      { googleEmail: 'e2e-owner' },
+    ).server;
+
+    expect(() => unknown.loginWithGoogle()).toThrow('FORBIDDEN');
+    expect(() => empty.loginWithGoogle()).toThrow('UNAUTHENTICATED');
+    matching.loginE2E('owner');
+    expect(matching.loginWithGoogle().role).toBe('owner');
+    expect(matching.loginWithGoogle()).not.toHaveProperty('email');
   });
 });

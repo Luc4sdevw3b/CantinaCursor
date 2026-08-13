@@ -123,6 +123,8 @@ Testar retry e double submit.
 
 E2E login/role.
 
+`AppApi` agora inclui sessão (`getSession`, `loginE2E`, `logout`) além de `getHealth`. Cadastro de alunos é a Fase 8.
+
 ## Fase 8 — Ano letivo, turmas e alunos
 
 - nascimento ou idade aproximada;

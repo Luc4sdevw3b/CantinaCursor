@@ -3,6 +3,7 @@ import {
   BACKUPS_MIGRATION,
   FOUNDATION_MIGRATION,
   OPERATION_REQUESTS_MIGRATION,
+  USERS_MIGRATION,
   pendingMigrations,
 } from '../../src/server/sheets/migrations';
 
@@ -14,11 +15,12 @@ describe('migration runner', () => {
         FOUNDATION_MIGRATION,
         OPERATION_REQUESTS_MIGRATION,
         BACKUPS_MIGRATION,
+        USERS_MIGRATION,
       ],
     });
     expect(pendingMigrations(['001_foundation'])).toEqual({
       ok: true,
-      data: [OPERATION_REQUESTS_MIGRATION, BACKUPS_MIGRATION],
+      data: [OPERATION_REQUESTS_MIGRATION, BACKUPS_MIGRATION, USERS_MIGRATION],
     });
   });
 
@@ -28,6 +30,7 @@ describe('migration runner', () => {
         '001_foundation',
         '002_operation_requests',
         '003_backups',
+        '004_users',
       ]),
     ).toEqual({
       ok: true,

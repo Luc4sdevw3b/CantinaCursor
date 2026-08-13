@@ -26,7 +26,7 @@ const FOUNDATION_MIGRATION_CHECKSUM = 'meta|schema_migrations';
 const OPERATION_REQUESTS_MIGRATION_ID = '002_operation_requests';
 const OPERATION_REQUESTS_MIGRATION_CHECKSUM =
   'request_id|operation_type|result_entity_id|status|created_at';
-const CURRENT_SCHEMA_VERSION = 3;
+const CURRENT_SCHEMA_VERSION = 4;
 const BACKUPS_SHEET = '_backups';
 const BACKUPS_HEADERS = [
   'id',
@@ -40,6 +40,31 @@ const BACKUPS_HEADERS = [
 const BACKUPS_MIGRATION_ID = '003_backups';
 const BACKUPS_MIGRATION_CHECKSUM =
   'id|created_at|app_version|schema_version|reason|status|drive_file_id';
+const USERS_SHEET = '_users';
+const USERS_HEADERS = ['id', 'google_subject', 'role', 'active', 'created_at'];
+const SESSIONS_SHEET = '_sessions';
+const SESSIONS_HEADERS = [
+  'id',
+  'user_id',
+  'role',
+  'created_at',
+  'expires_at',
+  'revoked',
+];
+const USERS_MIGRATION_ID = '004_users';
+const USERS_MIGRATION_CHECKSUM =
+  'id|google_subject|role|active|created_at|id|user_id|role|created_at|expires_at|revoked';
+const E2E_OWNER_SUBJECT = 'e2e-owner';
+const E2E_STAFF_SUBJECT = 'e2e-staff';
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+const ACTION_ROLES = {
+  'e2e.probe': ['owner', 'staff'],
+  'e2e.reset': ['owner'],
+  'e2e.seed': ['owner'],
+  'backup.run': ['owner'],
+  'backup.restore': ['owner'],
+  'users.manage': ['owner'],
+};
 const BACKUP_FILE_PREFIX = 'cantina-backup';
 const BACKUP_FOLDER_NAME = 'Cantina V2 AppScript E2E backups';
 const DEFAULT_BACKUP_RETENTION_DAYS = 14;
@@ -113,6 +138,198 @@ function withScriptLock(work) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function isUserRole(value) {
+  return value === 'owner' || value === 'staff';
+}
+
+function throwAuthError(code, message) {
+  throw new Error(code + ': ' + message);
+}
+
+function listSheetRecords(sheet, headers) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return [];
+  }
+  return sheet
+    .getRange(2, 1, lastRow - 1, headers.length)
+    .getValues()
+    .map(function (row) {
+      const record = {};
+      headers.forEach(function (header, index) {
+        record[header] = String(row[index] || '');
+      });
+      return record;
+    });
+}
+
+function findLatestByField(records, field, value) {
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    if (records[index][field] === value) {
+      return records[index];
+    }
+  }
+  return null;
+}
+
+function openUsersSheet() {
+  return getOrCreateSheet(
+    openConfiguredSpreadsheet(),
+    USERS_SHEET,
+    USERS_HEADERS,
+  );
+}
+
+function openSessionsSheet() {
+  return getOrCreateSheet(
+    openConfiguredSpreadsheet(),
+    SESSIONS_SHEET,
+    SESSIONS_HEADERS,
+  );
+}
+
+function ensureE2EUsers() {
+  setupSchema();
+  const users = openUsersSheet();
+  const existing = listSheetRecords(users, USERS_HEADERS);
+  const createdAt = new Date().toISOString();
+  const fixtures = [
+    { google_subject: E2E_OWNER_SUBJECT, role: 'owner' },
+    { google_subject: E2E_STAFF_SUBJECT, role: 'staff' },
+  ];
+  fixtures.forEach(function (fixture) {
+    if (
+      !findLatestByField(existing, 'google_subject', fixture.google_subject)
+    ) {
+      users.appendRow([
+        Utilities.getUuid(),
+        fixture.google_subject,
+        fixture.role,
+        'true',
+        createdAt,
+      ]);
+    }
+  });
+}
+
+function createSessionForUser(user) {
+  if (!user || user.active !== 'true' || !isUserRole(user.role)) {
+    throwAuthError('FORBIDDEN', 'Esta ação não é permitida para o seu perfil.');
+  }
+  const now = new Date();
+  const token = Utilities.getUuid();
+  openSessionsSheet().appendRow([
+    token,
+    user.id,
+    user.role,
+    now.toISOString(),
+    new Date(now.getTime() + SESSION_TTL_MS).toISOString(),
+    'false',
+  ]);
+  return { token: token, role: user.role };
+}
+
+function publicSession(session) {
+  return { role: session.role };
+}
+
+function requireSession(sessionToken) {
+  if (
+    typeof sessionToken !== 'string' ||
+    !REQUEST_ID_PATTERN.test(sessionToken)
+  ) {
+    throwAuthError('UNAUTHENTICATED', 'Entre para continuar.');
+  }
+  const latest = findLatestByField(
+    listSheetRecords(openSessionsSheet(), SESSIONS_HEADERS),
+    'id',
+    sessionToken,
+  );
+  if (!latest || latest.revoked === 'true' || !isUserRole(latest.role)) {
+    throwAuthError('UNAUTHENTICATED', 'Entre para continuar.');
+  }
+  if (Date.parse(latest.expires_at) <= Date.now()) {
+    throwAuthError('SESSION_EXPIRED', 'A sessão expirou. Entre novamente.');
+  }
+  return latest;
+}
+
+function requireAction(sessionToken, action) {
+  setupSchema();
+  const session = requireSession(sessionToken);
+  const allowed = ACTION_ROLES[action] || [];
+  if (allowed.indexOf(session.role) === -1) {
+    throwAuthError('FORBIDDEN', 'Esta ação não é permitida para o seu perfil.');
+  }
+  return session;
+}
+
+function loginE2E(role) {
+  assertE2EEnvironment();
+  if (!isUserRole(role)) {
+    throw new Error('INVALID_ROLE: informe dona ou funcionário.');
+  }
+  return withScriptLock(function () {
+    ensureE2EUsers();
+    const subject = role === 'owner' ? E2E_OWNER_SUBJECT : E2E_STAFF_SUBJECT;
+    const user = findLatestByField(
+      listSheetRecords(openUsersSheet(), USERS_HEADERS),
+      'google_subject',
+      subject,
+    );
+    return createSessionForUser(user);
+  });
+}
+
+function loginWithGoogle() {
+  assertE2EEnvironment();
+  let email = '';
+  try {
+    email = Session.getActiveUser().getEmail();
+  } catch (error) {
+    email = '';
+  }
+  if (!email) {
+    throwAuthError('UNAUTHENTICATED', 'Entre para continuar.');
+  }
+  return withScriptLock(function () {
+    setupSchema();
+    const user = findLatestByField(
+      listSheetRecords(openUsersSheet(), USERS_HEADERS),
+      'google_subject',
+      email,
+    );
+    if (!user) {
+      throwAuthError(
+        'FORBIDDEN',
+        'Esta ação não é permitida para o seu perfil.',
+      );
+    }
+    return createSessionForUser(user);
+  });
+}
+
+function getSession(sessionToken) {
+  setupSchema();
+  return publicSession(requireSession(sessionToken));
+}
+
+function logout(sessionToken) {
+  setupSchema();
+  const session = requireSession(sessionToken);
+  return withScriptLock(function () {
+    openSessionsSheet().appendRow([
+      session.id,
+      session.user_id,
+      session.role,
+      session.created_at,
+      session.expires_at,
+      'true',
+    ]);
+    return { loggedOut: true };
+  });
 }
 
 function isRequestId(value) {
@@ -219,18 +436,24 @@ function resetE2EUnlocked() {
   if (backups) {
     clearSheetData(backups);
   }
+  const sessions = spreadsheet.getSheetByName(SESSIONS_SHEET);
+  if (sessions) {
+    clearSheetData(sessions);
+  }
   return { reset: true, environment: CANTINA_ENVIRONMENT };
 }
 
-function resetE2E() {
+function resetE2E(sessionToken) {
   assertE2EEnvironment();
+  requireAction(sessionToken, 'e2e.reset');
   return withScriptLock(function () {
     return resetE2EUnlocked();
   });
 }
 
-function seedE2E() {
+function seedE2E(sessionToken) {
   assertE2EEnvironment();
+  requireAction(sessionToken, 'e2e.seed');
   return withScriptLock(function () {
     resetE2EUnlocked();
     const spreadsheet = openConfiguredSpreadsheet();
@@ -264,6 +487,7 @@ function assertKnownMigrations(applied) {
     FOUNDATION_MIGRATION_ID,
     OPERATION_REQUESTS_MIGRATION_ID,
     BACKUPS_MIGRATION_ID,
+    USERS_MIGRATION_ID,
   ];
   applied.forEach(function (id) {
     if (catalog.indexOf(id) === -1) {
@@ -288,7 +512,8 @@ function setupSchema() {
   const pending =
     applied.indexOf(FOUNDATION_MIGRATION_ID) === -1 ||
     applied.indexOf(OPERATION_REQUESTS_MIGRATION_ID) === -1 ||
-    applied.indexOf(BACKUPS_MIGRATION_ID) === -1;
+    applied.indexOf(BACKUPS_MIGRATION_ID) === -1 ||
+    applied.indexOf(USERS_MIGRATION_ID) === -1;
   let pendingCopy = null;
   if (pending) {
     try {
@@ -328,13 +553,25 @@ function setupSchema() {
   }
   if (applied.indexOf(BACKUPS_MIGRATION_ID) === -1) {
     getOrCreateSheet(spreadsheet, BACKUPS_SHEET, BACKUPS_HEADERS);
-    meta.appendRow(['schema_version', String(CURRENT_SCHEMA_VERSION)]);
+    meta.appendRow(['schema_version', '3']);
     migrations.appendRow([
       BACKUPS_MIGRATION_ID,
       createdAt,
       CANTINA_APP_VERSION,
       BACKUPS_MIGRATION_CHECKSUM,
       'Cria _backups',
+    ]);
+  }
+  if (applied.indexOf(USERS_MIGRATION_ID) === -1) {
+    getOrCreateSheet(spreadsheet, USERS_SHEET, USERS_HEADERS);
+    getOrCreateSheet(spreadsheet, SESSIONS_SHEET, SESSIONS_HEADERS);
+    meta.appendRow(['schema_version', String(CURRENT_SCHEMA_VERSION)]);
+    migrations.appendRow([
+      USERS_MIGRATION_ID,
+      createdAt,
+      CANTINA_APP_VERSION,
+      USERS_MIGRATION_CHECKSUM,
+      'Cria _users e _sessions',
     ]);
   }
   if (pendingCopy) {
@@ -405,8 +642,9 @@ function applyBatchAppend(sheetName, rows) {
   );
 }
 
-function probeIdempotentOperation(requestId) {
+function probeIdempotentOperation(sessionToken, requestId) {
   assertE2EEnvironment();
+  requireAction(sessionToken, 'e2e.probe');
   return withScriptLock(function () {
     setupSchema();
     if (!isRequestId(requestId)) {
@@ -598,28 +836,37 @@ function ensureBackupTrigger() {
     .create();
 }
 
-function runBackup(reason) {
+function runBackupUnlocked(reason) {
+  setupSchema();
+  const copy = copySpreadsheetUnlocked(reason || 'manual');
+  recordBackupUnlocked(copy);
+  pruneBackupsUnlocked();
+  ensureBackupTrigger();
+  return {
+    createdAt: copy.createdAt,
+    reason: copy.reason,
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+  };
+}
+
+function runBackup(sessionToken, reason) {
   assertE2EEnvironment();
+  requireAction(sessionToken, 'backup.run');
   return withScriptLock(function () {
-    setupSchema();
-    const copy = copySpreadsheetUnlocked(reason || 'manual');
-    recordBackupUnlocked(copy);
-    pruneBackupsUnlocked();
-    ensureBackupTrigger();
-    return {
-      createdAt: copy.createdAt,
-      reason: copy.reason,
-      schemaVersion: CURRENT_SCHEMA_VERSION,
-    };
+    return runBackupUnlocked(reason);
   });
 }
 
 function runScheduledBackup() {
-  return runBackup('scheduled');
+  assertE2EEnvironment();
+  return withScriptLock(function () {
+    return runBackupUnlocked('scheduled');
+  });
 }
 
-function prepareRestore(backupId, confirmed) {
+function prepareRestore(sessionToken, backupId, confirmed) {
   assertE2EEnvironment();
+  requireAction(sessionToken, 'backup.restore');
   return withScriptLock(function () {
     if (!confirmed) {
       throw new Error(

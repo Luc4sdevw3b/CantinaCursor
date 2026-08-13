@@ -1,0 +1,33 @@
+export const USER_ROLES = ['owner', 'staff'] as const;
+export type UserRole = (typeof USER_ROLES)[number];
+
+export const AUTH_ACTIONS = [
+  'e2e.probe',
+  'e2e.reset',
+  'e2e.seed',
+  'backup.run',
+  'backup.restore',
+  'users.manage',
+] as const;
+export type AuthAction = (typeof AUTH_ACTIONS)[number];
+
+export const ACTION_ROLES: Record<AuthAction, readonly UserRole[]> = {
+  'e2e.probe': ['owner', 'staff'],
+  'e2e.reset': ['owner'],
+  'e2e.seed': ['owner'],
+  'backup.run': ['owner'],
+  'backup.restore': ['owner'],
+  'users.manage': ['owner'],
+};
+
+export const E2E_OWNER_SUBJECT = 'e2e-owner';
+export const E2E_STAFF_SUBJECT = 'e2e-staff';
+export const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+
+export function isUserRole(value: unknown): value is UserRole {
+  return USER_ROLES.some((role) => role === value);
+}
+
+export function roleLabel(role: UserRole): string {
+  return role === 'owner' ? 'Dona' : 'Funcionário';
+}

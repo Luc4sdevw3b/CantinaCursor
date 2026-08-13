@@ -51,5 +51,16 @@ export const BACKUPS_SHEET: SheetSchema = {
 export const FOUNDATION_MIGRATION_ID = '001_foundation';
 export const OPERATION_REQUESTS_MIGRATION_ID = '002_operation_requests';
 export const BACKUPS_MIGRATION_ID = '003_backups';
+export const USERS_MIGRATION_ID = '004_users';
 export const FOUNDATION_SCHEMA_VERSION = 1;
-export const CURRENT_SCHEMA_VERSION = 3;
+export const CURRENT_SCHEMA_VERSION = 4;
+
+export const USERS_SHEET: SheetSchema = {
+  name: '_users',
+  headers: ['id', 'google_subject', 'role', 'active', 'created_at'],
+};
+
+export const SESSIONS_SHEET: SheetSchema = {
+  name: '_sessions',
+  headers: ['id', 'user_id', 'role', 'created_at', 'expires_at', 'revoked'],
+};

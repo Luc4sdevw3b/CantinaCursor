@@ -58,3 +58,7 @@ Implementação atual: `src/domain/result.ts`.
 - `retryable`: se a operação pode ser tentada de novo.
 
 Não converter APIs já estáveis só para usar `Result`. Adotar em operações novas de domínio quando elas existirem.
+
+## Sessão
+
+Token de sessão é UUID, nunca número da linha. A autorização de papéis (`owner` / `staff`) vale no servidor; esconder botão na UI não autoriza.

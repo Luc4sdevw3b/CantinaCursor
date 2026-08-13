@@ -183,6 +183,44 @@ h1 {
   font-size: 0.9rem;
 }
 
+.session-card {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.session-card[hidden] {
+  display: none;
+}
+
+.session-card button {
+  padding: 0.7rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  color: var(--text);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+#session-label {
+  margin: 0;
+  align-self: center;
+  font-weight: 700;
+}
+
+#session-login,
+#session-active {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+#session-login[hidden],
+#session-active[hidden] {
+  display: none;
+}
+
 .status-dot {
   width: 0.7rem;
   height: 0.7rem;

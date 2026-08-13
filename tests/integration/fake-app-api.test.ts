@@ -26,4 +26,15 @@ describe('FakeAppApi', () => {
 
     expect((await api.getHealth()).environment).toBe('LOCAL');
   });
+
+  it('keeps a local E2E-style session without a password', async () => {
+    const api = new FakeAppApi();
+
+    expect(await api.getSession()).toBeNull();
+    expect(await api.loginE2E('owner')).toEqual({ role: 'owner' });
+    expect(await api.getSession()).toEqual({ role: 'owner' });
+    expect(await api.loginE2E('staff')).toEqual({ role: 'staff' });
+    await api.logout();
+    expect(await api.getSession()).toBeNull();
+  });
 });

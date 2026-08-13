@@ -32,6 +32,7 @@ Testar:
 - `withScriptLock` e timeout retryable;
 - retry/double submit com o mesmo `request_id`;
 - backup Drive, retenção e restore foundation (sem merge);
+- sessão/role no backend (`owner`/`staff`), login E2E só no ambiente E2E, recusa de token inválido/expirado/revogado;
 - validações.
 
 ## Integração remota — E2E env
@@ -78,7 +79,8 @@ Mínimo obrigatório do smoke local:
 6. tema Escuro funciona;
 7. preferência de tema persiste após reload;
 8. `AppApi fake` responde `health`;
-9. nenhuma chamada externa é realizada.
+9. nenhuma chamada externa é realizada;
+10. login local como dona/funcionário e logout, sem campo de senha.
 
 Não confundir com o ambiente Google E2E da Fase 3.
 
@@ -90,7 +92,7 @@ Quando o deployment E2E da Fase 3 existir:
 - Spreadsheet E2E isolada;
 - `resetE2E` / `seedE2E` abortam se `ENVIRONMENT !== E2E` e nunca em PROD;
 - dados somente fictícios;
-- smoke Playwright: `npm run test:e2e:remote`.
+- smoke Playwright: `npm run test:e2e:remote` (health público, sem exigir login).
 
 Sem `E2E_BASE_URL` os testes remotos são ignorados. O CI da fundação não executa E2E remoto e não usa secrets.
 

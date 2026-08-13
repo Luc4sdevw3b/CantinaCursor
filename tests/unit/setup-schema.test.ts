@@ -5,6 +5,7 @@ import {
   BACKUPS_MIGRATION_ID,
   FOUNDATION_MIGRATION_ID,
   OPERATION_REQUESTS_MIGRATION_ID,
+  USERS_MIGRATION_ID,
 } from '../../src/server/sheets/schema';
 
 describe('setupSchema', () => {
@@ -23,16 +24,17 @@ describe('setupSchema', () => {
     expect(first).toEqual({
       ok: true,
       data: {
-        schemaVersion: 3,
+        schemaVersion: 4,
         appliedMigrations: [
           FOUNDATION_MIGRATION_ID,
           OPERATION_REQUESTS_MIGRATION_ID,
           BACKUPS_MIGRATION_ID,
+          USERS_MIGRATION_ID,
         ],
       },
     });
     expect(second).toEqual(first);
-    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(3);
+    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(4);
     expect(sheets.get('_meta')?.getHeaders()).toEqual(['key', 'value']);
     expect(sheets.get('_operation_requests')?.getHeaders()).toEqual([
       'request_id',
@@ -49,6 +51,21 @@ describe('setupSchema', () => {
       'reason',
       'status',
       'drive_file_id',
+    ]);
+    expect(sheets.get('_users')?.getHeaders()).toEqual([
+      'id',
+      'google_subject',
+      'role',
+      'active',
+      'created_at',
+    ]);
+    expect(sheets.get('_sessions')?.getHeaders()).toEqual([
+      'id',
+      'user_id',
+      'role',
+      'created_at',
+      'expires_at',
+      'revoked',
     ]);
   });
 
@@ -85,9 +102,10 @@ describe('setupSchema', () => {
         FOUNDATION_MIGRATION_ID,
         OPERATION_REQUESTS_MIGRATION_ID,
         BACKUPS_MIGRATION_ID,
+        USERS_MIGRATION_ID,
       ]);
     }
-    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(3);
+    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(4);
   });
 
   it('refuses PROD', () => {

@@ -1,5 +1,7 @@
 import './styles.css';
 import { APP_VERSION } from './app-version';
+import { roleLabel, type UserRole } from './domain/auth';
+import type { AppSession } from './web/shared/app-api';
 import { createAppApi } from './web/shared/create-app-api';
 import {
   applyTheme,
@@ -42,15 +44,25 @@ app.innerHTML = `
           <p id="health-detail">Conectando à API local de demonstração.</p>
         </div>
       </div>
+      <div class="session-card" id="session-card" hidden>
+        <div id="session-login">
+          <button type="button" id="login-owner">Entrar como dona</button>
+          <button type="button" id="login-staff">Entrar como funcionário</button>
+        </div>
+        <div id="session-active" hidden>
+          <p id="session-label"></p>
+          <button type="button" id="logout">Sair</button>
+        </div>
+      </div>
     </section>
 
     <section class="next-step" aria-labelledby="next-step-title">
       <p class="step-number">01</p>
       <div>
-        <h2 id="next-step-title">Fundação da interface</h2>
-        <p>Preview local com API fake e ambiente E2E isolado no Google.</p>
+        <h2 id="next-step-title">Sessão no servidor</h2>
+        <p>Dona e funcionário entram por papéis; a autorização vale no backend.</p>
       </div>
-      <span class="phase-badge">Fase 3</span>
+      <span class="phase-badge">Fase 7</span>
     </section>
 
     <footer>
@@ -95,9 +107,47 @@ systemTheme.addEventListener('change', renderTheme);
 renderTheme();
 
 const api = createAppApi();
+const sessionCard = document.querySelector('#session-card');
+const sessionLogin = document.querySelector('#session-login');
+const sessionActive = document.querySelector('#session-active');
+const sessionLabel = document.querySelector('#session-label');
+
+function renderSession(session: AppSession | null, canLogin: boolean): void {
+  if (
+    !(sessionCard instanceof HTMLElement) ||
+    !(sessionLogin instanceof HTMLElement) ||
+    !(sessionActive instanceof HTMLElement) ||
+    !sessionLabel
+  ) {
+    return;
+  }
+
+  sessionCard.hidden = !canLogin;
+  sessionLogin.hidden = Boolean(session);
+  sessionActive.hidden = !session;
+  sessionLabel.textContent = session
+    ? `Sessão: ${roleLabel(session.role)}`
+    : '';
+}
+
+async function loginAs(role: UserRole): Promise<void> {
+  const session = await api.loginE2E(role);
+  renderSession(session, true);
+}
+
+document.querySelector('#login-owner')?.addEventListener('click', () => {
+  void loginAs('owner');
+});
+document.querySelector('#login-staff')?.addEventListener('click', () => {
+  void loginAs('staff');
+});
+document.querySelector('#logout')?.addEventListener('click', () => {
+  void api.logout().then(() => renderSession(null, true));
+});
+
 void api
   .getHealth()
-  .then((health) => {
+  .then(async (health) => {
     const status = document.querySelector('#health-status');
     const detail = document.querySelector('#health-detail');
     const card = document.querySelector('#health-card');
@@ -113,6 +163,10 @@ void api
         : `${health.environment} • ${health.version} • Planilha configurada`;
       card.dataset.appAdapter = health.adapter;
     }
+
+    const canLogin =
+      health.environment === 'LOCAL' || health.environment === 'E2E';
+    renderSession(canLogin ? await api.getSession() : null, canLogin);
   })
   .catch(() => {
     const status = document.querySelector('#health-status');
