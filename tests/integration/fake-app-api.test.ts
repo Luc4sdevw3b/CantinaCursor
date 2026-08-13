@@ -1135,4 +1135,36 @@ describe('FakeAppApi', () => {
       )?.physicalQuantity,
     ).toBe(10);
   });
+
+  it('holds reserved stock on a recreio reservation without changing physical quantity', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const setup = await api.getReservationsSetup();
+    const slot = setup.slots.find((item) => item.label === 'Recreio tarde');
+    const coxinha = setup.reservableProducts.find(
+      (item) => item.name === 'Coxinha',
+    );
+    if (!slot || !coxinha) {
+      throw new Error('reserva local incompleta');
+    }
+    const created = await api.createReservation({
+      requestId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee23',
+      slotId: slot.id,
+      studentNameText: 'Ana Souza',
+      classroomText: '3º A',
+      items: [{ productId: coxinha.id, quantity: 1 }],
+    });
+    expect(created.reservations[0]?.summaryLabel).toBe(
+      'Ana Souza • 3º A • Coxinha • R$ 5,50 • Recreio tarde • reservada',
+    );
+    expect(
+      created.availability.find((item) => item.productName === 'Coxinha')
+        ?.reservedQuantity,
+    ).toBe(1);
+    expect(
+      (await api.listInventoryBalances()).items.find(
+        (item) => item.productName === 'Coxinha',
+      )?.physicalQuantity,
+    ).toBe(10);
+  });
 });

@@ -151,7 +151,7 @@ Saldo = soma dos movimentos. Conta pessoal: `owner_type=student`. Conta de respo
 
 `_inventory_opening_items`: id, inventory_day_id, product_id, opening_quantity. IDs UUID; quantidade inteira, zero ou maior. A dona informa a abertura de cada produto controlado.
 
-`_inventory_movements`: id, inventory_day_id, product_id, kind, quantity_delta, source_type, source_id, created_by, created_at, reason. Ajuste (`kind=adjustment`) é só da dona, com motivo. Físico = abertura + movimentos. Zero aparece `ACABOU`. Disponível = físico - reservado ativo (reservado ainda é 0).
+`_inventory_movements`: id, inventory_day_id, product_id, kind, quantity_delta, source_type, source_id, created_by, created_at, reason. Ajuste (`kind=adjustment`) é só da dona, com motivo. Físico = abertura + movimentos. Zero aparece `ACABOU`. Disponível = físico - reservado ativo (`status=reserved`).
 
 ## Caixa
 
@@ -166,6 +166,18 @@ Saldo = soma dos movimentos. Conta pessoal: `owner_type=student`. Conta de respo
 `_reversal_effects`: id, reversal_id, effect_type, entity_type, entity_id, amount_delta_cents, quantity_delta. Effects: `cash_refund`, `pix_refund`, `cash_recovery`, `pix_recovery`, `credit_restore`, `credit_remove`, `debt_cancelled`, `debt_reopened`, `stock_return`.
 
 Venda/pagamento estornados ganham uma linha posterior com o mesmo id e `status=reversed`. Crédito usa movimento compensatório `kind=reversal`. Estoque devolvido usa `kind=sale_return`.
+
+## Reservas
+
+`_reservation_slots`: id, business_date, label, pickup_starts_at, pickup_ends_at, cutoff_at, active, created_by, created_at. Ex.: Recreio manhã com corte 09:15 e retirada 09:45–10:05. Schema version 15 (`015_reservations`).
+
+`_reservations`: id, public_code, request_id, requester_name, student_name_text, classroom_text, contact_optional, slot_id, status (`reserved`|`fulfilled`|`cancelled`|`no_show`), payment_status, linked_student_id, total_cents, created_at, updated_at, note. Sem estado `prepared`. Sem retirada parcial persistente. `public_code` não é sequencial.
+
+`_reservation_items`: id, reservation_id, product_id, description_snapshot, quantity, unit_price_cents, line_total_cents.
+
+`_reservation_status_history`: id, reservation_id, from_status, to_status, actor_id, created_at, reason. Mudança de status é append com o mesmo id da reserva.
+
+Reserva ativa aumenta reservado e reduz disponível. Cancelar, não retirada e retirada (status) liberam reservado sem baixar o físico. Converter reserva em venda fica na Fase 26. Portal público fica na Fase 24.
 
 ## Notas
 

@@ -36,6 +36,9 @@ export const AUTH_ACTIONS = [
   'cash.close',
   'reversals.read',
   'reversals.write',
+  'reservations.read',
+  'reservations.write',
+  'reservation_slots.write',
 ] as const;
 export type AuthAction = (typeof AUTH_ACTIONS)[number];
 
@@ -74,6 +77,9 @@ export const ACTION_ROLES: Record<AuthAction, readonly UserRole[]> = {
   'cash.close': ['owner'],
   'reversals.read': ['owner', 'staff'],
   'reversals.write': ['owner'],
+  'reservations.read': ['owner', 'staff'],
+  'reservations.write': ['owner', 'staff'],
+  'reservation_slots.write': ['owner'],
 };
 
 export const E2E_OWNER_SUBJECT = 'e2e-owner';

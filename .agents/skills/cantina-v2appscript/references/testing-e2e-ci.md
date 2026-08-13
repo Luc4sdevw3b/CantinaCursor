@@ -103,6 +103,8 @@ Mínimo obrigatório do smoke local:
 25. caixa físico: abrir caixa; Coxinha + Brigadeiro em dinheiro com `R$ 10,00`; venda `Anônima • Coxinha, Brigadeiro • R$ 8,00 • Dinheiro • Troco R$ 2,00`; movimentos `entrada R$ 10,00` e `troco R$ 2,00`; esperado `R$ 8,00`; estoque `Coxinha • 9`. PIX continua sem caixa. Confirmar venda não muda de rótulo.
 26. estorno com retorno: PIX Coxinha; **Estornos** → **Sim, devolver ao estoque** → **Confirmar estorno da venda**; histórico `Produto retornado ao estoque: +1`; estoque `Coxinha • 10`.
 27. estorno sem retorno: PIX Coxinha; **Não, manter fora do estoque**; estoque permanece `Coxinha • 9`. Funcionário vê a auditoria e não vê **Confirmar estorno da venda**.
+28. reserva do recreio: **Reservas** → Recreio tarde → Ana Souza / 3º A / Coxinha → **Confirmar reserva**; lista `Ana Souza • 3º A • Coxinha • R$ 5,50 • Recreio tarde • reservada`; disponibilidade `Coxinha • disponível 9 • reservado 1`; estoque físico `Coxinha • 10`.
+29. funcionário vê **Confirmar reserva** e não vê **Criar recreio**.
 
 Não confundir com o ambiente Google E2E da Fase 3.
 

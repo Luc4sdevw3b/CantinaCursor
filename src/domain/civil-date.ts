@@ -124,3 +124,37 @@ export function todayCivilSaoPaulo(now: Date | string = new Date()): string {
   const day = parts.find((part) => part.type === 'day')?.value;
   return `${year}-${month}-${day}`;
 }
+
+const CLOCK_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+export const INVALID_CLOCK_TIME_ERROR = {
+  code: 'INVALID_SLOT_TIME',
+  message: 'Informe o horário no formato HH:mm.',
+  retryable: false,
+} as const;
+
+export function isClockTime(value: string): boolean {
+  return CLOCK_PATTERN.test(value);
+}
+
+export function combineCivilTimeSaoPaulo(
+  civilDate: string,
+  clockTime: string,
+): Result<string> {
+  if (!isCivilDate(civilDate) || !isClockTime(clockTime)) {
+    return err(INVALID_CLOCK_TIME_ERROR);
+  }
+  return ok(new Date(`${civilDate}T${clockTime}:00.000-03:00`).toISOString());
+}
+
+export function formatSaoPauloClock(iso: string): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'America/Sao_Paulo',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(iso));
+  const hour = parts.find((part) => part.type === 'hour')?.value ?? '00';
+  const minute = parts.find((part) => part.type === 'minute')?.value ?? '00';
+  return `${hour}:${minute}`;
+}

@@ -148,7 +148,7 @@ export class MemoryCatalog {
         priceCents: 550,
         discountAllowed: true,
         stockTracked: true,
-        reservable: false,
+        reservable: true,
       }),
     );
     unwrap(

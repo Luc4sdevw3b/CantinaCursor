@@ -242,7 +242,7 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await expect(page.locator('#product-price')).toHaveValue('5,50');
     await expect(page.locator('#product-discount')).toBeChecked();
     await expect(page.locator('#product-stock')).toBeChecked();
-    await expect(page.locator('#product-reservable')).not.toBeChecked();
+    await expect(page.locator('#product-reservable')).toBeChecked();
     await page.locator('#product-price').fill('6,00');
     await page.getByRole('button', { name: 'Salvar produto' }).click();
     await expect(
@@ -966,6 +966,54 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
       page.getByText(
         'Funcionários podem consultar a auditoria. Somente a dona pode realizar estornos.',
       ),
+    ).toBeVisible();
+  });
+
+  test('reserves Coxinha for the afternoon recreio and keeps physical stock', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await goToArea(page, 'Reservas');
+    await expect(
+      page.getByRole('heading', { name: 'Reservas do recreio' }),
+    ).toBeVisible();
+    await page.locator('#reservation-slot-id').selectOption({
+      label: 'Recreio tarde • corte 18:00 • retirada 18:15–18:35',
+    });
+    await page.locator('#reservation-student-name').fill('Ana Souza');
+    await page.locator('#reservation-classroom').fill('3º A');
+    await page.locator('#reservation-product').selectOption({
+      label: 'Coxinha • R$ 5,50',
+    });
+    await page.getByRole('button', { name: 'Confirmar reserva' }).click();
+    await expect(
+      page.getByText(
+        'Ana Souza • 3º A • Coxinha • R$ 5,50 • Recreio tarde • reservada',
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Coxinha • disponível 9 • reservado 1', { exact: true }),
+    ).toBeVisible();
+    await goToArea(page, 'Estoque');
+    await expect(page.getByText('Coxinha • 10', { exact: true })).toBeVisible();
+  });
+
+  test('hides recreio creation from staff and keeps reservation actions', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como funcionário' }).click();
+    await goToArea(page, 'Reservas');
+    await expect(
+      page.getByRole('heading', { name: 'Reservas do recreio' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Criar recreio' }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: 'Confirmar reserva' }),
     ).toBeVisible();
   });
 });

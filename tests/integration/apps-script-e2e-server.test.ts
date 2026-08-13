@@ -374,6 +374,25 @@ interface ServerContext {
       effects: Array<{ type: string; summaryLabel: string }>;
     }>;
   };
+  getReservationsSetup(sessionToken: string): {
+    slots: Array<{ id: string; label: string; openForReservations: boolean }>;
+    reservableProducts: Array<{ id: string; name: string }>;
+    reservations: Array<{ id: string; summaryLabel: string; status: string }>;
+    availability: Array<{ productName: string; summaryLabel: string }>;
+  };
+  createReservationSlot(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): {
+    slots: Array<{ id: string; label: string }>;
+  };
+  createReservation(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): {
+    reservations: Array<{ summaryLabel: string }>;
+    availability: Array<{ productName: string; reservedQuantity: number }>;
+  };
 }
 
 interface DriveMockFile {
@@ -523,6 +542,8 @@ function loadServer(
   const context = {
     Date,
     String,
+    Number,
+    Object,
     Array,
     Math,
     JSON,
@@ -564,6 +585,19 @@ function loadServer(
         return `aaaaaaaa-bbbb-4ccc-8ddd-${String(uuidCount).padStart(12, '0')}`;
       },
       formatDate: (date: Date, timeZone: string, format: string) => {
+        if (format === 'HH:mm') {
+          const parts = new Intl.DateTimeFormat('en-GB', {
+            timeZone: timeZone || 'America/Sao_Paulo',
+            hour: '2-digit',
+            minute: '2-digit',
+            hourCycle: 'h23',
+          }).formatToParts(date);
+          const hour =
+            parts.find((part) => part.type === 'hour')?.value ?? '00';
+          const minute =
+            parts.find((part) => part.type === 'minute')?.value ?? '00';
+          return `${hour}:${minute}`;
+        }
         if (format !== 'yyyy-MM-dd') {
           return String(date);
         }
@@ -696,7 +730,7 @@ describe('Apps Script E2E server', () => {
     expect(health.status).toBe('ready');
     expect(health.adapter).toBe('google-script');
     expect(health.spreadsheetConfigured).toBe(true);
-    expect(health.schemaVersion).toBe(14);
+    expect(health.schemaVersion).toBe(15);
     expect(health.backupConfigured).toBe(true);
     expect(health.lastBackupAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(JSON.stringify(health)).not.toContain('private-e2e-sheet-id');
@@ -779,7 +813,7 @@ describe('Apps Script E2E server', () => {
     const second = server.setupSchema();
 
     expect(first).toEqual(second);
-    expect(first.schemaVersion).toBe(14);
+    expect(first.schemaVersion).toBe(15);
     expect(first.appliedMigrations).toEqual([
       '001_foundation',
       '002_operation_requests',
@@ -795,6 +829,7 @@ describe('Apps Script E2E server', () => {
       '012_credits',
       '013_cash',
       '014_reversals',
+      '015_reservations',
     ]);
     expect(sheets.get('_meta')?.rows[0]).toEqual(['key', 'value']);
     expect(sheets.get('_schema_migrations')?.rows[0]).toEqual([
@@ -1041,6 +1076,57 @@ describe('Apps Script E2E server', () => {
         .get('_schema_migrations')
         ?.rows.filter((row) => row[0] === '014_reversals'),
     ).toHaveLength(1);
+    expect(sheets.get('_reservation_slots')?.rows[0]).toEqual([
+      'id',
+      'business_date',
+      'label',
+      'pickup_starts_at',
+      'pickup_ends_at',
+      'cutoff_at',
+      'active',
+      'created_by',
+      'created_at',
+    ]);
+    expect(sheets.get('_reservations')?.rows[0]).toEqual([
+      'id',
+      'public_code',
+      'request_id',
+      'requester_name',
+      'student_name_text',
+      'classroom_text',
+      'contact_optional',
+      'slot_id',
+      'status',
+      'payment_status',
+      'linked_student_id',
+      'total_cents',
+      'created_at',
+      'updated_at',
+      'note',
+    ]);
+    expect(sheets.get('_reservation_items')?.rows[0]).toEqual([
+      'id',
+      'reservation_id',
+      'product_id',
+      'description_snapshot',
+      'quantity',
+      'unit_price_cents',
+      'line_total_cents',
+    ]);
+    expect(sheets.get('_reservation_status_history')?.rows[0]).toEqual([
+      'id',
+      'reservation_id',
+      'from_status',
+      'to_status',
+      'actor_id',
+      'created_at',
+      'reason',
+    ]);
+    expect(
+      sheets
+        .get('_schema_migrations')
+        ?.rows.filter((row) => row[0] === '015_reservations'),
+    ).toHaveLength(1);
   });
 
   it('refuses schema setup on PROD', () => {
@@ -1182,7 +1268,7 @@ describe('Apps Script E2E server', () => {
     const backup = server.runBackup(token, 'manual');
 
     expect(backup.reason).toBe('manual');
-    expect(backup.schemaVersion).toBe(14);
+    expect(backup.schemaVersion).toBe(15);
     expect(JSON.stringify(backup)).not.toContain('e2e-sheet-id');
     expect(JSON.stringify(backup)).not.toContain('e2e-backup-folder');
     expect(projectTriggers).toEqual(['runScheduledBackup']);
@@ -2631,5 +2717,56 @@ describe('Apps Script E2E server', () => {
         .items.find((item) => item.productName === 'Coxinha')?.physicalQuantity,
     ).toBe(10);
     expect(server.listSales(owner)[0]?.status).toBe('reversed');
+  });
+
+  it('creates a recreio reservation that holds availability without changing physical stock', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const staff = server.loginE2E('staff').token;
+    expect(() =>
+      server.createReservationSlot(staff, {
+        label: 'Recreio extra',
+        cutoffTime: '23:00',
+        pickupStartTime: '23:10',
+        pickupEndTime: '23:30',
+      }),
+    ).toThrow('FORBIDDEN');
+    const slots = server.createReservationSlot(owner, {
+      label: 'Recreio teste',
+      cutoffTime: '23:00',
+      pickupStartTime: '23:10',
+      pickupEndTime: '23:30',
+    });
+    const slot = slots.slots.find((item) => item.label === 'Recreio teste');
+    const coxinha = server
+      .getReservationsSetup(owner)
+      .reservableProducts.find((item) => item.name === 'Coxinha');
+    if (!slot || !coxinha) {
+      throw new Error('recreio ou coxinha ausente');
+    }
+    const created = server.createReservation(owner, {
+      requestId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee22',
+      slotId: slot.id,
+      studentNameText: 'Ana Souza',
+      classroomText: '3º A',
+      items: [{ productId: coxinha.id, quantity: 1 }],
+    });
+    expect(created.reservations[0]?.summaryLabel).toBe(
+      'Ana Souza • 3º A • Coxinha • R$ 5,50 • Recreio teste • reservada',
+    );
+    expect(
+      created.availability.find((item) => item.productName === 'Coxinha')
+        ?.reservedQuantity,
+    ).toBe(1);
+    expect(
+      server
+        .listInventoryBalances(owner)
+        .items.find((item) => item.productName === 'Coxinha')?.physicalQuantity,
+    ).toBe(10);
   });
 });

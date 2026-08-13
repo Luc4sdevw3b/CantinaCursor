@@ -40,6 +40,11 @@ import {
   REVERSALS_MIGRATION_ID,
   OPERATION_REVERSALS_SHEET,
   REVERSAL_EFFECTS_SHEET,
+  RESERVATIONS_MIGRATION_ID,
+  RESERVATION_SLOTS_SHEET,
+  RESERVATIONS_SHEET,
+  RESERVATION_ITEMS_SHEET,
+  RESERVATION_STATUS_HISTORY_SHEET,
   SCHOOL_YEARS_SHEET,
   SESSIONS_SHEET,
   SETTINGS_SHEET,
@@ -186,6 +191,17 @@ export const REVERSALS_MIGRATION: Migration = {
   ]),
 };
 
+export const RESERVATIONS_MIGRATION: Migration = {
+  id: RESERVATIONS_MIGRATION_ID,
+  description: 'Cria recreios, reservas, itens e histórico de status',
+  checksum: checksumHeaders([
+    ...RESERVATION_SLOTS_SHEET.headers,
+    ...RESERVATIONS_SHEET.headers,
+    ...RESERVATION_ITEMS_SHEET.headers,
+    ...RESERVATION_STATUS_HISTORY_SHEET.headers,
+  ]),
+};
+
 export const MIGRATION_CATALOG: readonly Migration[] = [
   FOUNDATION_MIGRATION,
   OPERATION_REQUESTS_MIGRATION,
@@ -201,6 +217,7 @@ export const MIGRATION_CATALOG: readonly Migration[] = [
   CREDITS_MIGRATION,
   CASH_MIGRATION,
   REVERSALS_MIGRATION,
+  RESERVATIONS_MIGRATION,
 ];
 
 export function pendingMigrations(

@@ -534,9 +534,84 @@ export interface ReverseCreditRefundInput {
   reason: string;
 }
 
+export interface ReservationSlot {
+  id: string;
+  businessDate: string;
+  label: string;
+  cutoffAt: string;
+  pickupStartsAt: string;
+  pickupEndsAt: string;
+  active: boolean;
+  openForReservations: boolean;
+  summaryLabel: string;
+}
+
+export interface ReservationItem {
+  productId: string;
+  productName: string;
+  quantity: number;
+  unitPriceCents: number;
+  lineTotalCents: number;
+}
+
+export interface Reservation {
+  id: string;
+  publicCode: string;
+  slotId: string;
+  slotLabel: string;
+  studentNameText: string;
+  classroomText: string;
+  status: string;
+  paymentStatus: string;
+  totalCents: number;
+  summaryLabel: string;
+  items: ReservationItem[];
+  createdAt: string;
+}
+
+export interface ReservationAvailability {
+  productId: string;
+  productName: string;
+  physicalQuantity: number;
+  reservedQuantity: number;
+  availableQuantity: number;
+  summaryLabel: string;
+}
+
+export interface ReservableProduct {
+  id: string;
+  name: string;
+  priceCents: number;
+}
+
+export interface ReservationsSetup {
+  slots: ReservationSlot[];
+  reservations: Reservation[];
+  availability: ReservationAvailability[];
+  reservableProducts: ReservableProduct[];
+}
+
+export interface CreateReservationSlotInput {
+  label: string;
+  businessDate?: string;
+  cutoffTime: string;
+  pickupStartTime: string;
+  pickupEndTime: string;
+}
+
+export interface CreateReservationInput {
+  requestId: string;
+  slotId: string;
+  studentNameText: string;
+  classroomText: string;
+  contactOptional?: string;
+  note?: string;
+  items: Array<{ productId: string; quantity: number }>;
+}
+
 /**
- * Contrato técnico da Fase 22.
- * Sem reservas reais ou envio de WhatsApp.
+ * Contrato técnico da Fase 23.
+ * Sem portal público nem envio de WhatsApp.
  */
 export interface AppApi {
   getHealth(): Promise<AppHealth>;
@@ -644,4 +719,20 @@ export interface AppApi {
   reverseSale(input: ReverseSaleInput): Promise<ReversalsSetup>;
   reversePayment(input: ReversePaymentInput): Promise<ReversalsSetup>;
   reverseCreditRefund(input: ReverseCreditRefundInput): Promise<ReversalsSetup>;
+  getReservationsSetup(): Promise<ReservationsSetup>;
+  createReservationSlot(
+    input: CreateReservationSlotInput,
+  ): Promise<ReservationsSetup>;
+  createReservation(input: CreateReservationInput): Promise<ReservationsSetup>;
+  cancelReservation(input: {
+    reservationId: string;
+    reason: string;
+  }): Promise<ReservationsSetup>;
+  markReservationNoShow(input: {
+    reservationId: string;
+    reason: string;
+  }): Promise<ReservationsSetup>;
+  fulfillReservation(input: {
+    reservationId: string;
+  }): Promise<ReservationsSetup>;
 }

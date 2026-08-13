@@ -2,7 +2,7 @@
 
 Aplicação web da cantina, planejada para Google Apps Script + Google Sheets + Google Drive.
 
-O projeto está na Fase 22 (`0.1.0-dev`): estornos completos da dona, com originais preservados e escolha de devolver o estoque. Reservas reais ficam na Fase 23.
+O projeto está na Fase 23 (`0.1.0-dev`): recreios com cutoff, reservas que seguram disponibilidade e estados reservada/retirada/cancelada/não retirada. Portal público fica na Fase 24.
 
 Consulte:
 
@@ -74,7 +74,7 @@ clasp deployments
 E2E_BASE_URL='https://script.google.com/macros/s/SEU_DEPLOYMENT_ID/exec' npm run test:e2e:remote
 ```
 
-O primeiro `getHealth` configura `ENVIRONMENT=E2E`, aplica o schema e tenta um backup pré-migration na pasta E2E do Drive. `getHealth` continua público. Cadastro, vendas, fiado, crédito, caixa e estornos exigem sessão. Só a dona estorna. `resetE2E` / `seedE2E` / backup / restore exigem sessão de dona, recusam qualquer ambiente que não seja E2E, inclusive PROD, e usam `LockService`. Restore não mescla automaticamente. `loginE2E` é fixture só do E2E, não é backdoor de PROD. WhatsApp nesta fase é só uma flag; não há envio. Reservas reais ficam para as fases seguintes.
+O primeiro `getHealth` configura `ENVIRONMENT=E2E`, aplica o schema e tenta um backup pré-migration na pasta E2E do Drive. `getHealth` continua público. Cadastro, vendas, fiado, crédito, caixa, estornos e reservas internas exigem sessão. Só a dona cria recreio. `resetE2E` / `seedE2E` / backup / restore exigem sessão de dona, recusam qualquer ambiente que não seja E2E, inclusive PROD, e usam `LockService`. Restore não mescla automaticamente. `loginE2E` é fixture só do E2E, não é backdoor de PROD. WhatsApp nesta fase é só uma flag; não há envio. Portal público de reservas fica para as fases seguintes.
 
 Validação completa da fundação (sem Google):
 

@@ -6,6 +6,7 @@ import { MemoryCatalog } from '../../server/products/memory-catalog';
 import { MemorySales } from '../../server/sales/memory-sales';
 import { MemoryStock } from '../../server/inventory/memory-stock';
 import { MemoryCash } from '../../server/cash/memory-cash';
+import { MemoryReservations } from '../../server/reservations/memory-reservations';
 import { MemoryRoster } from '../../server/students/memory-roster';
 import type {
   AdHocItem,
@@ -57,6 +58,9 @@ import type {
   StudentGuardianLink,
   StudentProfileFields,
   StudentSummary,
+  ReservationsSetup,
+  CreateReservationSlotInput,
+  CreateReservationInput,
 } from './app-api';
 
 const LOCAL_HEALTH: AppHealth = {
@@ -91,6 +95,11 @@ export class FakeAppApi implements AppApi {
     () => '2026-08-13T16:00:00.000Z',
   );
   private readonly cash = new MemoryCash(() => '2026-08-13T16:00:00.000Z');
+  private readonly reservations = new MemoryReservations(
+    this.catalog,
+    this.stock,
+    () => '2026-08-13T16:00:00.000Z',
+  );
   private readonly sales = new MemorySales(
     this.catalog,
     this.stock,
@@ -98,6 +107,12 @@ export class FakeAppApi implements AppApi {
     this.cash,
     () => '2026-08-13T16:00:00.000Z',
   );
+
+  constructor() {
+    this.stock.setReservedLookup((productId, businessDate) =>
+      this.reservations.reservedQuantity(productId, businessDate),
+    );
+  }
 
   async getHealth(): Promise<AppHealth> {
     return { ...LOCAL_HEALTH };
@@ -115,6 +130,7 @@ export class FakeAppApi implements AppApi {
     this.roster.ensureDemoRoster();
     this.catalog.ensureDemoCatalog();
     this.stock.ensureDemoStock();
+    this.reservations.ensureDemoSlots();
     return { role };
   }
 
@@ -500,6 +516,48 @@ export class FakeAppApi implements AppApi {
   ): Promise<ReversalsSetup> {
     this.assertAction('reversals.write');
     return throwResult(this.sales.reverseCreditRefund(input));
+  }
+
+  async getReservationsSetup(): Promise<ReservationsSetup> {
+    this.assertAction('reservations.read');
+    return throwResult(this.reservations.getSetup());
+  }
+
+  async createReservationSlot(
+    input: CreateReservationSlotInput,
+  ): Promise<ReservationsSetup> {
+    this.assertAction('reservation_slots.write');
+    return throwResult(this.reservations.createSlot(input));
+  }
+
+  async createReservation(
+    input: CreateReservationInput,
+  ): Promise<ReservationsSetup> {
+    this.assertAction('reservations.write');
+    return throwResult(this.reservations.createReservation(input));
+  }
+
+  async cancelReservation(input: {
+    reservationId: string;
+    reason: string;
+  }): Promise<ReservationsSetup> {
+    this.assertAction('reservations.write');
+    return throwResult(this.reservations.cancelReservation(input));
+  }
+
+  async markReservationNoShow(input: {
+    reservationId: string;
+    reason: string;
+  }): Promise<ReservationsSetup> {
+    this.assertAction('reservations.write');
+    return throwResult(this.reservations.markReservationNoShow(input));
+  }
+
+  async fulfillReservation(input: {
+    reservationId: string;
+  }): Promise<ReservationsSetup> {
+    this.assertAction('reservations.write');
+    return throwResult(this.reservations.fulfillReservation(input));
   }
 
   private assertSession(): void {

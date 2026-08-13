@@ -62,8 +62,9 @@ export const PAYMENTS_MIGRATION_ID = '011_payments';
 export const CREDITS_MIGRATION_ID = '012_credits';
 export const CASH_MIGRATION_ID = '013_cash';
 export const REVERSALS_MIGRATION_ID = '014_reversals';
+export const RESERVATIONS_MIGRATION_ID = '015_reservations';
 export const FOUNDATION_SCHEMA_VERSION = 1;
-export const CURRENT_SCHEMA_VERSION = 14;
+export const CURRENT_SCHEMA_VERSION = 15;
 
 export const USERS_SHEET: SheetSchema = {
   name: '_users',
@@ -430,5 +431,67 @@ export const REVERSAL_EFFECTS_SHEET: SheetSchema = {
     'entity_id',
     'amount_delta_cents',
     'quantity_delta',
+  ],
+};
+
+export const RESERVATION_SLOTS_SHEET: SheetSchema = {
+  name: '_reservation_slots',
+  headers: [
+    'id',
+    'business_date',
+    'label',
+    'pickup_starts_at',
+    'pickup_ends_at',
+    'cutoff_at',
+    'active',
+    'created_by',
+    'created_at',
+  ],
+};
+
+export const RESERVATIONS_SHEET: SheetSchema = {
+  name: '_reservations',
+  headers: [
+    'id',
+    'public_code',
+    'request_id',
+    'requester_name',
+    'student_name_text',
+    'classroom_text',
+    'contact_optional',
+    'slot_id',
+    'status',
+    'payment_status',
+    'linked_student_id',
+    'total_cents',
+    'created_at',
+    'updated_at',
+    'note',
+  ],
+};
+
+export const RESERVATION_ITEMS_SHEET: SheetSchema = {
+  name: '_reservation_items',
+  headers: [
+    'id',
+    'reservation_id',
+    'product_id',
+    'description_snapshot',
+    'quantity',
+    'unit_price_cents',
+    'line_total_cents',
+  ],
+};
+
+export const RESERVATION_STATUS_HISTORY_SHEET: SheetSchema = {
+  name: '_reservation_status_history',
+  headers: [
+    'id',
+    'reservation_id',
+    'from_status',
+    'to_status',
+    'actor_id',
+    'created_at',
+    'reason',
   ],
 };

@@ -101,6 +101,12 @@ function runnerWith(
     reverseSale() {},
     reversePayment() {},
     reverseCreditRefund() {},
+    getReservationsSetup() {},
+    createReservationSlot() {},
+    createReservation() {},
+    cancelReservation() {},
+    markReservationNoShow() {},
+    fulfillReservation() {},
     ...extra,
   };
   return runner;

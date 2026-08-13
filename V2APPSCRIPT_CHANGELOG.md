@@ -9,6 +9,43 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-13 19:10 — Implementada a Fase 23: recreios e reservas
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 23
+
+### Pedido / objetivo
+
+- Executar a Fase 23: recreios, cutoff, reservas/itens/status, quantidade reservada, disponibilidade, idempotência, concorrência, estados RESERVED/FULFILLED/CANCELLED/NO_SHOW, sem PREPARED e sem retirada parcial persistente.
+
+### Tentativa / implementação
+
+- Migration `015_reservations`, schema 15: `_reservation_slots`, `_reservations`, `_reservation_items` e `_reservation_status_history`.
+- Seed local/E2E: Recreio manhã (corte 09:15) e Recreio tarde (corte 18:00). Coxinha passa a ser reservável.
+- Reserva ativa segura disponibilidade (`físico - reservado`) sem baixar o estoque físico. Cancelar, não retirada e marcar retirada liberam o reservado.
+- `request_id` reutiliza a mesma reserva. Lock no Apps Script relê a disponibilidade. Duas reservas não pegam a última unidade.
+- Botões **Criar recreio** (só dona), **Confirmar reserva**, **Cancelar reserva** e **Não retirada**. Confirmar venda não muda de rótulo. Sem portal público.
+
+### Resultado
+
+- Fase 23 concluída sobre o ambiente E2E isolado e o preview local.
+- Portal público é a Fase 24. Entrega da dona e reserva→venda permanecem nas fases seguintes.
+
+### Diferenças do pedido
+
+- `fulfilled` existe no modelo e na API, mas a UI ainda não converte a reserva em venda; isso é a Fase 26.
+
+### Impacto técnico
+
+- `getReservationsSetup`, `createReservationSlot`, `createReservation`, `cancelReservation`, `markReservationNoShow` e `fulfillReservation` entram no `AppApi`. `reservation_slots.write` é só da dona; `reservations.write` é dona e funcionário.
+
+### Testes
+
+- typecheck, lint, format, Vitest (204) e E2E local (33) passaram.
+- E2E remoto: smoke de health no deployment novo após `clasp push` + `clasp deploy`.
+
 ## 2026-08-13 18:40 — Implementada a Fase 22: estornos
 
 **Origem:** Pedido do usuário

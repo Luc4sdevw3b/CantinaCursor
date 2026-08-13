@@ -51,6 +51,9 @@ import type {
   StudentGuardianLink,
   StudentProfileFields,
   StudentSummary,
+  ReservationsSetup,
+  CreateReservationSlotInput,
+  CreateReservationInput,
 } from './app-api';
 
 export const SESSION_TOKEN_STORAGE_KEY = 'cantina.sessionToken';
@@ -132,6 +135,12 @@ export interface GoogleScriptRunner {
   reverseSale(token: string, payload: unknown): void;
   reversePayment(token: string, payload: unknown): void;
   reverseCreditRefund(token: string, payload: unknown): void;
+  getReservationsSetup(token: string): void;
+  createReservationSlot(token: string, payload: unknown): void;
+  createReservation(token: string, payload: unknown): void;
+  cancelReservation(token: string, payload: unknown): void;
+  markReservationNoShow(token: string, payload: unknown): void;
+  fulfillReservation(token: string, payload: unknown): void;
 }
 
 export type SessionTokenStorage = Pick<
@@ -712,6 +721,52 @@ export class GoogleScriptAppApi implements AppApi {
   ): Promise<ReversalsSetup> {
     return this.callWithToken((runner, token) =>
       runner.reverseCreditRefund(token, input),
+    );
+  }
+
+  getReservationsSetup(): Promise<ReservationsSetup> {
+    return this.callWithToken((runner, token) =>
+      runner.getReservationsSetup(token),
+    );
+  }
+
+  createReservationSlot(
+    input: CreateReservationSlotInput,
+  ): Promise<ReservationsSetup> {
+    return this.callWithToken((runner, token) =>
+      runner.createReservationSlot(token, input),
+    );
+  }
+
+  createReservation(input: CreateReservationInput): Promise<ReservationsSetup> {
+    return this.callWithToken((runner, token) =>
+      runner.createReservation(token, input),
+    );
+  }
+
+  cancelReservation(input: {
+    reservationId: string;
+    reason: string;
+  }): Promise<ReservationsSetup> {
+    return this.callWithToken((runner, token) =>
+      runner.cancelReservation(token, input),
+    );
+  }
+
+  markReservationNoShow(input: {
+    reservationId: string;
+    reason: string;
+  }): Promise<ReservationsSetup> {
+    return this.callWithToken((runner, token) =>
+      runner.markReservationNoShow(token, input),
+    );
+  }
+
+  fulfillReservation(input: {
+    reservationId: string;
+  }): Promise<ReservationsSetup> {
+    return this.callWithToken((runner, token) =>
+      runner.fulfillReservation(token, input),
     );
   }
 

@@ -1,5 +1,6 @@
 import './styles.css';
 import { APP_VERSION } from './app-version';
+import { createRequestId } from './domain/request-id';
 import { roleLabel, type UserRole } from './domain/auth';
 import { formatBrl, parseReaisToCents } from './domain/money';
 import type {
@@ -46,7 +47,7 @@ app.innerHTML = `
         <p class="eyebrow">Web App em preparação</p>
         <div class="hero-title-row">
           <h1 id="page-title">Cantina V2 AppScript</h1>
-          <span class="phase-badge">Fase 22</span>
+          <span class="phase-badge">Fase 23</span>
         </div>
         <p class="intro">
           Uma base simples e confiável para a operação diária da cantina.
@@ -77,6 +78,7 @@ app.innerHTML = `
         <button type="button" data-area="payments">Pagamentos</button>
         <button type="button" data-area="credits">Crédito</button>
         <button type="button" data-area="inventory">Estoque</button>
+        <button type="button" data-area="reservations">Reservas</button>
         <button type="button" data-area="cash">Caixa</button>
         <button type="button" data-area="reversals">Estornos</button>
         <button type="button" data-area="students">Alunos</button>
@@ -268,6 +270,62 @@ app.innerHTML = `
         </label>
         <button type="submit">Ajustar estoque</button>
       </form>
+    </section>
+
+    <section class="students-panel" id="reservations-panel" hidden>
+      <h2 id="reservations-title">Reservas do recreio</h2>
+      <p>A reserva segura a disponibilidade. O estoque físico só muda na venda da retirada.</p>
+      <p id="reservations-status">Entre para ver as reservas.</p>
+      <ul id="reservation-availability"></ul>
+      <form id="reservation-slot-form">
+        <h3>Criar recreio</h3>
+        <label>
+          Nome
+          <input id="reservation-slot-label" required />
+        </label>
+        <label>
+          Corte
+          <input id="reservation-slot-cutoff" type="time" required />
+        </label>
+        <label>
+          Início da retirada
+          <input id="reservation-slot-start" type="time" required />
+        </label>
+        <label>
+          Fim da retirada
+          <input id="reservation-slot-end" type="time" required />
+        </label>
+        <button type="submit">Criar recreio</button>
+      </form>
+      <form id="reservation-create-form" aria-label="Confirmar reserva">
+        <h3>Nova reserva</h3>
+        <label>
+          Recreio
+          <select id="reservation-slot-id" aria-label="Recreio da reserva"></select>
+        </label>
+        <label>
+          Nome para retirada
+          <input id="reservation-student-name" required autocomplete="off" />
+        </label>
+        <label>
+          Turma
+          <input id="reservation-classroom" required autocomplete="off" />
+        </label>
+        <label>
+          Produto
+          <select id="reservation-product" aria-label="Produto da reserva"></select>
+        </label>
+        <label>
+          Quantidade
+          <input id="reservation-quantity" type="number" min="1" max="20" value="1" required />
+        </label>
+        <button type="submit">Confirmar reserva</button>
+      </form>
+      <label>
+        Motivo do cancelamento ou não retirada
+        <input id="reservation-action-reason" />
+      </label>
+      <ul id="reservations-list"></ul>
     </section>
 
     <section class="students-panel" id="cash-panel" hidden>
@@ -721,6 +779,7 @@ type AppArea =
   | 'payments'
   | 'credits'
   | 'inventory'
+  | 'reservations'
   | 'cash'
   | 'reversals'
   | 'students'
@@ -734,6 +793,7 @@ const AREA_PANELS: Record<AppArea, string> = {
   payments: '#payments-panel',
   credits: '#credits-panel',
   inventory: '#inventory-panel',
+  reservations: '#reservations-panel',
   cash: '#cash-panel',
   reversals: '#reversals-panel',
   students: '#students-panel',
@@ -867,6 +927,7 @@ async function showAuthenticated(session: AppSession | null): Promise<void> {
   await renderFamily(session);
   await renderProducts(session);
   await renderInventory(session);
+  await renderReservations(session);
   await renderCash(session);
   await renderReversals(session);
   await renderSales(session);
@@ -1388,6 +1449,118 @@ async function renderInventory(session: AppSession | null): Promise<void> {
         ? error.message.replace(/^[A-Z_]+:\s*/, '')
         : 'Não foi possível carregar o estoque.';
   }
+}
+
+const reservationsPanel = document.querySelector('#reservations-panel');
+const reservationsStatus = document.querySelector('#reservations-status');
+const reservationAvailability = document.querySelector(
+  '#reservation-availability',
+);
+const reservationSlotForm = document.querySelector('#reservation-slot-form');
+const reservationCreateForm = document.querySelector(
+  '#reservation-create-form',
+);
+const reservationSlotId = document.querySelector('#reservation-slot-id');
+const reservationProduct = document.querySelector('#reservation-product');
+const reservationsList = document.querySelector('#reservations-list');
+
+async function renderReservations(session: AppSession | null): Promise<void> {
+  if (
+    !(reservationsPanel instanceof HTMLElement) ||
+    !reservationsStatus ||
+    !(reservationAvailability instanceof HTMLElement) ||
+    !(reservationsList instanceof HTMLElement)
+  ) {
+    return;
+  }
+  reservationAvailability.replaceChildren();
+  reservationsList.replaceChildren();
+  if (reservationSlotForm instanceof HTMLElement) {
+    reservationSlotForm.hidden = true;
+  }
+  if (reservationCreateForm instanceof HTMLElement) {
+    reservationCreateForm.hidden = true;
+  }
+  if (!session) {
+    reservationsStatus.textContent = 'Entre para ver as reservas.';
+    return;
+  }
+  try {
+    const setup = await api.getReservationsSetup();
+    if (reservationSlotForm instanceof HTMLElement) {
+      reservationSlotForm.hidden = session.role !== 'owner';
+    }
+    if (reservationCreateForm instanceof HTMLElement) {
+      reservationCreateForm.hidden = false;
+    }
+    fillSelect(
+      reservationSlotId,
+      setup.slots
+        .filter((item) => item.openForReservations)
+        .map((item) => ({ value: item.id, label: item.summaryLabel })),
+      'Escolha o recreio',
+    );
+    fillSelect(
+      reservationProduct,
+      setup.reservableProducts.map((item) => ({
+        value: item.id,
+        label: `${item.name} • ${formatBrl(item.priceCents)}`,
+      })),
+      'Escolha o produto',
+    );
+    for (const item of setup.availability) {
+      const row = document.createElement('li');
+      row.textContent = item.summaryLabel;
+      reservationAvailability.append(row);
+    }
+    const activeCount = setup.reservations.filter(
+      (item) => item.status === 'reserved',
+    ).length;
+    reservationsStatus.textContent =
+      activeCount === 1 ? '1 reserva ativa' : `${activeCount} reservas ativas`;
+    if (setup.reservations.length === 0) {
+      const empty = document.createElement('li');
+      empty.textContent = 'Nenhuma reserva registrada.';
+      reservationsList.append(empty);
+    }
+    for (const entry of setup.reservations) {
+      const row = document.createElement('li');
+      const label = document.createElement('span');
+      label.textContent = entry.summaryLabel;
+      row.append(label);
+      if (entry.status === 'reserved') {
+        const cancel = document.createElement('button');
+        cancel.type = 'button';
+        cancel.textContent = 'Cancelar reserva';
+        cancel.dataset.reservationId = entry.id;
+        cancel.dataset.reservationAction = 'cancel';
+        const noShow = document.createElement('button');
+        noShow.type = 'button';
+        noShow.textContent = 'Não retirada';
+        noShow.dataset.reservationId = entry.id;
+        noShow.dataset.reservationAction = 'no-show';
+        row.append(cancel, noShow);
+      }
+      reservationsList.append(row);
+    }
+  } catch (error: unknown) {
+    reservationsStatus.textContent =
+      error instanceof Error
+        ? error.message.replace(/^[A-Z_]+:\s*/, '')
+        : 'Não foi possível carregar as reservas.';
+  }
+}
+
+function refreshAfterReservation(successMessage: string): Promise<void> {
+  return api.getSession().then((session) =>
+    Promise.all([renderReservations(session), renderInventory(session)]).then(
+      () => {
+        if (reservationsStatus) {
+          reservationsStatus.textContent = successMessage;
+        }
+      },
+    ),
+  );
 }
 
 const cashPanel = document.querySelector('#cash-panel');
@@ -3817,6 +3990,132 @@ document
             : 'Não foi possível estornar a devolução de crédito.';
       });
   });
+
+document
+  .querySelector('#reservation-slot-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const label = document.querySelector('#reservation-slot-label');
+    const cutoff = document.querySelector('#reservation-slot-cutoff');
+    const start = document.querySelector('#reservation-slot-start');
+    const end = document.querySelector('#reservation-slot-end');
+    if (
+      !(label instanceof HTMLInputElement) ||
+      !(cutoff instanceof HTMLInputElement) ||
+      !(start instanceof HTMLInputElement) ||
+      !(end instanceof HTMLInputElement)
+    ) {
+      return;
+    }
+    void api
+      .createReservationSlot({
+        label: label.value,
+        cutoffTime: cutoff.value,
+        pickupStartTime: start.value,
+        pickupEndTime: end.value,
+      })
+      .then(() => {
+        label.value = '';
+        cutoff.value = '';
+        start.value = '';
+        end.value = '';
+        return refreshAfterReservation('Recreio criado.');
+      })
+      .catch((error: unknown) => {
+        if (reservationsStatus) {
+          reservationsStatus.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível criar o recreio.';
+        }
+      });
+  });
+
+document
+  .querySelector('#reservation-create-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const name = document.querySelector('#reservation-student-name');
+    const classroom = document.querySelector('#reservation-classroom');
+    const quantity = document.querySelector('#reservation-quantity');
+    if (
+      !(reservationSlotId instanceof HTMLSelectElement) ||
+      !(reservationProduct instanceof HTMLSelectElement) ||
+      !(name instanceof HTMLInputElement) ||
+      !(classroom instanceof HTMLInputElement) ||
+      !(quantity instanceof HTMLInputElement)
+    ) {
+      return;
+    }
+    void api
+      .createReservation({
+        requestId: createRequestId(),
+        slotId: reservationSlotId.value,
+        studentNameText: name.value,
+        classroomText: classroom.value,
+        items: [
+          {
+            productId: reservationProduct.value,
+            quantity: Number(quantity.value),
+          },
+        ],
+      })
+      .then(() => {
+        name.value = '';
+        classroom.value = '';
+        quantity.value = '1';
+        return refreshAfterReservation(
+          'Reserva confirmada; o original e a disponibilidade permanecem auditáveis.',
+        );
+      })
+      .catch((error: unknown) => {
+        if (reservationsStatus) {
+          reservationsStatus.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível confirmar a reserva.';
+        }
+      });
+  });
+
+reservationsList?.addEventListener('click', (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLButtonElement) || !target.dataset.reservationId) {
+    return;
+  }
+  const reasonInput = document.querySelector('#reservation-action-reason');
+  const reason =
+    reasonInput instanceof HTMLInputElement ? reasonInput.value : '';
+  const action =
+    target.dataset.reservationAction === 'no-show'
+      ? api.markReservationNoShow({
+          reservationId: target.dataset.reservationId,
+          reason,
+        })
+      : api.cancelReservation({
+          reservationId: target.dataset.reservationId,
+          reason,
+        });
+  void action
+    .then(() => {
+      if (reasonInput instanceof HTMLInputElement) {
+        reasonInput.value = '';
+      }
+      return refreshAfterReservation(
+        target.dataset.reservationAction === 'no-show'
+          ? 'Não retirada registrada; a disponibilidade foi liberada.'
+          : 'Reserva cancelada; a disponibilidade foi liberada.',
+      );
+    })
+    .catch((error: unknown) => {
+      if (reservationsStatus) {
+        reservationsStatus.textContent =
+          error instanceof Error
+            ? error.message.replace(/^[A-Z_]+:\s*/, '')
+            : 'Não foi possível atualizar a reserva.';
+      }
+    });
+});
 
 void api
   .getHealth()

@@ -25,6 +25,9 @@ describe('authorize', () => {
     expect(authorize('staff', 'cash.add').ok).toBe(true);
     expect(authorize('staff', 'reversals.read').ok).toBe(true);
     expect(authorize('owner', 'reversals.write').ok).toBe(true);
+    expect(authorize('staff', 'reservations.read').ok).toBe(true);
+    expect(authorize('staff', 'reservations.write').ok).toBe(true);
+    expect(authorize('owner', 'reservation_slots.write').ok).toBe(true);
   });
 
   it('rejects missing role and staff on owner-only actions', () => {
@@ -41,6 +44,7 @@ describe('authorize', () => {
     const staffCashRemove = authorize('staff', 'cash.remove');
     const staffCashClose = authorize('staff', 'cash.close');
     const staffReversalWrite = authorize('staff', 'reversals.write');
+    const staffSlotWrite = authorize('staff', 'reservation_slots.write');
 
     expect(anonymous.ok).toBe(false);
     if (!anonymous.ok) {
@@ -93,6 +97,10 @@ describe('authorize', () => {
     expect(staffReversalWrite.ok).toBe(false);
     if (!staffReversalWrite.ok) {
       expect(staffReversalWrite.error.code).toBe('FORBIDDEN');
+    }
+    expect(staffSlotWrite.ok).toBe(false);
+    if (!staffSlotWrite.ok) {
+      expect(staffSlotWrite.error.code).toBe('FORBIDDEN');
     }
   });
 });

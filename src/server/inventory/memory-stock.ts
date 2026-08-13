@@ -116,6 +116,15 @@ export class MemoryStock {
     private readonly createId: () => string = () => crypto.randomUUID(),
   ) {}
 
+  setReservedLookup(
+    lookup: (productId: string, businessDate: string) => number,
+  ): void {
+    this.reservedLookup = lookup;
+  }
+
+  private reservedLookup: (productId: string, businessDate: string) => number =
+    () => 0;
+
   ensureDemoStock(): void {
     if (this.seeded) {
       return;
@@ -293,11 +302,13 @@ export class MemoryStock {
   }
 
   availableQuantity(productId: string, businessDate?: string): Result<number> {
-    const day = this.requireDay(this.resolveDate(businessDate));
+    const date = this.resolveDate(businessDate);
+    const day = this.requireDay(date);
     if (!day.ok) {
       return err(day.error);
     }
-    return ok(this.physicalFor(day.data.id, productId));
+    const physical = this.physicalFor(day.data.id, productId);
+    return ok(physical - this.reservedLookup(productId, date));
   }
 
   listMovements(businessDate?: string): Result<InventoryMovementView[]> {
@@ -406,7 +417,10 @@ export class MemoryStock {
   ): InventoryBalanceItem {
     const product = products.find((item) => item.id === opening.product_id);
     const physical = this.physicalFor(dayId, opening.product_id);
-    const reserved = 0;
+    const day = this.days.find((item) => item.id === dayId);
+    const reserved = day
+      ? this.reservedLookup(opening.product_id, day.business_date)
+      : 0;
     return {
       productId: opening.product_id,
       productName: product?.name ?? '',

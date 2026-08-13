@@ -58,6 +58,11 @@ import {
   REVERSALS_MIGRATION_ID,
   OPERATION_REVERSALS_SHEET,
   REVERSAL_EFFECTS_SHEET,
+  RESERVATIONS_MIGRATION_ID,
+  RESERVATION_SLOTS_SHEET,
+  RESERVATIONS_SHEET,
+  RESERVATION_ITEMS_SHEET,
+  RESERVATION_STATUS_HISTORY_SHEET,
 } from './schema';
 import { deserializeRecord, serializeRecord } from './serialize';
 import { ensureSheet } from './ensure-sheet';
@@ -447,6 +452,34 @@ export function setupSchema(
       const effects = ensureSheet(input.spreadsheet, REVERSAL_EFFECTS_SHEET);
       if (!effects.ok) {
         return err(effects.error);
+      }
+      meta.data.appendRow(
+        serializeRecord(META_SHEET.headers, {
+          key: 'schema_version',
+          value: '14',
+        }),
+      );
+    }
+
+    if (migration.id === RESERVATIONS_MIGRATION_ID) {
+      const slots = ensureSheet(input.spreadsheet, RESERVATION_SLOTS_SHEET);
+      if (!slots.ok) {
+        return err(slots.error);
+      }
+      const reservations = ensureSheet(input.spreadsheet, RESERVATIONS_SHEET);
+      if (!reservations.ok) {
+        return err(reservations.error);
+      }
+      const items = ensureSheet(input.spreadsheet, RESERVATION_ITEMS_SHEET);
+      if (!items.ok) {
+        return err(items.error);
+      }
+      const history = ensureSheet(
+        input.spreadsheet,
+        RESERVATION_STATUS_HISTORY_SHEET,
+      );
+      if (!history.ok) {
+        return err(history.error);
       }
       meta.data.appendRow(
         serializeRecord(META_SHEET.headers, {

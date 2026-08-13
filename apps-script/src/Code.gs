@@ -26,7 +26,7 @@ const FOUNDATION_MIGRATION_CHECKSUM = 'meta|schema_migrations';
 const OPERATION_REQUESTS_MIGRATION_ID = '002_operation_requests';
 const OPERATION_REQUESTS_MIGRATION_CHECKSUM =
   'request_id|operation_type|result_entity_id|status|created_at';
-const CURRENT_SCHEMA_VERSION = 14;
+const CURRENT_SCHEMA_VERSION = 15;
 const BACKUPS_SHEET = '_backups';
 const BACKUPS_HEADERS = [
   'id',
@@ -399,6 +399,66 @@ const REVERSAL_EFFECTS_HEADERS = [
 const REVERSALS_MIGRATION_ID = '014_reversals';
 const REVERSALS_MIGRATION_CHECKSUM =
   'id|operation_type|operation_id|reason|original_methods|refund_method|different_method_confirmed|returned_to_stock|created_by|created_at|id|reversal_id|effect_type|entity_type|entity_id|amount_delta_cents|quantity_delta';
+const RESERVATION_SLOTS_SHEET = '_reservation_slots';
+const RESERVATION_SLOTS_HEADERS = [
+  'id',
+  'business_date',
+  'label',
+  'pickup_starts_at',
+  'pickup_ends_at',
+  'cutoff_at',
+  'active',
+  'created_by',
+  'created_at',
+];
+const RESERVATIONS_SHEET = '_reservations';
+const RESERVATIONS_HEADERS = [
+  'id',
+  'public_code',
+  'request_id',
+  'requester_name',
+  'student_name_text',
+  'classroom_text',
+  'contact_optional',
+  'slot_id',
+  'status',
+  'payment_status',
+  'linked_student_id',
+  'total_cents',
+  'created_at',
+  'updated_at',
+  'note',
+];
+const RESERVATION_ITEMS_SHEET = '_reservation_items';
+const RESERVATION_ITEMS_HEADERS = [
+  'id',
+  'reservation_id',
+  'product_id',
+  'description_snapshot',
+  'quantity',
+  'unit_price_cents',
+  'line_total_cents',
+];
+const RESERVATION_STATUS_HISTORY_SHEET = '_reservation_status_history';
+const RESERVATION_STATUS_HISTORY_HEADERS = [
+  'id',
+  'reservation_id',
+  'from_status',
+  'to_status',
+  'actor_id',
+  'created_at',
+  'reason',
+];
+const RESERVATIONS_MIGRATION_ID = '015_reservations';
+const RESERVATIONS_MIGRATION_CHECKSUM =
+  'id|business_date|label|pickup_starts_at|pickup_ends_at|cutoff_at|active|created_by|created_at|id|public_code|request_id|requester_name|student_name_text|classroom_text|contact_optional|slot_id|status|payment_status|linked_student_id|total_cents|created_at|updated_at|note|id|reservation_id|product_id|description_snapshot|quantity|unit_price_cents|line_total_cents|id|reservation_id|from_status|to_status|actor_id|created_at|reason';
+const RESERVATION_STATUS_RESERVED = 'reserved';
+const RESERVATION_STATUS_FULFILLED = 'fulfilled';
+const RESERVATION_STATUS_CANCELLED = 'cancelled';
+const RESERVATION_STATUS_NO_SHOW = 'no_show';
+const RESERVATION_PAYMENT_UNPAID = 'unpaid';
+const RESERVATION_CREATE_OPERATION = 'reservation.create';
+const PUBLIC_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const CASH_STATUS_OPEN = 'open';
 const CASH_STATUS_CLOSED = 'closed';
 const CASH_KIND_RECEIVED = 'cash_received';
@@ -505,6 +565,9 @@ const ACTION_ROLES = {
   'cash.close': ['owner'],
   'reversals.read': ['owner', 'staff'],
   'reversals.write': ['owner'],
+  'reservations.read': ['owner', 'staff'],
+  'reservations.write': ['owner', 'staff'],
+  'reservation_slots.write': ['owner'],
 };
 const BACKUP_FILE_PREFIX = 'cantina-backup';
 const BACKUP_FOLDER_NAME = 'Cantina V2 AppScript E2E backups';
@@ -939,6 +1002,7 @@ function seedE2E(sessionToken) {
     seedE2EGuardiansUnlocked();
     seedE2EProductsUnlocked();
     seedE2EInventoryUnlocked();
+    seedE2ESlotsUnlocked();
     ensurePixCopySettingUnlocked();
     return {
       marker: E2E_SEED_MARKER,
@@ -978,6 +1042,7 @@ function assertKnownMigrations(applied) {
     CREDITS_MIGRATION_ID,
     CASH_MIGRATION_ID,
     REVERSALS_MIGRATION_ID,
+    RESERVATIONS_MIGRATION_ID,
   ];
   applied.forEach(function (id) {
     if (catalog.indexOf(id) === -1) {
@@ -1013,7 +1078,8 @@ function setupSchema() {
     applied.indexOf(PAYMENTS_MIGRATION_ID) === -1 ||
     applied.indexOf(CREDITS_MIGRATION_ID) === -1 ||
     applied.indexOf(CASH_MIGRATION_ID) === -1 ||
-    applied.indexOf(REVERSALS_MIGRATION_ID) === -1;
+    applied.indexOf(REVERSALS_MIGRATION_ID) === -1 ||
+    applied.indexOf(RESERVATIONS_MIGRATION_ID) === -1;
   let pendingCopy = null;
   if (pending) {
     try {
@@ -1276,13 +1342,39 @@ function setupSchema() {
       REVERSAL_EFFECTS_SHEET,
       REVERSAL_EFFECTS_HEADERS,
     );
-    meta.appendRow(['schema_version', String(CURRENT_SCHEMA_VERSION)]);
+    meta.appendRow(['schema_version', '14']);
     migrations.appendRow([
       REVERSALS_MIGRATION_ID,
       createdAt,
       CANTINA_APP_VERSION,
       REVERSALS_MIGRATION_CHECKSUM,
       'Cria estornos de operações e efeitos auditáveis',
+    ]);
+  }
+  if (applied.indexOf(RESERVATIONS_MIGRATION_ID) === -1) {
+    getOrCreateSheet(
+      spreadsheet,
+      RESERVATION_SLOTS_SHEET,
+      RESERVATION_SLOTS_HEADERS,
+    );
+    getOrCreateSheet(spreadsheet, RESERVATIONS_SHEET, RESERVATIONS_HEADERS);
+    getOrCreateSheet(
+      spreadsheet,
+      RESERVATION_ITEMS_SHEET,
+      RESERVATION_ITEMS_HEADERS,
+    );
+    getOrCreateSheet(
+      spreadsheet,
+      RESERVATION_STATUS_HISTORY_SHEET,
+      RESERVATION_STATUS_HISTORY_HEADERS,
+    );
+    meta.appendRow(['schema_version', String(CURRENT_SCHEMA_VERSION)]);
+    migrations.appendRow([
+      RESERVATIONS_MIGRATION_ID,
+      createdAt,
+      CANTINA_APP_VERSION,
+      RESERVATIONS_MIGRATION_CHECKSUM,
+      'Cria recreios, reservas, itens e histórico de status',
     ]);
   }
   if (pendingCopy) {
@@ -3222,7 +3314,7 @@ function seedE2EProductsUnlocked() {
       price: 550,
       discount: true,
       stock: true,
-      reservable: false,
+      reservable: true,
     },
     {
       name: 'Suco de uva',
@@ -3530,22 +3622,58 @@ function physicalForGs(dayId, productId) {
   return physical;
 }
 
+function reservedQuantityGs(productId, businessDate) {
+  let total = 0;
+  latestRecordsById(listReservationRecords()).forEach(function (reservation) {
+    if (reservation.status !== RESERVATION_STATUS_RESERVED) {
+      return;
+    }
+    const slot = latestRecordsById(listReservationSlotRecords()).filter(
+      function (item) {
+        return item.id === reservation.slot_id;
+      },
+    )[0];
+    if (!slot || slot.business_date !== businessDate) {
+      return;
+    }
+    listReservationItemRecords()
+      .filter(function (item) {
+        return (
+          item.reservation_id === reservation.id &&
+          item.product_id === productId
+        );
+      })
+      .forEach(function (item) {
+        total += Number(item.quantity);
+      });
+  });
+  return total;
+}
+
+function availableForGs(dayId, productId, businessDate) {
+  return (
+    physicalForGs(dayId, productId) -
+    reservedQuantityGs(productId, businessDate)
+  );
+}
+
 function quantityLabelGs(physical) {
   return physical === 0 ? SOLD_OUT_LABEL : String(physical);
 }
 
-function toBalanceGs(dayId, opening, products) {
+function toBalanceGs(dayId, opening, products, businessDate) {
   const product = products.filter(function (item) {
     return item.id === opening.product_id;
   })[0];
   const physical = physicalForGs(dayId, opening.product_id);
+  const reserved = reservedQuantityGs(opening.product_id, businessDate);
   return {
     productId: opening.product_id,
     productName: product ? product.name : '',
     openingQuantity: Number(opening.opening_quantity),
     physicalQuantity: physical,
-    reservedQuantity: 0,
-    availableQuantity: physical,
+    reservedQuantity: reserved,
+    availableQuantity: physical - reserved,
     soldOut: physical === 0,
     quantityLabel: quantityLabelGs(physical),
   };
@@ -3562,7 +3690,7 @@ function listBalancesUnlocked(businessDate) {
         return item.inventory_day_id === day.id;
       })
       .map(function (opening) {
-        return toBalanceGs(day.id, opening, products);
+        return toBalanceGs(day.id, opening, products, day.business_date);
       }),
   };
 }
@@ -3586,6 +3714,35 @@ function seedE2EInventoryUnlocked() {
       { productId: suco.id, openingQuantity: 0 },
     ],
   });
+}
+
+function seedE2ESlotsUnlocked() {
+  setupSchema();
+  const today = todayCivil();
+  const now = new Date().toISOString();
+  const actor = 'aaaaaaaa-bbbb-4ccc-8ddd-000000000099';
+  openNamedSheet(RESERVATION_SLOTS_SHEET, RESERVATION_SLOTS_HEADERS).appendRow([
+    Utilities.getUuid(),
+    today,
+    'Recreio manhã',
+    combineCivilTimeSaoPauloGs(today, '09:45'),
+    combineCivilTimeSaoPauloGs(today, '10:05'),
+    combineCivilTimeSaoPauloGs(today, '09:15'),
+    'true',
+    actor,
+    now,
+  ]);
+  openNamedSheet(RESERVATION_SLOTS_SHEET, RESERVATION_SLOTS_HEADERS).appendRow([
+    Utilities.getUuid(),
+    today,
+    'Recreio tarde',
+    combineCivilTimeSaoPauloGs(today, '18:15'),
+    combineCivilTimeSaoPauloGs(today, '18:35'),
+    combineCivilTimeSaoPauloGs(today, '18:00'),
+    'true',
+    actor,
+    now,
+  ]);
 }
 
 function openInventoryDayUnlocked(userId, payload) {
@@ -4893,7 +5050,7 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
   const businessDate = todayCivil();
   Object.keys(needed).forEach(function (productId) {
     const day = requireInventoryDayGs(businessDate);
-    const available = physicalForGs(day.id, productId);
+    const available = availableForGs(day.id, productId, businessDate);
     if (available < needed[productId]) {
       throw new Error(
         'INSUFFICIENT_STOCK: Não há estoque suficiente para esta venda.',
@@ -7544,5 +7701,574 @@ function reverseCreditRefund(sessionToken, payload) {
   return withScriptLock(function () {
     setupSchema();
     return reverseCreditRefundUnlocked(session.user_id, payload || {});
+  });
+}
+
+function combineCivilTimeSaoPauloGs(civilDate, clock) {
+  if (!isCivilDate(civilDate) || !/^([01]\d|2[0-3]):([0-5]\d)$/.test(clock)) {
+    throw new Error('INVALID_SLOT_TIME: Informe o horário no formato HH:mm.');
+  }
+  return new Date(civilDate + 'T' + clock + ':00.000-03:00').toISOString();
+}
+
+function formatSaoPauloClockGs(iso) {
+  return Utilities.formatDate(new Date(iso), 'America/Sao_Paulo', 'HH:mm');
+}
+
+function listReservationSlotRecords() {
+  return listSheetRecords(
+    openNamedSheet(RESERVATION_SLOTS_SHEET, RESERVATION_SLOTS_HEADERS),
+    RESERVATION_SLOTS_HEADERS,
+  );
+}
+
+function listReservationRecords() {
+  return listSheetRecords(
+    openNamedSheet(RESERVATIONS_SHEET, RESERVATIONS_HEADERS),
+    RESERVATIONS_HEADERS,
+  );
+}
+
+function listReservationItemRecords() {
+  return listSheetRecords(
+    openNamedSheet(RESERVATION_ITEMS_SHEET, RESERVATION_ITEMS_HEADERS),
+    RESERVATION_ITEMS_HEADERS,
+  );
+}
+
+function listReservationHistoryRecords() {
+  return listSheetRecords(
+    openNamedSheet(
+      RESERVATION_STATUS_HISTORY_SHEET,
+      RESERVATION_STATUS_HISTORY_HEADERS,
+    ),
+    RESERVATION_STATUS_HISTORY_HEADERS,
+  );
+}
+
+function createPublicCodeGs() {
+  let code = '';
+  for (let index = 0; index < 6; index += 1) {
+    code += PUBLIC_CODE_ALPHABET.charAt(
+      Math.floor(Math.random() * PUBLIC_CODE_ALPHABET.length),
+    );
+  }
+  return code;
+}
+
+function uniquePublicCodeGs() {
+  const existing = latestRecordsById(listReservationRecords());
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const code = createPublicCodeGs();
+    const taken = existing.filter(function (item) {
+      return item.public_code === code;
+    })[0];
+    if (!taken) {
+      return code;
+    }
+  }
+  return createPublicCodeGs();
+}
+
+function reservationStatusLabelGs(status) {
+  if (status === RESERVATION_STATUS_FULFILLED) {
+    return 'retirada';
+  }
+  if (status === RESERVATION_STATUS_CANCELLED) {
+    return 'cancelada';
+  }
+  if (status === RESERVATION_STATUS_NO_SHOW) {
+    return 'não retirada';
+  }
+  return 'reservada';
+}
+
+function toReservationSlotGs(slot, nowIso) {
+  const open =
+    slot.active === 'true' && Date.parse(nowIso) < Date.parse(slot.cutoff_at);
+  return {
+    id: slot.id,
+    businessDate: slot.business_date,
+    label: slot.label,
+    cutoffAt: slot.cutoff_at,
+    pickupStartsAt: slot.pickup_starts_at,
+    pickupEndsAt: slot.pickup_ends_at,
+    active: slot.active === 'true',
+    openForReservations: open,
+    summaryLabel:
+      slot.label +
+      ' • corte ' +
+      formatSaoPauloClockGs(slot.cutoff_at) +
+      ' • retirada ' +
+      formatSaoPauloClockGs(slot.pickup_starts_at) +
+      '–' +
+      formatSaoPauloClockGs(slot.pickup_ends_at),
+  };
+}
+
+function toReservationViewGs(reservation) {
+  const slot = latestRecordsById(listReservationSlotRecords()).filter(
+    function (item) {
+      return item.id === reservation.slot_id;
+    },
+  )[0];
+  const items = listReservationItemRecords()
+    .filter(function (item) {
+      return item.reservation_id === reservation.id;
+    })
+    .map(function (item) {
+      return {
+        productId: item.product_id,
+        productName: item.description_snapshot,
+        quantity: Number(item.quantity),
+        unitPriceCents: Number(item.unit_price_cents),
+        lineTotalCents: Number(item.line_total_cents),
+      };
+    });
+  const names = items.map(function (item) {
+    return item.productName;
+  });
+  const slotLabel = slot ? slot.label : '';
+  return {
+    id: reservation.id,
+    publicCode: reservation.public_code,
+    slotId: reservation.slot_id,
+    slotLabel: slotLabel,
+    studentNameText: reservation.student_name_text,
+    classroomText: reservation.classroom_text,
+    status: reservation.status,
+    paymentStatus: reservation.payment_status,
+    totalCents: Number(reservation.total_cents),
+    summaryLabel:
+      reservation.student_name_text +
+      ' • ' +
+      reservation.classroom_text +
+      ' • ' +
+      names.join(', ') +
+      ' • ' +
+      formatBrlGs(Number(reservation.total_cents)) +
+      ' • ' +
+      slotLabel +
+      ' • ' +
+      reservationStatusLabelGs(reservation.status),
+    items: items,
+    createdAt: reservation.created_at,
+  };
+}
+
+function toReservationsSetupGs() {
+  const now = new Date().toISOString();
+  const today = todayCivil();
+  const slots = latestRecordsById(listReservationSlotRecords())
+    .filter(function (item) {
+      return item.business_date === today;
+    })
+    .map(function (item) {
+      return toReservationSlotGs(item, now);
+    });
+  const reservations = latestRecordsById(listReservationRecords())
+    .slice()
+    .reverse()
+    .map(function (item) {
+      return toReservationViewGs(item);
+    });
+  let availability = [];
+  try {
+    availability = listBalancesUnlocked(today).items.map(function (item) {
+      return {
+        productId: item.productId,
+        productName: item.productName,
+        physicalQuantity: item.physicalQuantity,
+        reservedQuantity: item.reservedQuantity,
+        availableQuantity: item.availableQuantity,
+        summaryLabel:
+          item.productName +
+          ' • disponível ' +
+          item.availableQuantity +
+          ' • reservado ' +
+          item.reservedQuantity,
+      };
+    });
+  } catch (error) {
+    availability = [];
+  }
+  const reservableProducts = latestRecordsById(listProductRecords())
+    .filter(function (item) {
+      return item.active === 'true' && item.reservable === 'true';
+    })
+    .map(function (item) {
+      return {
+        id: item.id,
+        name: item.name,
+        priceCents: Number(item.price_cents),
+      };
+    });
+  return {
+    slots: slots,
+    reservations: reservations,
+    availability: availability,
+    reservableProducts: reservableProducts,
+  };
+}
+
+function getReservationsSetup(sessionToken) {
+  requireAction(sessionToken, 'reservations.read');
+  setupSchema();
+  return toReservationsSetupGs();
+}
+
+function createReservationSlotUnlocked(userId, payload) {
+  const label = String((payload && payload.label) || '')
+    .trim()
+    .replace(/\s+/g, ' ');
+  if (label.length < 2 || label.length > 40) {
+    throw new Error('SLOT_LABEL_REQUIRED: Informe o nome do recreio.');
+  }
+  const businessDate = resolveBusinessDateGs(
+    payload && payload.businessDate ? payload.businessDate : todayCivil(),
+  );
+  const cutoffAt = combineCivilTimeSaoPauloGs(
+    businessDate,
+    String((payload && payload.cutoffTime) || ''),
+  );
+  const pickupStartsAt = combineCivilTimeSaoPauloGs(
+    businessDate,
+    String((payload && payload.pickupStartTime) || ''),
+  );
+  const pickupEndsAt = combineCivilTimeSaoPauloGs(
+    businessDate,
+    String((payload && payload.pickupEndTime) || ''),
+  );
+  if (Date.parse(pickupEndsAt) <= Date.parse(pickupStartsAt)) {
+    throw new Error(
+      'SLOT_WINDOW_INVALID: O fim da retirada precisa ser depois do início.',
+    );
+  }
+  if (Date.parse(cutoffAt) > Date.parse(pickupStartsAt)) {
+    throw new Error(
+      'SLOT_CUTOFF_AFTER_PICKUP: O corte das reservas precisa ser até o início da retirada.',
+    );
+  }
+  const now = new Date().toISOString();
+  openNamedSheet(RESERVATION_SLOTS_SHEET, RESERVATION_SLOTS_HEADERS).appendRow([
+    Utilities.getUuid(),
+    businessDate,
+    label,
+    pickupStartsAt,
+    pickupEndsAt,
+    cutoffAt,
+    'true',
+    userId,
+    now,
+  ]);
+  return toReservationsSetupGs();
+}
+
+function createReservationSlot(sessionToken, payload) {
+  const session = requireAction(sessionToken, 'reservation_slots.write');
+  return withScriptLock(function () {
+    setupSchema();
+    return createReservationSlotUnlocked(session.user_id, payload || {});
+  });
+}
+
+function createReservationUnlocked(userId, payload) {
+  if (payload && String(payload.status || '').toLowerCase() === 'prepared') {
+    throw new Error(
+      'RESERVATION_PREPARED_UNSUPPORTED: Não existe estado Preparada. A reserva fica reservada até a retirada, o cancelamento ou a não retirada.',
+    );
+  }
+  if (payload && payload.partialPickup === true) {
+    throw new Error(
+      'RESERVATION_PARTIAL_UNSUPPORTED: Não há retirada parcial persistente. Cancele ou retire a reserva inteira.',
+    );
+  }
+  const requestId =
+    payload && payload.requestId ? String(payload.requestId) : '';
+  if (!REQUEST_ID_PATTERN.test(requestId)) {
+    throw new Error(
+      'INVALID_REQUEST_ID: request_id deve ser UUID, nunca número da linha.',
+    );
+  }
+  const operations = openNamedSheet(
+    OPERATION_REQUESTS_SHEET,
+    OPERATION_REQUESTS_HEADERS,
+  );
+  const existing = findOperationRequest(operations, requestId);
+  if (existing) {
+    if (existing.operation_type !== RESERVATION_CREATE_OPERATION) {
+      throw new Error(
+        'REQUEST_CONFLICT: Este request_id já foi usado em outra operação.',
+      );
+    }
+    return toReservationsSetupGs();
+  }
+  const slotId = payload && payload.slotId ? String(payload.slotId) : '';
+  if (!REQUEST_ID_PATTERN.test(slotId)) {
+    throw new Error(
+      'INVALID_ID: ID deve ser UUID imutável, nunca número da linha.',
+    );
+  }
+  const slot = latestRecordsById(listReservationSlotRecords()).filter(
+    function (item) {
+      return item.id === slotId;
+    },
+  )[0];
+  if (!slot) {
+    throw new Error('SLOT_NOT_FOUND: Recreio não encontrado.');
+  }
+  if (slot.active !== 'true') {
+    throw new Error('SLOT_INACTIVE: Este recreio não está ativo.');
+  }
+  if (Date.parse(new Date().toISOString()) >= Date.parse(slot.cutoff_at)) {
+    throw new Error(
+      'RESERVATION_CUTOFF_PASSED: O horário de corte deste recreio já passou.',
+    );
+  }
+  const studentName = String((payload && payload.studentNameText) || '')
+    .trim()
+    .replace(/\s+/g, ' ');
+  if (studentName.length < 2 || studentName.length > 80) {
+    throw new Error(
+      'RESERVATION_STUDENT_NAME_REQUIRED: Informe o nome para a retirada.',
+    );
+  }
+  const classroom = String((payload && payload.classroomText) || '')
+    .trim()
+    .replace(/\s+/g, ' ');
+  if (!classroom || classroom.length > 40) {
+    throw new Error('RESERVATION_CLASSROOM_REQUIRED: Informe a turma.');
+  }
+  const items = payload && Array.isArray(payload.items) ? payload.items : [];
+  if (!items.length) {
+    throw new Error(
+      'RESERVATION_ITEMS_REQUIRED: Informe ao menos um item para reservar.',
+    );
+  }
+  const products = latestRecordsById(listProductRecords());
+  const parsed = [];
+  const needed = {};
+  items.forEach(function (raw) {
+    const productId = raw && raw.productId ? String(raw.productId) : '';
+    const quantity = Number(raw && raw.quantity);
+    if (!REQUEST_ID_PATTERN.test(productId)) {
+      throw new Error(
+        'INVALID_ID: ID deve ser UUID imutável, nunca número da linha.',
+      );
+    }
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
+      throw new Error(
+        'RESERVATION_QUANTITY_INVALID: A quantidade reservada precisa ser um inteiro entre 1 e 20.',
+      );
+    }
+    const product = products.filter(function (item) {
+      return item.id === productId;
+    })[0];
+    if (!product) {
+      throw new Error('PRODUCT_NOT_FOUND: Produto não encontrado.');
+    }
+    if (product.active !== 'true') {
+      throw new Error(
+        'PRODUCT_INACTIVE: Produto inativo não entra em reserva nova.',
+      );
+    }
+    if (product.reservable !== 'true') {
+      throw new Error(
+        'PRODUCT_NOT_RESERVABLE: Este produto não aceita reserva.',
+      );
+    }
+    needed[productId] = (needed[productId] || 0) + quantity;
+    parsed.push({
+      productId: product.id,
+      name: product.name,
+      quantity: quantity,
+      unitPriceCents: Number(product.price_cents),
+      lineTotalCents: Number(product.price_cents) * quantity,
+    });
+  });
+  const day = requireInventoryDayGs(slot.business_date);
+  Object.keys(needed).forEach(function (productId) {
+    const product = products.filter(function (item) {
+      return item.id === productId;
+    })[0];
+    if (product.stock_tracked !== 'true') {
+      return;
+    }
+    if (
+      availableForGs(day.id, productId, slot.business_date) < needed[productId]
+    ) {
+      throw new Error(
+        'RESERVATION_UNAVAILABLE: Não há disponibilidade suficiente para esta reserva.',
+      );
+    }
+  });
+  const now = new Date().toISOString();
+  const reservationId = Utilities.getUuid();
+  const totalCents = parsed.reduce(function (total, item) {
+    return total + item.lineTotalCents;
+  }, 0);
+  openNamedSheet(RESERVATIONS_SHEET, RESERVATIONS_HEADERS).appendRow([
+    reservationId,
+    uniquePublicCodeGs(),
+    requestId,
+    studentName,
+    studentName,
+    classroom,
+    String((payload && payload.contactOptional) || ''),
+    slot.id,
+    RESERVATION_STATUS_RESERVED,
+    RESERVATION_PAYMENT_UNPAID,
+    '',
+    String(totalCents),
+    now,
+    now,
+    String((payload && payload.note) || ''),
+  ]);
+  parsed.forEach(function (item) {
+    openNamedSheet(
+      RESERVATION_ITEMS_SHEET,
+      RESERVATION_ITEMS_HEADERS,
+    ).appendRow([
+      Utilities.getUuid(),
+      reservationId,
+      item.productId,
+      item.name,
+      String(item.quantity),
+      String(item.unitPriceCents),
+      String(item.lineTotalCents),
+    ]);
+  });
+  openNamedSheet(
+    RESERVATION_STATUS_HISTORY_SHEET,
+    RESERVATION_STATUS_HISTORY_HEADERS,
+  ).appendRow([
+    Utilities.getUuid(),
+    reservationId,
+    '',
+    RESERVATION_STATUS_RESERVED,
+    userId,
+    now,
+    'Reserva criada',
+  ]);
+  operations.appendRow([
+    requestId,
+    RESERVATION_CREATE_OPERATION,
+    reservationId,
+    OPERATION_COMPLETED,
+    now,
+  ]);
+  return toReservationsSetupGs();
+}
+
+function createReservation(sessionToken, payload) {
+  const session = requireAction(sessionToken, 'reservations.write');
+  return withScriptLock(function () {
+    setupSchema();
+    return createReservationUnlocked(session.user_id, payload || {});
+  });
+}
+
+function transitionReservationUnlocked(
+  userId,
+  reservationId,
+  nextStatus,
+  reason,
+) {
+  if (!REQUEST_ID_PATTERN.test(reservationId)) {
+    throw new Error(
+      'INVALID_ID: ID deve ser UUID imutável, nunca número da linha.',
+    );
+  }
+  const reservation = latestRecordsById(listReservationRecords()).filter(
+    function (item) {
+      return item.id === reservationId;
+    },
+  )[0];
+  if (!reservation) {
+    throw new Error('RESERVATION_NOT_FOUND: Reserva não encontrada.');
+  }
+  if (reservation.status !== RESERVATION_STATUS_RESERVED) {
+    throw new Error('RESERVATION_NOT_ACTIVE: Esta reserva já foi encerrada.');
+  }
+  const note = String(reason || '')
+    .trim()
+    .replace(/\s+/g, ' ');
+  if (note.length < 2 || note.length > 200) {
+    throw new Error('RESERVATION_REASON_REQUIRED: Informe o motivo.');
+  }
+  const now = new Date().toISOString();
+  openNamedSheet(RESERVATIONS_SHEET, RESERVATIONS_HEADERS).appendRow([
+    reservation.id,
+    reservation.public_code,
+    reservation.request_id,
+    reservation.requester_name,
+    reservation.student_name_text,
+    reservation.classroom_text,
+    reservation.contact_optional,
+    reservation.slot_id,
+    nextStatus,
+    reservation.payment_status,
+    reservation.linked_student_id,
+    reservation.total_cents,
+    reservation.created_at,
+    now,
+    reservation.note,
+  ]);
+  openNamedSheet(
+    RESERVATION_STATUS_HISTORY_SHEET,
+    RESERVATION_STATUS_HISTORY_HEADERS,
+  ).appendRow([
+    Utilities.getUuid(),
+    reservation.id,
+    reservation.status,
+    nextStatus,
+    userId,
+    now,
+    note,
+  ]);
+  return toReservationsSetupGs();
+}
+
+function cancelReservation(sessionToken, payload) {
+  const session = requireAction(sessionToken, 'reservations.write');
+  return withScriptLock(function () {
+    setupSchema();
+    return transitionReservationUnlocked(
+      session.user_id,
+      String((payload && payload.reservationId) || ''),
+      RESERVATION_STATUS_CANCELLED,
+      payload && payload.reason,
+    );
+  });
+}
+
+function markReservationNoShow(sessionToken, payload) {
+  const session = requireAction(sessionToken, 'reservations.write');
+  return withScriptLock(function () {
+    setupSchema();
+    return transitionReservationUnlocked(
+      session.user_id,
+      String((payload && payload.reservationId) || ''),
+      RESERVATION_STATUS_NO_SHOW,
+      payload && payload.reason,
+    );
+  });
+}
+
+function fulfillReservation(sessionToken, payload) {
+  const session = requireAction(sessionToken, 'reservations.write');
+  return withScriptLock(function () {
+    setupSchema();
+    if (payload && payload.partialPickup === true) {
+      throw new Error(
+        'RESERVATION_PARTIAL_UNSUPPORTED: Não há retirada parcial persistente. Cancele ou retire a reserva inteira.',
+      );
+    }
+    return transitionReservationUnlocked(
+      session.user_id,
+      String((payload && payload.reservationId) || ''),
+      RESERVATION_STATUS_FULFILLED,
+      'Retirada no recreio',
+    );
   });
 }

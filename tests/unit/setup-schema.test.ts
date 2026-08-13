@@ -16,6 +16,7 @@ import {
   CREDITS_MIGRATION_ID,
   CASH_MIGRATION_ID,
   REVERSALS_MIGRATION_ID,
+  RESERVATIONS_MIGRATION_ID,
 } from '../../src/server/sheets/schema';
 
 describe('setupSchema', () => {
@@ -34,7 +35,7 @@ describe('setupSchema', () => {
     expect(first).toEqual({
       ok: true,
       data: {
-        schemaVersion: 14,
+        schemaVersion: 15,
         appliedMigrations: [
           FOUNDATION_MIGRATION_ID,
           OPERATION_REQUESTS_MIGRATION_ID,
@@ -50,11 +51,12 @@ describe('setupSchema', () => {
           CREDITS_MIGRATION_ID,
           CASH_MIGRATION_ID,
           REVERSALS_MIGRATION_ID,
+          RESERVATIONS_MIGRATION_ID,
         ],
       },
     });
     expect(second).toEqual(first);
-    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(14);
+    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(15);
     expect(sheets.get('_meta')?.getHeaders()).toEqual(['key', 'value']);
     expect(sheets.get('_operation_requests')?.getHeaders()).toEqual([
       'request_id',
@@ -313,6 +315,52 @@ describe('setupSchema', () => {
       'amount_delta_cents',
       'quantity_delta',
     ]);
+    expect(sheets.get('_reservation_slots')?.getHeaders()).toEqual([
+      'id',
+      'business_date',
+      'label',
+      'pickup_starts_at',
+      'pickup_ends_at',
+      'cutoff_at',
+      'active',
+      'created_by',
+      'created_at',
+    ]);
+    expect(sheets.get('_reservations')?.getHeaders()).toEqual([
+      'id',
+      'public_code',
+      'request_id',
+      'requester_name',
+      'student_name_text',
+      'classroom_text',
+      'contact_optional',
+      'slot_id',
+      'status',
+      'payment_status',
+      'linked_student_id',
+      'total_cents',
+      'created_at',
+      'updated_at',
+      'note',
+    ]);
+    expect(sheets.get('_reservation_items')?.getHeaders()).toEqual([
+      'id',
+      'reservation_id',
+      'product_id',
+      'description_snapshot',
+      'quantity',
+      'unit_price_cents',
+      'line_total_cents',
+    ]);
+    expect(sheets.get('_reservation_status_history')?.getHeaders()).toEqual([
+      'id',
+      'reservation_id',
+      'from_status',
+      'to_status',
+      'actor_id',
+      'created_at',
+      'reason',
+    ]);
   });
 
   it('applies only the operation-requests migration when foundation already exists', () => {
@@ -359,9 +407,10 @@ describe('setupSchema', () => {
         CREDITS_MIGRATION_ID,
         CASH_MIGRATION_ID,
         REVERSALS_MIGRATION_ID,
+        RESERVATIONS_MIGRATION_ID,
       ]);
     }
-    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(14);
+    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(15);
   });
 
   it('refuses PROD', () => {
