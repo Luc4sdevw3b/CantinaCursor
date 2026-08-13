@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cantina V2 AppScript"
+  short_description: "Cantina em Apps Script + Sheets com testes, Git e reservas"
+  default_prompt: "Use $cantina-v2appscript, leia plano e changelog, implemente somente a tarefa pedida, rode testes unitários/E2E aplicáveis, atualize o changelog e faça commit Git."
