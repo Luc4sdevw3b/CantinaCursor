@@ -29,6 +29,9 @@ import type {
   AdjustInventoryInput,
   Payment,
   CreatePaymentInput,
+  CreditAccount,
+  DepositPersonalCreditInput,
+  RefundPersonalCreditInput,
   AddReceivableInterestInput,
   RenegotiateReceivableInput,
   Product,
@@ -390,6 +393,25 @@ export class FakeAppApi implements AppApi {
   ): Promise<Receivable> {
     this.assertAction('receivables.adjust');
     return throwResult(this.sales.renegotiateReceivable(input));
+  }
+
+  async listCreditAccounts(): Promise<CreditAccount[]> {
+    this.assertAction('credits.read');
+    return throwResult(this.sales.listCreditAccounts());
+  }
+
+  async depositPersonalCredit(
+    input: DepositPersonalCreditInput,
+  ): Promise<CreditAccount> {
+    this.assertAction('credits.deposit');
+    return throwResult(this.sales.depositPersonalCredit(input));
+  }
+
+  async refundPersonalCredit(
+    input: RefundPersonalCreditInput,
+  ): Promise<CreditAccount> {
+    this.assertAction('credits.refund');
+    return throwResult(this.sales.refundPersonalCredit(input));
   }
 
   private assertSession(): void {

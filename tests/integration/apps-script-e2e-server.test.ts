@@ -286,6 +286,15 @@ interface ServerContext {
     sessionToken: string,
     payload: Record<string, unknown>,
   ): { summaryLabel: string };
+  listCreditAccounts(sessionToken: string): Array<{ summaryLabel: string }>;
+  depositPersonalCredit(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): { summaryLabel: string };
+  refundPersonalCredit(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): { summaryLabel: string };
 }
 
 interface DriveMockFile {
@@ -608,7 +617,7 @@ describe('Apps Script E2E server', () => {
     expect(health.status).toBe('ready');
     expect(health.adapter).toBe('google-script');
     expect(health.spreadsheetConfigured).toBe(true);
-    expect(health.schemaVersion).toBe(11);
+    expect(health.schemaVersion).toBe(12);
     expect(health.backupConfigured).toBe(true);
     expect(health.lastBackupAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(JSON.stringify(health)).not.toContain('private-e2e-sheet-id');
@@ -691,7 +700,7 @@ describe('Apps Script E2E server', () => {
     const second = server.setupSchema();
 
     expect(first).toEqual(second);
-    expect(first.schemaVersion).toBe(11);
+    expect(first.schemaVersion).toBe(12);
     expect(first.appliedMigrations).toEqual([
       '001_foundation',
       '002_operation_requests',
@@ -704,6 +713,7 @@ describe('Apps Script E2E server', () => {
       '009_sales',
       '010_receivables',
       '011_payments',
+      '012_credits',
     ]);
     expect(sheets.get('_meta')?.rows[0]).toEqual(['key', 'value']);
     expect(sheets.get('_schema_migrations')?.rows[0]).toEqual([
@@ -854,10 +864,45 @@ describe('Apps Script E2E server', () => {
       'student_id',
       'amount_cents',
     ]);
+    expect(sheets.get('_credit_accounts')?.rows[0]).toEqual([
+      'id',
+      'owner_type',
+      'owner_student_id',
+      'owner_guardian_id',
+      'active',
+      'created_at',
+    ]);
+    expect(sheets.get('_credit_account_students')?.rows[0]).toEqual([
+      'credit_account_id',
+      'student_id',
+      'can_use',
+      'active',
+    ]);
+    expect(sheets.get('_credit_movements')?.rows[0]).toEqual([
+      'credit_account_id',
+      'kind',
+      'amount_delta_cents',
+      'source_type',
+      'source_id',
+      'student_id',
+      'created_by',
+      'created_at',
+      'note',
+    ]);
+    expect(sheets.get('_payment_credit_allocations')?.rows[0]).toEqual([
+      'payment_id',
+      'credit_account_id',
+      'amount_cents',
+    ]);
     expect(
       sheets
         .get('_schema_migrations')
         ?.rows.filter((row) => row[0] === '011_payments'),
+    ).toHaveLength(1);
+    expect(
+      sheets
+        .get('_schema_migrations')
+        ?.rows.filter((row) => row[0] === '012_credits'),
     ).toHaveLength(1);
   });
 
@@ -1000,7 +1045,7 @@ describe('Apps Script E2E server', () => {
     const backup = server.runBackup(token, 'manual');
 
     expect(backup.reason).toBe('manual');
-    expect(backup.schemaVersion).toBe(11);
+    expect(backup.schemaVersion).toBe(12);
     expect(JSON.stringify(backup)).not.toContain('e2e-sheet-id');
     expect(JSON.stringify(backup)).not.toContain('e2e-backup-folder');
     expect(projectTriggers).toEqual(['runScheduledBackup']);
@@ -1820,5 +1865,131 @@ describe('Apps Script E2E server', () => {
     expect(agenda.dueDateHistory[0]?.summaryLabel).toBe(
       `Ana Souza • ~8 • ${firstLabel} → ${nextLabel} • Pedido da responsável`,
     );
+  });
+
+  it('uses personal credit on fiado and deposits leftover after paying debt', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const coxinha = server
+      .listProducts(owner)
+      .find((item) => item.name === 'Coxinha');
+    const ana = server
+      .listStudents(owner)
+      .find(
+        (student) =>
+          student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+      );
+    if (!coxinha || !ana) {
+      throw new Error('crédito E2E incompleto');
+    }
+    const shortcuts = server.getDueDateShortcuts(owner);
+    const dueLabel = formatCivilDisplay(shortcuts.tomorrow);
+
+    expect(
+      server.depositPersonalCredit(owner, {
+        studentId: ana.id,
+        amountCents: 200,
+        method: 'pix',
+      }).summaryLabel,
+    ).toBe('Ana Souza • ~8 • R$ 2,00');
+
+    const sale = server.createSale(owner, {
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: shortcuts.tomorrow }],
+    });
+    expect(sale.summaryLabel).toBe(
+      `Ana Souza • ~8 • Coxinha • R$ 5,50 • Fiado • crédito R$ 2,00 • ${dueLabel}`,
+    );
+    expect(server.listCreditAccounts(owner)[0]?.summaryLabel).toBe(
+      'Ana Souza • ~8 • R$ 0,00',
+    );
+    expect(server.listReceivables(owner).upcoming[0]?.summaryLabel).toBe(
+      `Ana Souza • ~8 • R$ 3,50 • ${dueLabel}`,
+    );
+  });
+
+  it('pays personal debt first when depositing leftover credit', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const coxinha = server
+      .listProducts(owner)
+      .find((item) => item.name === 'Coxinha');
+    const ana = server
+      .listStudents(owner)
+      .find(
+        (student) =>
+          student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+      );
+    if (!coxinha || !ana) {
+      throw new Error('crédito E2E incompleto');
+    }
+    const shortcuts = server.getDueDateShortcuts(owner);
+
+    server.createSale(owner, {
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: shortcuts.tomorrow }],
+    });
+    expect(
+      server.depositPersonalCredit(owner, {
+        studentId: ana.id,
+        amountCents: 800,
+        method: 'pix',
+      }).summaryLabel,
+    ).toBe('Ana Souza • ~8 • R$ 2,50');
+    expect(server.listReceivables(owner).upcoming).toHaveLength(0);
+  });
+
+  it('lets the owner refund personal credit and blocks staff', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const staff = server.loginE2E('staff').token;
+    const ana = server
+      .listStudents(owner)
+      .find(
+        (student) =>
+          student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+      );
+    if (!ana) {
+      throw new Error('crédito E2E incompleto');
+    }
+
+    server.depositPersonalCredit(owner, {
+      studentId: ana.id,
+      amountCents: 200,
+      method: 'pix',
+    });
+    expect(() =>
+      server.refundPersonalCredit(staff, {
+        studentId: ana.id,
+        amountCents: 200,
+        reason: 'Devolução pedida',
+      }),
+    ).toThrow('FORBIDDEN');
+    expect(
+      server.refundPersonalCredit(owner, {
+        studentId: ana.id,
+        amountCents: 200,
+        reason: 'Devolução pedida',
+      }).summaryLabel,
+    ).toBe('Ana Souza • ~8 • R$ 0,00');
   });
 });

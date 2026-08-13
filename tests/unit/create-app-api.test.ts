@@ -86,6 +86,9 @@ function runnerWith(
     listPayments() {},
     addReceivableInterest() {},
     renegotiateReceivable() {},
+    listCreditAccounts() {},
+    depositPersonalCredit() {},
+    refundPersonalCredit() {},
     ...extra,
   };
   return runner;

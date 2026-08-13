@@ -592,4 +592,108 @@ describe('FakeAppApi', () => {
     );
     expect(sale.paymentKind).toBe('fiado');
   });
+
+  it('uses personal credit on fiado and pays debt before leftover credit', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const coxinha = (await api.listProducts()).find(
+      (item) => item.name === 'Coxinha',
+    );
+    const ana = (await api.listStudents()).find(
+      (student) =>
+        student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+    );
+    if (!coxinha || !ana) {
+      throw new Error('crédito local incompleto');
+    }
+
+    const deposited = await api.depositPersonalCredit({
+      studentId: ana.id,
+      amountCents: 200,
+      method: 'pix',
+    });
+    expect(deposited.summaryLabel).toBe('Ana Souza • ~8 • R$ 2,00');
+    expect((await api.listCreditAccounts())[0]?.summaryLabel).toBe(
+      'Ana Souza • ~8 • R$ 2,00',
+    );
+
+    const sale = await api.createSale({
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: '2026-08-14' }],
+    });
+    expect(sale.summaryLabel).toBe(
+      'Ana Souza • ~8 • Coxinha • R$ 5,50 • Fiado • crédito R$ 2,00 • Sexta-feira • 14/08/26',
+    );
+    expect((await api.listCreditAccounts())[0]?.summaryLabel).toBe(
+      'Ana Souza • ~8 • R$ 0,00',
+    );
+    expect((await api.listReceivables()).upcoming[0]?.summaryLabel).toBe(
+      'Ana Souza • ~8 • R$ 3,50 • Sexta-feira • 14/08/26',
+    );
+  });
+
+  it('pays personal debt first when depositing leftover credit', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const coxinha = (await api.listProducts()).find(
+      (item) => item.name === 'Coxinha',
+    );
+    const ana = (await api.listStudents()).find(
+      (student) =>
+        student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+    );
+    if (!coxinha || !ana) {
+      throw new Error('crédito local incompleto');
+    }
+
+    await api.createSale({
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: '2026-08-14' }],
+    });
+    const leftover = await api.depositPersonalCredit({
+      studentId: ana.id,
+      amountCents: 800,
+      method: 'pix',
+    });
+    expect(leftover.summaryLabel).toBe('Ana Souza • ~8 • R$ 2,50');
+    expect((await api.listReceivables()).upcoming).toHaveLength(0);
+    expect((await api.listReceivables()).overdue).toHaveLength(0);
+  });
+
+  it('lets the owner refund personal credit and blocks staff', async () => {
+    const owner = new FakeAppApi();
+    await owner.loginE2E('owner');
+    const ana = (await owner.listStudents()).find(
+      (student) =>
+        student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+    );
+    if (!ana) {
+      throw new Error('crédito local incompleto');
+    }
+    await owner.depositPersonalCredit({
+      studentId: ana.id,
+      amountCents: 200,
+      method: 'pix',
+    });
+    const refunded = await owner.refundPersonalCredit({
+      studentId: ana.id,
+      amountCents: 200,
+      reason: 'Devolução pedida',
+    });
+    expect(refunded.summaryLabel).toBe('Ana Souza • ~8 • R$ 0,00');
+
+    const staff = new FakeAppApi();
+    await staff.loginE2E('staff');
+    await expect(
+      staff.refundPersonalCredit({
+        studentId: ana.id,
+        amountCents: 100,
+        reason: 'Devolução pedida',
+      }),
+    ).rejects.toThrow('FORBIDDEN');
+  });
 });

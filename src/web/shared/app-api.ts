@@ -373,9 +373,30 @@ export interface Payment {
   createdAt: string;
 }
 
+export interface CreditAccount {
+  id: string;
+  studentId: string;
+  studentLabel: string;
+  balanceCents: number;
+  balanceLabel: string;
+  summaryLabel: string;
+}
+
+export interface DepositPersonalCreditInput {
+  studentId: string;
+  amountCents: number;
+  method: 'pix' | 'cash';
+}
+
+export interface RefundPersonalCreditInput {
+  studentId: string;
+  amountCents: number;
+  reason: string;
+}
+
 /**
- * Contrato técnico da Fase 16.
- * Sem crédito como movimento, pagamento familiar, caixa físico, reservas reais ou envio de WhatsApp.
+ * Contrato técnico da Fase 17.
+ * Sem crédito de responsável, pagamento familiar, caixa físico, reservas reais ou envio de WhatsApp.
  */
 export interface AppApi {
   getHealth(): Promise<AppHealth>;
@@ -454,4 +475,11 @@ export interface AppApi {
   listPayments(): Promise<Payment[]>;
   addReceivableInterest(input: AddReceivableInterestInput): Promise<Receivable>;
   renegotiateReceivable(input: RenegotiateReceivableInput): Promise<Receivable>;
+  listCreditAccounts(): Promise<CreditAccount[]>;
+  depositPersonalCredit(
+    input: DepositPersonalCreditInput,
+  ): Promise<CreditAccount>;
+  refundPersonalCredit(
+    input: RefundPersonalCreditInput,
+  ): Promise<CreditAccount>;
 }

@@ -59,8 +59,9 @@ export const INVENTORY_MIGRATION_ID = '008_inventory';
 export const SALES_MIGRATION_ID = '009_sales';
 export const RECEIVABLES_MIGRATION_ID = '010_receivables';
 export const PAYMENTS_MIGRATION_ID = '011_payments';
+export const CREDITS_MIGRATION_ID = '012_credits';
 export const FOUNDATION_SCHEMA_VERSION = 1;
-export const CURRENT_SCHEMA_VERSION = 11;
+export const CURRENT_SCHEMA_VERSION = 12;
 
 export const USERS_SHEET: SheetSchema = {
   name: '_users',
@@ -329,4 +330,41 @@ export const PAYMENTS_SHEET: SheetSchema = {
 export const PAYMENT_ALLOCATIONS_SHEET: SheetSchema = {
   name: '_payment_allocations',
   headers: ['payment_id', 'receivable_id', 'student_id', 'amount_cents'],
+};
+
+export const CREDIT_ACCOUNTS_SHEET: SheetSchema = {
+  name: '_credit_accounts',
+  headers: [
+    'id',
+    'owner_type',
+    'owner_student_id',
+    'owner_guardian_id',
+    'active',
+    'created_at',
+  ],
+};
+
+export const CREDIT_ACCOUNT_STUDENTS_SHEET: SheetSchema = {
+  name: '_credit_account_students',
+  headers: ['credit_account_id', 'student_id', 'can_use', 'active'],
+};
+
+export const CREDIT_MOVEMENTS_SHEET: SheetSchema = {
+  name: '_credit_movements',
+  headers: [
+    'credit_account_id',
+    'kind',
+    'amount_delta_cents',
+    'source_type',
+    'source_id',
+    'student_id',
+    'created_by',
+    'created_at',
+    'note',
+  ],
+};
+
+export const PAYMENT_CREDIT_ALLOCATIONS_SHEET: SheetSchema = {
+  name: '_payment_credit_allocations',
+  headers: ['payment_id', 'credit_account_id', 'amount_cents'],
 };

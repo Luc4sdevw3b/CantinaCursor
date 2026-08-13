@@ -47,6 +47,11 @@ import {
   PAYMENTS_MIGRATION_ID,
   PAYMENTS_SHEET,
   PAYMENT_ALLOCATIONS_SHEET,
+  CREDITS_MIGRATION_ID,
+  CREDIT_ACCOUNTS_SHEET,
+  CREDIT_ACCOUNT_STUDENTS_SHEET,
+  CREDIT_MOVEMENTS_SHEET,
+  PAYMENT_CREDIT_ALLOCATIONS_SHEET,
 } from './schema';
 import { deserializeRecord, serializeRecord } from './serialize';
 import { ensureSheet } from './ensure-sheet';
@@ -365,6 +370,37 @@ export function setupSchema(
       );
       if (!allocations.ok) {
         return err(allocations.error);
+      }
+      meta.data.appendRow(
+        serializeRecord(META_SHEET.headers, {
+          key: 'schema_version',
+          value: '11',
+        }),
+      );
+    }
+
+    if (migration.id === CREDITS_MIGRATION_ID) {
+      const accounts = ensureSheet(input.spreadsheet, CREDIT_ACCOUNTS_SHEET);
+      if (!accounts.ok) {
+        return err(accounts.error);
+      }
+      const accountStudents = ensureSheet(
+        input.spreadsheet,
+        CREDIT_ACCOUNT_STUDENTS_SHEET,
+      );
+      if (!accountStudents.ok) {
+        return err(accountStudents.error);
+      }
+      const movements = ensureSheet(input.spreadsheet, CREDIT_MOVEMENTS_SHEET);
+      if (!movements.ok) {
+        return err(movements.error);
+      }
+      const creditAllocations = ensureSheet(
+        input.spreadsheet,
+        PAYMENT_CREDIT_ALLOCATIONS_SHEET,
+      );
+      if (!creditAllocations.ok) {
+        return err(creditAllocations.error);
       }
       meta.data.appendRow(
         serializeRecord(META_SHEET.headers, {

@@ -17,6 +17,9 @@ describe('authorize', () => {
     expect(authorize('staff', 'receivables.read').ok).toBe(true);
     expect(authorize('staff', 'payments.write').ok).toBe(true);
     expect(authorize('owner', 'receivables.adjust').ok).toBe(true);
+    expect(authorize('staff', 'credits.read').ok).toBe(true);
+    expect(authorize('staff', 'credits.deposit').ok).toBe(true);
+    expect(authorize('owner', 'credits.refund').ok).toBe(true);
   });
 
   it('rejects missing role and staff on owner-only actions', () => {
@@ -28,6 +31,7 @@ describe('authorize', () => {
     const staffOpen = authorize('staff', 'inventory.open');
     const staffAdjust = authorize('staff', 'inventory.adjust');
     const staffReceivableAdjust = authorize('staff', 'receivables.adjust');
+    const staffCreditRefund = authorize('staff', 'credits.refund');
 
     expect(anonymous.ok).toBe(false);
     if (!anonymous.ok) {
@@ -60,6 +64,10 @@ describe('authorize', () => {
     expect(staffReceivableAdjust.ok).toBe(false);
     if (!staffReceivableAdjust.ok) {
       expect(staffReceivableAdjust.error.code).toBe('FORBIDDEN');
+    }
+    expect(staffCreditRefund.ok).toBe(false);
+    if (!staffCreditRefund.ok) {
+      expect(staffCreditRefund.error.code).toBe('FORBIDDEN');
     }
   });
 });

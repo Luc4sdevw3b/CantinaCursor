@@ -70,7 +70,7 @@ app.innerHTML = `
         <h2 id="next-step-title">Juros e renegociação</h2>
         <p>A dona lança juros em uma cobrança e troca o vencimento com motivo e histórico.</p>
       </div>
-      <span class="phase-badge">Fase 16</span>
+      <span class="phase-badge">Fase 17</span>
     </section>
 
     <section class="students-panel" id="students-panel" hidden>
@@ -324,6 +324,43 @@ app.innerHTML = `
       <ul id="payments-list"></ul>
     </section>
 
+    <section class="students-panel" id="credits-panel" hidden>
+      <h2>Crédito pessoal</h2>
+      <p id="credits-status">Entre para registrar crédito.</p>
+      <form id="credit-deposit-form">
+        <label>
+          Aluno
+          <select id="credit-student" required>
+            <option value="">Escolha o aluno</option>
+          </select>
+        </label>
+        <label>
+          Valor (R$)
+          <input id="credit-amount" inputmode="decimal" placeholder="2,00" />
+        </label>
+        <label>
+          Método
+          <select id="credit-method">
+            <option value="pix">PIX</option>
+            <option value="cash">Dinheiro</option>
+          </select>
+        </label>
+        <button type="submit">Entrar crédito</button>
+      </form>
+      <form id="credit-refund-form" hidden>
+        <label>
+          Valor (R$)
+          <input id="credit-refund-amount" inputmode="decimal" placeholder="2,00" />
+        </label>
+        <label>
+          Motivo
+          <input id="credit-refund-reason" required />
+        </label>
+        <button type="submit">Devolver crédito</button>
+      </form>
+      <ul id="credits-list"></ul>
+    </section>
+
     <section class="students-panel" id="adjust-panel" hidden>
       <h2>Juros e renegociação</h2>
       <p id="adjust-status">Só a dona lança juros e troca vencimento.</p>
@@ -454,6 +491,7 @@ async function showAuthenticated(session: AppSession | null): Promise<void> {
   await renderSales(session);
   await renderAgenda(session);
   await renderPayments(session);
+  await renderCredits(session);
   await renderAdjust(session);
 }
 
@@ -1108,6 +1146,73 @@ function syncInterestFields(): void {
   }
 }
 
+async function renderCredits(session: AppSession | null): Promise<void> {
+  const panel = document.querySelector('#credits-panel');
+  const status = document.querySelector('#credits-status');
+  const list = document.querySelector('#credits-list');
+  const studentSelect = document.querySelector('#credit-student');
+  const refundForm = document.querySelector('#credit-refund-form');
+  if (
+    !(panel instanceof HTMLElement) ||
+    !status ||
+    !(list instanceof HTMLElement)
+  ) {
+    return;
+  }
+  panel.hidden = !session;
+  list.replaceChildren();
+  if (refundForm instanceof HTMLElement) {
+    refundForm.hidden = session?.role !== 'owner';
+  }
+  if (!session) {
+    status.textContent = 'Entre para registrar crédito.';
+    if (studentSelect instanceof HTMLSelectElement) {
+      studentSelect.replaceChildren();
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = 'Escolha o aluno';
+      studentSelect.append(empty);
+    }
+    return;
+  }
+  try {
+    const [students, accounts] = await Promise.all([
+      api.listStudents({ includeInactive: true }),
+      api.listCreditAccounts(),
+    ]);
+    if (studentSelect instanceof HTMLSelectElement) {
+      const current = studentSelect.value;
+      studentSelect.replaceChildren();
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = 'Escolha o aluno';
+      studentSelect.append(empty);
+      for (const student of students) {
+        const option = document.createElement('option');
+        option.value = student.id;
+        option.textContent = `${student.fullName} • ${student.ageLabel}`;
+        studentSelect.append(option);
+      }
+      if (current && students.some((item) => item.id === current)) {
+        studentSelect.value = current;
+      }
+    }
+    status.textContent = accounts.length
+      ? `${accounts.length} conta${accounts.length === 1 ? '' : 's'}.`
+      : 'Nenhum crédito pessoal ainda.';
+    for (const account of accounts) {
+      const item = document.createElement('li');
+      item.textContent = account.summaryLabel;
+      list.append(item);
+    }
+  } catch (error: unknown) {
+    status.textContent =
+      error instanceof Error
+        ? error.message.replace(/^[A-Z_]+:\s*/, '')
+        : 'Não foi possível carregar o crédito.';
+  }
+}
+
 function applyRenegotiateDueDate(civilDate: string): void {
   const dueDate = document.querySelector('#renegotiate-due-date');
   if (dueDate instanceof HTMLInputElement) {
@@ -1323,7 +1428,9 @@ document
           renderInventory(session),
           renderAgenda(session),
         ]).then(() =>
-          renderPayments(session).then(() => renderAdjust(session)),
+          renderPayments(session).then(() =>
+            renderCredits(session).then(() => renderAdjust(session)),
+          ),
         ),
       )
       .catch((error: unknown) => {
@@ -1434,7 +1541,9 @@ document.querySelector('#payment-form')?.addEventListener('submit', (event) => {
     })
     .then((session) =>
       renderAgenda(session).then(() =>
-        renderPayments(session).then(() => renderAdjust(session)),
+        renderPayments(session).then(() =>
+          renderCredits(session).then(() => renderAdjust(session)),
+        ),
       ),
     )
     .catch((error: unknown) => {
@@ -1446,6 +1555,117 @@ document.querySelector('#payment-form')?.addEventListener('submit', (event) => {
       }
     });
 });
+
+document
+  .querySelector('#credit-deposit-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const status = document.querySelector('#credits-status');
+    const studentSelect = document.querySelector('#credit-student');
+    const amountInput = document.querySelector('#credit-amount');
+    const methodSelect = document.querySelector('#credit-method');
+    if (
+      !(studentSelect instanceof HTMLSelectElement) ||
+      !(amountInput instanceof HTMLInputElement) ||
+      !(methodSelect instanceof HTMLSelectElement)
+    ) {
+      return;
+    }
+    const studentId = studentSelect.value;
+    if (!studentId) {
+      if (status) {
+        status.textContent = 'Escolha o aluno.';
+      }
+      return;
+    }
+    const parsed = parseReaisToCents(amountInput.value);
+    if (!parsed.ok) {
+      if (status) {
+        status.textContent = parsed.error.message;
+      }
+      return;
+    }
+    const method = methodSelect.value;
+    if (method !== 'pix' && method !== 'cash') {
+      return;
+    }
+    void api
+      .depositPersonalCredit({
+        studentId,
+        amountCents: parsed.data,
+        method,
+      })
+      .then(() => {
+        amountInput.value = '';
+        return api.getSession();
+      })
+      .then((session) =>
+        renderAgenda(session).then(() =>
+          renderPayments(session).then(() =>
+            renderCredits(session).then(() => renderAdjust(session)),
+          ),
+        ),
+      )
+      .catch((error: unknown) => {
+        if (status) {
+          status.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível entrar o crédito.';
+        }
+      });
+  });
+
+document
+  .querySelector('#credit-refund-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const status = document.querySelector('#credits-status');
+    const studentSelect = document.querySelector('#credit-student');
+    const amountInput = document.querySelector('#credit-refund-amount');
+    const reasonInput = document.querySelector('#credit-refund-reason');
+    if (
+      !(studentSelect instanceof HTMLSelectElement) ||
+      !(amountInput instanceof HTMLInputElement) ||
+      !(reasonInput instanceof HTMLInputElement)
+    ) {
+      return;
+    }
+    const studentId = studentSelect.value;
+    if (!studentId) {
+      if (status) {
+        status.textContent = 'Escolha o aluno.';
+      }
+      return;
+    }
+    const parsed = parseReaisToCents(amountInput.value);
+    if (!parsed.ok) {
+      if (status) {
+        status.textContent = parsed.error.message;
+      }
+      return;
+    }
+    void api
+      .refundPersonalCredit({
+        studentId,
+        amountCents: parsed.data,
+        reason: reasonInput.value,
+      })
+      .then(() => {
+        amountInput.value = '';
+        reasonInput.value = '';
+        return api.getSession();
+      })
+      .then((session) => renderCredits(session))
+      .catch((error: unknown) => {
+        if (status) {
+          status.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível devolver o crédito.';
+        }
+      });
+  });
 
 document
   .querySelector('#interest-kind')
@@ -1859,6 +2079,7 @@ void api
     await renderSales(session);
     await renderAgenda(session);
     await renderPayments(session);
+    await renderCredits(session);
     await renderAdjust(session);
   })
   .catch(() => {

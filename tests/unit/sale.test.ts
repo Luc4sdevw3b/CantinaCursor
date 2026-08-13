@@ -122,6 +122,18 @@ describe('cart sale and PIX', () => {
     if (fiado.ok) {
       expect(fiado.data.rows).toEqual([{ kind: 'fiado', amount_cents: '550' }]);
     }
+    const credited = planSettlements({
+      paymentKind: 'fiado',
+      netTotalCents: 550,
+      creditBalanceCents: 200,
+    });
+    expect(credited.ok).toBe(true);
+    if (credited.ok) {
+      expect(credited.data.rows).toEqual([
+        { kind: 'credit', amount_cents: '200' },
+        { kind: 'fiado', amount_cents: '350' },
+      ]);
+    }
     expect(
       saleSummaryLabel({
         consumerLabel: 'Ana Souza • ~8',
@@ -132,6 +144,18 @@ describe('cart sale and PIX', () => {
       }),
     ).toBe(
       'Ana Souza • ~8 • Coxinha • R$ 5,50 • Fiado • Sexta-feira • 14/08/26',
+    );
+    expect(
+      saleSummaryLabel({
+        consumerLabel: 'Ana Souza • ~8',
+        descriptions: ['Coxinha'],
+        netLabel: 'R$ 5,50',
+        paymentKind: 'fiado',
+        creditLabel: 'R$ 2,00',
+        dueDateLabel: 'Sexta-feira • 14/08/26',
+      }),
+    ).toBe(
+      'Ana Souza • ~8 • Coxinha • R$ 5,50 • Fiado • crédito R$ 2,00 • Sexta-feira • 14/08/26',
     );
   });
 });

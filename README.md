@@ -2,7 +2,7 @@
 
 Aplicação web da cantina, planejada para Google Apps Script + Google Sheets + Google Drive.
 
-O projeto está na Fase 16 (`0.1.0-dev`): juros em cobrança específica e renegociação de vencimento, só pela dona. Crédito pessoal fica na Fase 17. O caixa físico fica na Fase 21.
+O projeto está na Fase 17 (`0.1.0-dev`): crédito pessoal com ledger, consumo no fiado e devolução só pela dona. Crédito de responsável fica na Fase 18. O caixa físico fica na Fase 21.
 
 Consulte:
 

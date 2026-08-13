@@ -13,6 +13,7 @@ import {
   SALES_MIGRATION_ID,
   RECEIVABLES_MIGRATION_ID,
   PAYMENTS_MIGRATION_ID,
+  CREDITS_MIGRATION_ID,
 } from '../../src/server/sheets/schema';
 
 describe('setupSchema', () => {
@@ -31,7 +32,7 @@ describe('setupSchema', () => {
     expect(first).toEqual({
       ok: true,
       data: {
-        schemaVersion: 11,
+        schemaVersion: 12,
         appliedMigrations: [
           FOUNDATION_MIGRATION_ID,
           OPERATION_REQUESTS_MIGRATION_ID,
@@ -44,11 +45,12 @@ describe('setupSchema', () => {
           SALES_MIGRATION_ID,
           RECEIVABLES_MIGRATION_ID,
           PAYMENTS_MIGRATION_ID,
+          CREDITS_MIGRATION_ID,
         ],
       },
     });
     expect(second).toEqual(first);
-    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(11);
+    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(12);
     expect(sheets.get('_meta')?.getHeaders()).toEqual(['key', 'value']);
     expect(sheets.get('_operation_requests')?.getHeaders()).toEqual([
       'request_id',
@@ -231,6 +233,36 @@ describe('setupSchema', () => {
       'student_id',
       'amount_cents',
     ]);
+    expect(sheets.get('_credit_accounts')?.getHeaders()).toEqual([
+      'id',
+      'owner_type',
+      'owner_student_id',
+      'owner_guardian_id',
+      'active',
+      'created_at',
+    ]);
+    expect(sheets.get('_credit_account_students')?.getHeaders()).toEqual([
+      'credit_account_id',
+      'student_id',
+      'can_use',
+      'active',
+    ]);
+    expect(sheets.get('_credit_movements')?.getHeaders()).toEqual([
+      'credit_account_id',
+      'kind',
+      'amount_delta_cents',
+      'source_type',
+      'source_id',
+      'student_id',
+      'created_by',
+      'created_at',
+      'note',
+    ]);
+    expect(sheets.get('_payment_credit_allocations')?.getHeaders()).toEqual([
+      'payment_id',
+      'credit_account_id',
+      'amount_cents',
+    ]);
   });
 
   it('applies only the operation-requests migration when foundation already exists', () => {
@@ -274,9 +306,10 @@ describe('setupSchema', () => {
         SALES_MIGRATION_ID,
         RECEIVABLES_MIGRATION_ID,
         PAYMENTS_MIGRATION_ID,
+        CREDITS_MIGRATION_ID,
       ]);
     }
-    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(11);
+    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(12);
   });
 
   it('refuses PROD', () => {

@@ -29,6 +29,11 @@ import {
   PAYMENTS_MIGRATION_ID,
   PAYMENTS_SHEET,
   PAYMENT_ALLOCATIONS_SHEET,
+  CREDITS_MIGRATION_ID,
+  CREDIT_ACCOUNTS_SHEET,
+  CREDIT_ACCOUNT_STUDENTS_SHEET,
+  CREDIT_MOVEMENTS_SHEET,
+  PAYMENT_CREDIT_ALLOCATIONS_SHEET,
   SCHOOL_YEARS_SHEET,
   SESSIONS_SHEET,
   SETTINGS_SHEET,
@@ -146,6 +151,17 @@ export const PAYMENTS_MIGRATION: Migration = {
   ]),
 };
 
+export const CREDITS_MIGRATION: Migration = {
+  id: CREDITS_MIGRATION_ID,
+  description: 'Cria contas de crédito, movimentos e alocações em crédito',
+  checksum: checksumHeaders([
+    ...CREDIT_ACCOUNTS_SHEET.headers,
+    ...CREDIT_ACCOUNT_STUDENTS_SHEET.headers,
+    ...CREDIT_MOVEMENTS_SHEET.headers,
+    ...PAYMENT_CREDIT_ALLOCATIONS_SHEET.headers,
+  ]),
+};
+
 export const MIGRATION_CATALOG: readonly Migration[] = [
   FOUNDATION_MIGRATION,
   OPERATION_REQUESTS_MIGRATION,
@@ -158,6 +174,7 @@ export const MIGRATION_CATALOG: readonly Migration[] = [
   SALES_MIGRATION,
   RECEIVABLES_MIGRATION,
   PAYMENTS_MIGRATION,
+  CREDITS_MIGRATION,
 ];
 
 export function pendingMigrations(

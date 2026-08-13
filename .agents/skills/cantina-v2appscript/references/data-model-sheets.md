@@ -123,7 +123,7 @@ Invariante: soma settlements = net_total. Kinds desta fase: `pix`, `cash` (valor
 
 `_receivable_due_date_history`: receivable_id, old_due_date, new_due_date, reason, changed_by, changed_at.
 
-Saldo é derivado de charges, pagamentos e reversões; não de um campo editável. A venda fiado cria recebível `open` com charge `principal`/`sale`. Pagamento parcial grava alocações; o restante some da agenda quando chega a zero. Juros (Fase 16) é charge `interest` na cobrança escolhida, com motivo. Renegociação atualiza `due_date` e grava `_receivable_due_date_history`. Schema version continua 11 (`011_payments`).
+Saldo é derivado de charges, pagamentos e reversões; não de um campo editável. A venda fiado cria recebível `open` com charge `principal`/`sale`. Pagamento parcial grava alocações; o restante some da agenda quando chega a zero. Juros (Fase 16) é charge `interest` na cobrança escolhida, com motivo. Renegociação atualiza `due_date` e grava `_receivable_due_date_history`. Crédito pessoal (Fase 17) consome o saldo no fiado e o depósito quita a dívida antes; schema version 12 (`012_credits`).
 
 ## Pagamentos
 
@@ -131,7 +131,7 @@ Saldo é derivado de charges, pagamentos e reversões; não de um campo editáve
 
 `_payment_allocations`: payment_id, receivable_id, student_id, amount_cents.
 
-Todo valor recebido precisa ser alocado. Na Fase 15 o pagador é o aluno da dívida (`payer_student_id`); `payer_guardian_id` fica vazio até a Fase 19. Métodos: `pix` ou `cash`. Status: `completed`. Modos: dívida mais antiga, selecionadas ou alocação manual. `_payment_credit_allocations` fica para as fases de crédito.
+Todo valor recebido precisa ser alocado. Na Fase 15 o pagador é o aluno da dívida (`payer_student_id`); `payer_guardian_id` fica vazio até a Fase 19. Métodos: `pix` ou `cash`. Status: `completed`. Modos: dívida mais antiga, selecionadas ou alocação manual. Na Fase 17, sobra de depósito de crédito pessoal vai para `_payment_credit_allocations`.
 
 ## Créditos
 
@@ -141,7 +141,7 @@ Todo valor recebido precisa ser alocado. Na Fase 15 o pagador é o aluno da dív
 
 `_credit_movements`: credit_account_id, kind, amount_delta_cents, source_type, source_id, student_id, created_by, created_at, note.
 
-Saldo = soma dos movimentos.
+Saldo = soma dos movimentos. Conta pessoal: `owner_type=student`. Fiado consome crédito pessoal primeiro. Depósito quita dívida pessoal oldest-first; sobra vira movimento `deposit`. Devolução da dona é movimento `refund`.
 
 ## Estoque
 

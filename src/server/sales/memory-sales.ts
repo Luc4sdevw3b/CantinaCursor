@@ -1,4 +1,18 @@
 import {
+  CREDIT_INSUFFICIENT_ERROR,
+  CREDIT_KIND_DEPOSIT,
+  CREDIT_KIND_REFUND,
+  CREDIT_KIND_SALE,
+  CREDIT_OWNER_STUDENT,
+  CREDIT_SOURCE_PAYMENT,
+  CREDIT_SOURCE_REFUND,
+  CREDIT_SOURCE_SALE,
+  CREDIT_STUDENT_REQUIRED_ERROR,
+  creditSummaryLabel,
+  planCreditDeposit,
+  planCreditRefund,
+} from '../../domain/credit';
+import {
   agendaBucket,
   dueDateShortcuts,
   formatCivilDisplay,
@@ -38,6 +52,8 @@ import {
   SALE_STATUS_PAID,
   SETTLEMENT_CHANGE,
   SETTLEMENT_CASH,
+  SETTLEMENT_CREDIT,
+  SETTLEMENT_FIADO,
   paymentKindFromSettlements,
   planSaleLine,
   planSaleTotals,
@@ -112,6 +128,15 @@ export interface PaymentView {
   status: typeof PAYMENT_STATUS_COMPLETED;
   summaryLabel: string;
   createdAt: string;
+}
+
+export interface CreditView {
+  id: string;
+  studentId: string;
+  studentLabel: string;
+  balanceCents: number;
+  balanceLabel: string;
+  summaryLabel: string;
 }
 
 export interface DueDateHistoryView {
@@ -210,6 +235,40 @@ interface PaymentAllocationRecord {
   amount_cents: string;
 }
 
+interface PaymentCreditAllocationRecord {
+  payment_id: string;
+  credit_account_id: string;
+  amount_cents: string;
+}
+
+interface CreditAccountRecord {
+  id: string;
+  owner_type: typeof CREDIT_OWNER_STUDENT;
+  owner_student_id: string;
+  owner_guardian_id: string;
+  active: string;
+  created_at: string;
+}
+
+interface CreditAccountStudentRecord {
+  credit_account_id: string;
+  student_id: string;
+  can_use: string;
+  active: string;
+}
+
+interface CreditMovementRecord {
+  credit_account_id: string;
+  kind: string;
+  amount_delta_cents: string;
+  source_type: string;
+  source_id: string;
+  student_id: string;
+  created_by: string;
+  created_at: string;
+  note: string;
+}
+
 interface DueDateHistoryRecord {
   receivable_id: string;
   old_due_date: string;
@@ -238,6 +297,10 @@ export class MemorySales {
   private charges: ReceivableChargeRecord[] = [];
   private payments: PaymentRecord[] = [];
   private allocations: PaymentAllocationRecord[] = [];
+  private creditAccounts: CreditAccountRecord[] = [];
+  private creditAccountStudents: CreditAccountStudentRecord[] = [];
+  private creditMovements: CreditMovementRecord[] = [];
+  private paymentCreditAllocations: PaymentCreditAllocationRecord[] = [];
   private dueDateHistory: DueDateHistoryRecord[] = [];
 
   constructor(
@@ -370,6 +433,128 @@ export class MemorySales {
       });
     }
     return ok(this.toPayment(payment));
+  }
+
+  listCreditAccounts(): Result<CreditView[]> {
+    return ok(
+      this.creditAccounts
+        .filter((account) => account.owner_type === CREDIT_OWNER_STUDENT)
+        .slice()
+        .reverse()
+        .map((account) => this.toCredit(account)),
+    );
+  }
+
+  depositPersonalCredit(input: {
+    studentId?: string | null;
+    amountCents: unknown;
+    method: unknown;
+  }): Result<CreditView> {
+    if (!input.studentId) {
+      return err(CREDIT_STUDENT_REQUIRED_ERROR);
+    }
+    const student = this.roster.getStudent(input.studentId);
+    if (!student.ok) {
+      return err(student.error);
+    }
+    const method = parsePaymentMethod(input.method);
+    if (!method.ok) {
+      return err(method.error);
+    }
+    const planned = planCreditDeposit({
+      amountCents: input.amountCents,
+      receivables: this.receivables
+        .filter((item) => item.charged_student_id === student.data.id)
+        .map((item) => ({
+          id: item.id,
+          charged_student_id: item.charged_student_id,
+          due_date: item.due_date,
+          created_at: item.created_at,
+          remaining_cents: this.remainingCents(item.id),
+        })),
+    });
+    if (!planned.ok) {
+      return err(planned.error);
+    }
+    const now = this.nowIso();
+    const payment: PaymentRecord = {
+      id: this.createId(),
+      payer_guardian_id: '',
+      payer_student_id: student.data.id,
+      method: method.data,
+      amount_received_cents: String(input.amountCents),
+      status: PAYMENT_STATUS_COMPLETED,
+      created_by: LOCAL_ACTOR_ID,
+      created_at: now,
+      note: '',
+    };
+    this.payments.push(payment);
+    for (const row of planned.data.allocations) {
+      this.allocations.push({
+        payment_id: payment.id,
+        receivable_id: row.receivable_id,
+        student_id: row.student_id,
+        amount_cents: row.amount_cents,
+      });
+    }
+    const account = this.ensurePersonalCreditAccount(student.data.id, now);
+    if (planned.data.creditCents > 0) {
+      this.creditMovements.push({
+        credit_account_id: account.id,
+        kind: CREDIT_KIND_DEPOSIT,
+        amount_delta_cents: String(planned.data.creditCents),
+        source_type: CREDIT_SOURCE_PAYMENT,
+        source_id: payment.id,
+        student_id: student.data.id,
+        created_by: LOCAL_ACTOR_ID,
+        created_at: now,
+        note: '',
+      });
+      this.paymentCreditAllocations.push({
+        payment_id: payment.id,
+        credit_account_id: account.id,
+        amount_cents: String(planned.data.creditCents),
+      });
+    }
+    return ok(this.toCredit(account));
+  }
+
+  refundPersonalCredit(input: {
+    studentId?: string | null;
+    amountCents: unknown;
+    reason: unknown;
+  }): Result<CreditView> {
+    if (!input.studentId) {
+      return err(CREDIT_STUDENT_REQUIRED_ERROR);
+    }
+    const student = this.roster.getStudent(input.studentId);
+    if (!student.ok) {
+      return err(student.error);
+    }
+    const account = this.findPersonalCreditAccount(student.data.id);
+    const planned = planCreditRefund({
+      amountCents: input.amountCents,
+      balanceCents: account ? this.creditBalanceCents(account.id) : 0,
+      reason: input.reason,
+    });
+    if (!planned.ok) {
+      return err(planned.error);
+    }
+    if (!account) {
+      return err(CREDIT_INSUFFICIENT_ERROR);
+    }
+    this.creditMovements.push({
+      credit_account_id: account.id,
+      kind: CREDIT_KIND_REFUND,
+      amount_delta_cents: String(-Number(planned.data.amount_cents)),
+      source_type: CREDIT_SOURCE_REFUND,
+      source_id: '',
+      student_id: student.data.id,
+      created_by: LOCAL_ACTOR_ID,
+      created_at: this.nowIso(),
+      note: planned.data.note,
+    });
+    return ok(this.toCredit(account));
   }
 
   addReceivableInterest(input: {
@@ -511,11 +696,16 @@ export class MemorySales {
       consumerId = student.data.id;
     }
     const totals = planSaleTotals(planned);
+    const creditBalanceCents =
+      input.paymentKind === PAYMENT_FIADO && consumerId
+        ? this.personalCreditBalance(consumerId)
+        : 0;
     const settlements = planSettlements({
       paymentKind: input.paymentKind,
       netTotalCents: Number(totals.net_total_cents),
       pixAmountCents: input.pixAmountCents,
       cashTenderedCents: input.cashTenderedCents,
+      creditBalanceCents,
     });
     if (!settlements.ok) {
       return err(settlements.error);
@@ -525,14 +715,19 @@ export class MemorySales {
       if (!consumerId) {
         return err(FIADO_STUDENT_REQUIRED_ERROR);
       }
-      const plannedFiado = planFiadoInstallments({
-        netTotalCents: Number(totals.net_total_cents),
-        installments: input.installments ?? [],
-      });
-      if (!plannedFiado.ok) {
-        return err(plannedFiado.error);
+      const fiadoCents = settlements.data.rows
+        .filter((row) => row.kind === SETTLEMENT_FIADO)
+        .reduce((total, row) => total + Number(row.amount_cents), 0);
+      if (fiadoCents > 0) {
+        const plannedFiado = planFiadoInstallments({
+          netTotalCents: fiadoCents,
+          installments: input.installments ?? [],
+        });
+        if (!plannedFiado.ok) {
+          return err(plannedFiado.error);
+        }
+        installments = plannedFiado.data;
       }
-      installments = plannedFiado.data;
     }
     const now = this.nowIso();
     const sale: SaleRecord = {
@@ -597,6 +792,23 @@ export class MemorySales {
         reversal_id: '',
       });
     }
+    const creditUsedCents = settlements.data.rows
+      .filter((row) => row.kind === SETTLEMENT_CREDIT)
+      .reduce((total, row) => total + Number(row.amount_cents), 0);
+    if (creditUsedCents > 0 && consumerId) {
+      const account = this.ensurePersonalCreditAccount(consumerId, now);
+      this.creditMovements.push({
+        credit_account_id: account.id,
+        kind: CREDIT_KIND_SALE,
+        amount_delta_cents: String(-creditUsedCents),
+        source_type: CREDIT_SOURCE_SALE,
+        source_id: sale.id,
+        student_id: consumerId,
+        created_by: LOCAL_ACTOR_ID,
+        created_at: now,
+        note: '',
+      });
+    }
     for (const [productId, quantity] of needed) {
       const moved = this.stock.recordSourceMovement({
         productId,
@@ -627,6 +839,70 @@ export class MemorySales {
       .filter((item) => item.receivable_id === receivableId)
       .reduce((total, item) => total + Number(item.amount_cents), 0);
     return charged - allocated;
+  }
+
+  private findPersonalCreditAccount(
+    studentId: string,
+  ): CreditAccountRecord | null {
+    return (
+      this.creditAccounts.find(
+        (account) =>
+          account.owner_type === CREDIT_OWNER_STUDENT &&
+          account.owner_student_id === studentId &&
+          account.active === 'true',
+      ) ?? null
+    );
+  }
+
+  private creditBalanceCents(accountId: string): number {
+    return this.creditMovements
+      .filter((item) => item.credit_account_id === accountId)
+      .reduce((total, item) => total + Number(item.amount_delta_cents), 0);
+  }
+
+  private personalCreditBalance(studentId: string): number {
+    const account = this.findPersonalCreditAccount(studentId);
+    return account ? this.creditBalanceCents(account.id) : 0;
+  }
+
+  private ensurePersonalCreditAccount(
+    studentId: string,
+    now: string,
+  ): CreditAccountRecord {
+    const existing = this.findPersonalCreditAccount(studentId);
+    if (existing) {
+      return existing;
+    }
+    const account: CreditAccountRecord = {
+      id: this.createId(),
+      owner_type: CREDIT_OWNER_STUDENT,
+      owner_student_id: studentId,
+      owner_guardian_id: '',
+      active: 'true',
+      created_at: now,
+    };
+    this.creditAccounts.push(account);
+    this.creditAccountStudents.push({
+      credit_account_id: account.id,
+      student_id: studentId,
+      can_use: 'true',
+      active: 'true',
+    });
+    return account;
+  }
+
+  private toCredit(account: CreditAccountRecord): CreditView {
+    const studentLabel = this.studentLabel(account.owner_student_id);
+    const balanceCents = this.creditBalanceCents(account.id);
+    const balanceLabel = formatBrl(balanceCents);
+    return {
+      id: account.id,
+      studentId: account.owner_student_id,
+      studentLabel,
+      balanceCents,
+      balanceLabel,
+      summaryLabel: creditSummaryLabel({ studentLabel, balanceLabel }),
+    };
   }
 
   private findOpenReceivable(
@@ -764,6 +1040,10 @@ export class MemorySales {
     const dueDateLabel = dueDateLabelForDates(this.dueDatesForSale(sale.id));
     const netLabel = formatBrl(netTotalCents);
     const changeLabel = changeCents > 0 ? formatBrl(changeCents) : null;
+    const creditCents = settlementRows
+      .filter((item) => item.kind === SETTLEMENT_CREDIT)
+      .reduce((total, item) => total + Number(item.amount_cents), 0);
+    const creditLabel = creditCents > 0 ? formatBrl(creditCents) : null;
     return {
       id: sale.id,
       consumerStudentId: sale.consumer_student_id || null,
@@ -790,6 +1070,7 @@ export class MemorySales {
         paymentKind,
         changeLabel,
         dueDateLabel,
+        creditLabel,
       }),
       createdAt: sale.created_at,
     };

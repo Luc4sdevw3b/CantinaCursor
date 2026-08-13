@@ -497,5 +497,81 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await expect(
       page.getByRole('button', { name: 'Renegociar vencimento' }),
     ).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: 'Devolver crédito' }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: 'Entrar crédito' }),
+    ).toBeVisible();
+  });
+
+  test('uses personal credit on fiado and leaves the remainder', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await page.locator('#credit-student').selectOption({
+      label: 'Ana Souza • ~8',
+    });
+    await page.locator('#credit-amount').fill('2,00');
+    await page.getByRole('button', { name: 'Entrar crédito' }).click();
+    await expect(
+      page.locator('#credits-list').getByText('Ana Souza • ~8 • R$ 2,00', {
+        exact: true,
+      }),
+    ).toBeVisible();
+
+    await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click();
+    await page
+      .locator('#sale-student')
+      .selectOption({ label: 'Ana Souza • ~8' });
+    await page.locator('#sale-payment-kind').selectOption('fiado');
+    await page.locator('#sale-due-tomorrow').click();
+    await page.getByRole('button', { name: 'Confirmar venda' }).click();
+    await expect(
+      page.getByText(
+        'Ana Souza • ~8 • Coxinha • R$ 5,50 • Fiado • crédito R$ 2,00 • Sexta-feira • 14/08/26',
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(
+      page.locator('#credits-list').getByText('Ana Souza • ~8 • R$ 0,00', {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      page
+        .locator('#agenda-upcoming')
+        .getByText('Ana Souza • ~8 • R$ 3,50 • Sexta-feira • 14/08/26', {
+          exact: true,
+        }),
+    ).toBeVisible();
+    await expect(page.getByText('Coxinha • 9', { exact: true })).toBeVisible();
+  });
+
+  test('lets the owner refund personal credit', async ({ page }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await expect(
+      page.getByRole('button', { name: 'Devolver crédito' }),
+    ).toBeVisible();
+    await page.locator('#credit-student').selectOption({
+      label: 'Ana Souza • ~8',
+    });
+    await page.locator('#credit-amount').fill('2,00');
+    await page.getByRole('button', { name: 'Entrar crédito' }).click();
+    await expect(
+      page.locator('#credits-list').getByText('Ana Souza • ~8 • R$ 2,00', {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await page.locator('#credit-refund-amount').fill('2,00');
+    await page.locator('#credit-refund-reason').fill('Devolução pedida');
+    await page.getByRole('button', { name: 'Devolver crédito' }).click();
+    await expect(
+      page.locator('#credits-list').getByText('Ana Souza • ~8 • R$ 0,00', {
+        exact: true,
+      }),
+    ).toBeVisible();
   });
 });

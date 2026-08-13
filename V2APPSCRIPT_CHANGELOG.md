@@ -9,6 +9,46 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-13 15:40 — Implementada a Fase 17: crédito pessoal
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 17
+
+### Pedido / objetivo
+
+- Iniciar a Fase 17: ledger de crédito pessoal, uso opcional, fiado consome crédito primeiro, depósito quita dívida antes e devolução só pela dona.
+
+### Tentativa / implementação
+
+- Migration `012_credits` cria `_credit_accounts`, `_credit_account_students`, `_credit_movements` e `_payment_credit_allocations` (schema version 12). A 011 passa a gravar a versão 11; a 010 continua gravando 10.
+- Conta pessoal preguiçosa (`owner_type=student`). PIX/dinheiro não consomem crédito. Fiado consome o saldo pessoal primeiro e só cria recebível no restante. Depósito (PIX ou dinheiro) quita a dívida pessoal oldest-first; a sobra vira movimento `deposit`. Devolução é movimento `refund`, só da dona (`credits.refund`).
+- Preview local: depósito `R$ 2,00` da Ana; fiado Coxinha amanhã vira `Fiado • crédito R$ 2,00` com agenda `R$ 3,50` em 14/08 e crédito `R$ 0,00`. PIX/dinheiro/fiado/parcial/juros e o health smoke permanecem iguais.
+
+### Resultado
+
+- Fase 17 concluída sobre o ambiente E2E isolado e o preview local.
+- Crédito de responsável é a Fase 18. Caixa, reservas reais e WhatsApp permanecem nas fases seguintes.
+- Nenhum ID Google, token, telefone real ou dado de planilha foi versionado.
+
+### Diferenças do pedido
+
+- Não há checkbox “usar crédito no PIX”: o uso opcional é escolher PIX/dinheiro em vez de fiado.
+
+### Impacto técnico
+
+- `listCreditAccounts`, `depositPersonalCredit` e `refundPersonalCredit` entram no `AppApi`. Botões **Entrar crédito** e **Devolver crédito**. Confirmar venda e Registrar pagamento não mudam de rótulo.
+
+### Testes
+
+- Unit, integração, typecheck, lint, format, build, version:check, validate:skill e E2E local passaram.
+- E2E remoto: smoke de health no deployment novo após `clasp push` + `clasp deploy`.
+
+### Pendências / próxima versão
+
+- Não iniciar a Fase 18 (crédito de responsável) sem pedido explícito.
+
 ## 2026-08-13 15:25 — Implementada a Fase 16: juros e renegociação
 
 **Origem:** Pedido do usuário

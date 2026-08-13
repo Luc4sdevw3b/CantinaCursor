@@ -26,7 +26,7 @@ const FOUNDATION_MIGRATION_CHECKSUM = 'meta|schema_migrations';
 const OPERATION_REQUESTS_MIGRATION_ID = '002_operation_requests';
 const OPERATION_REQUESTS_MIGRATION_CHECKSUM =
   'request_id|operation_type|result_entity_id|status|created_at';
-const CURRENT_SCHEMA_VERSION = 11;
+const CURRENT_SCHEMA_VERSION = 12;
 const BACKUPS_SHEET = '_backups';
 const BACKUPS_HEADERS = [
   'id',
@@ -306,6 +306,50 @@ const PAYMENT_ALLOCATIONS_HEADERS = [
 const PAYMENTS_MIGRATION_ID = '011_payments';
 const PAYMENTS_MIGRATION_CHECKSUM =
   'id|payer_guardian_id|payer_student_id|method|amount_received_cents|status|created_by|created_at|note|payment_id|receivable_id|student_id|amount_cents';
+const CREDIT_ACCOUNTS_SHEET = '_credit_accounts';
+const CREDIT_ACCOUNTS_HEADERS = [
+  'id',
+  'owner_type',
+  'owner_student_id',
+  'owner_guardian_id',
+  'active',
+  'created_at',
+];
+const CREDIT_ACCOUNT_STUDENTS_SHEET = '_credit_account_students';
+const CREDIT_ACCOUNT_STUDENTS_HEADERS = [
+  'credit_account_id',
+  'student_id',
+  'can_use',
+  'active',
+];
+const CREDIT_MOVEMENTS_SHEET = '_credit_movements';
+const CREDIT_MOVEMENTS_HEADERS = [
+  'credit_account_id',
+  'kind',
+  'amount_delta_cents',
+  'source_type',
+  'source_id',
+  'student_id',
+  'created_by',
+  'created_at',
+  'note',
+];
+const PAYMENT_CREDIT_ALLOCATIONS_SHEET = '_payment_credit_allocations';
+const PAYMENT_CREDIT_ALLOCATIONS_HEADERS = [
+  'payment_id',
+  'credit_account_id',
+  'amount_cents',
+];
+const CREDITS_MIGRATION_ID = '012_credits';
+const CREDITS_MIGRATION_CHECKSUM =
+  'id|owner_type|owner_student_id|owner_guardian_id|active|created_at|credit_account_id|student_id|can_use|active|credit_account_id|kind|amount_delta_cents|source_type|source_id|student_id|created_by|created_at|note|payment_id|credit_account_id|amount_cents';
+const CREDIT_OWNER_STUDENT = 'student';
+const CREDIT_KIND_DEPOSIT = 'deposit';
+const CREDIT_KIND_SALE = 'sale';
+const CREDIT_KIND_REFUND = 'refund';
+const CREDIT_SOURCE_PAYMENT = 'payment';
+const CREDIT_SOURCE_SALE = 'sale';
+const CREDIT_SOURCE_REFUND = 'refund';
 const PIX_COPY_TEXT_KEY = 'pix_copy_text';
 const DEFAULT_PIX_COPY_TEXT = 'Chave PIX de teste: cantina-e2e@example.test';
 const SALE_STATUS_PAID = 'paid';
@@ -315,6 +359,7 @@ const SETTLEMENT_PIX = 'pix';
 const SETTLEMENT_CASH = 'cash';
 const SETTLEMENT_CHANGE = 'change';
 const SETTLEMENT_FIADO = 'fiado';
+const SETTLEMENT_CREDIT = 'credit';
 const PAYMENT_MIXED = 'mixed';
 const PAYMENT_FIADO = 'fiado';
 const RECEIVABLE_STATUS_OPEN = 'open';
@@ -374,6 +419,9 @@ const ACTION_ROLES = {
   'receivables.read': ['owner', 'staff'],
   'payments.write': ['owner', 'staff'],
   'receivables.adjust': ['owner'],
+  'credits.read': ['owner', 'staff'],
+  'credits.deposit': ['owner', 'staff'],
+  'credits.refund': ['owner'],
 };
 const BACKUP_FILE_PREFIX = 'cantina-backup';
 const BACKUP_FOLDER_NAME = 'Cantina V2 AppScript E2E backups';
@@ -774,6 +822,10 @@ function resetE2EUnlocked() {
     RECEIVABLE_DUE_DATE_HISTORY_SHEET,
     PAYMENTS_SHEET,
     PAYMENT_ALLOCATIONS_SHEET,
+    CREDIT_ACCOUNTS_SHEET,
+    CREDIT_ACCOUNT_STUDENTS_SHEET,
+    CREDIT_MOVEMENTS_SHEET,
+    PAYMENT_CREDIT_ALLOCATIONS_SHEET,
   ].forEach(function (name) {
     const sheet = spreadsheet.getSheetByName(name);
     if (sheet) {
@@ -840,6 +892,7 @@ function assertKnownMigrations(applied) {
     SALES_MIGRATION_ID,
     RECEIVABLES_MIGRATION_ID,
     PAYMENTS_MIGRATION_ID,
+    CREDITS_MIGRATION_ID,
   ];
   applied.forEach(function (id) {
     if (catalog.indexOf(id) === -1) {
@@ -872,7 +925,8 @@ function setupSchema() {
     applied.indexOf(INVENTORY_MIGRATION_ID) === -1 ||
     applied.indexOf(SALES_MIGRATION_ID) === -1 ||
     applied.indexOf(RECEIVABLES_MIGRATION_ID) === -1 ||
-    applied.indexOf(PAYMENTS_MIGRATION_ID) === -1;
+    applied.indexOf(PAYMENTS_MIGRATION_ID) === -1 ||
+    applied.indexOf(CREDITS_MIGRATION_ID) === -1;
   let pendingCopy = null;
   if (pending) {
     try {
@@ -1073,13 +1127,43 @@ function setupSchema() {
       PAYMENT_ALLOCATIONS_SHEET,
       PAYMENT_ALLOCATIONS_HEADERS,
     );
-    meta.appendRow(['schema_version', String(CURRENT_SCHEMA_VERSION)]);
+    meta.appendRow(['schema_version', '11']);
     migrations.appendRow([
       PAYMENTS_MIGRATION_ID,
       createdAt,
       CANTINA_APP_VERSION,
       PAYMENTS_MIGRATION_CHECKSUM,
       'Cria pagamentos e alocações em recebíveis',
+    ]);
+  }
+  if (applied.indexOf(CREDITS_MIGRATION_ID) === -1) {
+    getOrCreateSheet(
+      spreadsheet,
+      CREDIT_ACCOUNTS_SHEET,
+      CREDIT_ACCOUNTS_HEADERS,
+    );
+    getOrCreateSheet(
+      spreadsheet,
+      CREDIT_ACCOUNT_STUDENTS_SHEET,
+      CREDIT_ACCOUNT_STUDENTS_HEADERS,
+    );
+    getOrCreateSheet(
+      spreadsheet,
+      CREDIT_MOVEMENTS_SHEET,
+      CREDIT_MOVEMENTS_HEADERS,
+    );
+    getOrCreateSheet(
+      spreadsheet,
+      PAYMENT_CREDIT_ALLOCATIONS_SHEET,
+      PAYMENT_CREDIT_ALLOCATIONS_HEADERS,
+    );
+    meta.appendRow(['schema_version', String(CURRENT_SCHEMA_VERSION)]);
+    migrations.appendRow([
+      CREDITS_MIGRATION_ID,
+      createdAt,
+      CANTINA_APP_VERSION,
+      CREDITS_MIGRATION_CHECKSUM,
+      'Cria contas de crédito, movimentos e alocações em crédito',
     ]);
   }
   if (pendingCopy) {
@@ -3789,6 +3873,7 @@ function planSettlementsGs(
   net,
   pixAmountCents,
   cashTenderedCents,
+  creditBalanceCents,
 ) {
   const kind = parsePaymentKindGs(paymentKind);
   if (!Number.isInteger(net) || net <= 0) {
@@ -3805,9 +3890,21 @@ function planSettlementsGs(
     };
   }
   if (kind === PAYMENT_FIADO) {
+    const balance = Number.isInteger(creditBalanceCents)
+      ? Math.max(0, creditBalanceCents)
+      : 0;
+    const creditUsed = Math.min(balance, net);
+    const fiadoCents = net - creditUsed;
+    const rows = [];
+    if (creditUsed > 0) {
+      rows.push({ kind: SETTLEMENT_CREDIT, amount_cents: String(creditUsed) });
+    }
+    if (fiadoCents > 0) {
+      rows.push({ kind: SETTLEMENT_FIADO, amount_cents: String(fiadoCents) });
+    }
     return {
       paymentKind: PAYMENT_FIADO,
-      rows: [{ kind: SETTLEMENT_FIADO, amount_cents: String(net) }],
+      rows: rows,
       cashTenderedCents: 0,
       changeCents: 0,
     };
@@ -3890,7 +3987,10 @@ function paymentKindFromSettlementsGs(rows) {
   const hasFiado = rows.some(function (row) {
     return row.kind === SETTLEMENT_FIADO;
   });
-  if (hasFiado) {
+  const hasCredit = rows.some(function (row) {
+    return row.kind === SETTLEMENT_CREDIT;
+  });
+  if (hasFiado || hasCredit) {
     return PAYMENT_FIADO;
   }
   if (hasPix && hasCash) {
@@ -3909,6 +4009,7 @@ function saleSummaryLabelGs(
   paymentKind,
   changeLabel,
   dueDateLabel,
+  creditLabel,
 ) {
   const base =
     consumerLabel + ' • ' + descriptions.join(', ') + ' • ' + netLabel;
@@ -3921,6 +4022,9 @@ function saleSummaryLabelGs(
   }
   if (paymentKind === PAYMENT_FIADO) {
     extras.push('Fiado');
+  }
+  if (creditLabel) {
+    extras.push('crédito ' + creditLabel);
   }
   if (changeLabel) {
     extras.push('Troco ' + changeLabel);
@@ -3981,6 +4085,14 @@ function toSaleViewGs(sale) {
       return item.due_date;
     });
   const dueDateLabel = dueDateLabelForDatesGs(dueDates);
+  const creditCents = settlementRows
+    .filter(function (item) {
+      return item.kind === SETTLEMENT_CREDIT;
+    })
+    .reduce(function (total, item) {
+      return total + Number(item.amount_cents);
+    }, 0);
+  const creditLabel = creditCents > 0 ? formatBrlGs(creditCents) : null;
   return {
     id: sale.id,
     consumerStudentId: sale.consumer_student_id || null,
@@ -4009,6 +4121,7 @@ function toSaleViewGs(sale) {
       paymentKind,
       changeLabel,
       dueDateLabel,
+      creditLabel,
     ),
     createdAt: sale.created_at,
   };
@@ -4087,11 +4200,16 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
     consumerId = student.id;
   }
   const totals = planSaleTotalsGs(planned);
+  const creditBalance =
+    payload && payload.paymentKind === PAYMENT_FIADO && consumerId
+      ? personalCreditBalanceGs(consumerId)
+      : 0;
   const plannedSettlements = planSettlementsGs(
     payload && payload.paymentKind,
     Number(totals.net_total_cents),
     payload && payload.pixAmountCents,
     payload && payload.cashTenderedCents,
+    creditBalance,
   );
   let installments = [];
   if (plannedSettlements.paymentKind === PAYMENT_FIADO) {
@@ -4100,10 +4218,19 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
         'FIADO_STUDENT_REQUIRED: Fiado precisa de um aluno na conta.',
       );
     }
-    installments = planFiadoInstallmentsGs(
-      Number(totals.net_total_cents),
-      payload && payload.installments,
-    );
+    const fiadoCents = plannedSettlements.rows
+      .filter(function (row) {
+        return row.kind === SETTLEMENT_FIADO;
+      })
+      .reduce(function (total, row) {
+        return total + Number(row.amount_cents);
+      }, 0);
+    if (fiadoCents > 0) {
+      installments = planFiadoInstallmentsGs(
+        fiadoCents,
+        payload && payload.installments,
+      );
+    }
   }
   const now = new Date().toISOString();
   const saleId = Utilities.getUuid();
@@ -4181,6 +4308,27 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
       '',
     ]);
   });
+  const creditUsedCents = plannedSettlements.rows
+    .filter(function (row) {
+      return row.kind === SETTLEMENT_CREDIT;
+    })
+    .reduce(function (total, row) {
+      return total + Number(row.amount_cents);
+    }, 0);
+  if (creditUsedCents > 0 && consumerId) {
+    const account = ensurePersonalCreditAccountGs(consumerId, userId, now);
+    openNamedSheet(CREDIT_MOVEMENTS_SHEET, CREDIT_MOVEMENTS_HEADERS).appendRow([
+      account.id,
+      CREDIT_KIND_SALE,
+      String(-creditUsedCents),
+      CREDIT_SOURCE_SALE,
+      saleId,
+      consumerId,
+      userId,
+      now,
+      '',
+    ]);
+  }
   const day = Object.keys(needed).length
     ? requireInventoryDayGs(businessDate)
     : null;
@@ -4845,5 +4993,262 @@ function renegotiateReceivable(sessionToken, payload) {
   return withScriptLock(function () {
     setupSchema();
     return renegotiateReceivableUnlocked(session.user_id, payload || {});
+  });
+}
+
+function listCreditAccountRecords() {
+  return listSheetRecords(
+    openNamedSheet(CREDIT_ACCOUNTS_SHEET, CREDIT_ACCOUNTS_HEADERS),
+    CREDIT_ACCOUNTS_HEADERS,
+  );
+}
+
+function listCreditMovementRecords() {
+  return listSheetRecords(
+    openNamedSheet(CREDIT_MOVEMENTS_SHEET, CREDIT_MOVEMENTS_HEADERS),
+    CREDIT_MOVEMENTS_HEADERS,
+  );
+}
+
+function findPersonalCreditAccountGs(studentId) {
+  const accounts = listCreditAccountRecords().filter(function (account) {
+    return (
+      account.owner_type === CREDIT_OWNER_STUDENT &&
+      account.owner_student_id === studentId &&
+      account.active === 'true'
+    );
+  });
+  return accounts.length ? accounts[accounts.length - 1] : null;
+}
+
+function creditBalanceCentsGs(accountId) {
+  return listCreditMovementRecords()
+    .filter(function (item) {
+      return item.credit_account_id === accountId;
+    })
+    .reduce(function (total, item) {
+      return total + Number(item.amount_delta_cents);
+    }, 0);
+}
+
+function personalCreditBalanceGs(studentId) {
+  const account = findPersonalCreditAccountGs(studentId);
+  return account ? creditBalanceCentsGs(account.id) : 0;
+}
+
+function ensurePersonalCreditAccountGs(studentId, userId, now) {
+  const existing = findPersonalCreditAccountGs(studentId);
+  if (existing) {
+    return existing;
+  }
+  const accountId = Utilities.getUuid();
+  openNamedSheet(CREDIT_ACCOUNTS_SHEET, CREDIT_ACCOUNTS_HEADERS).appendRow([
+    accountId,
+    CREDIT_OWNER_STUDENT,
+    studentId,
+    '',
+    'true',
+    now,
+  ]);
+  openNamedSheet(
+    CREDIT_ACCOUNT_STUDENTS_SHEET,
+    CREDIT_ACCOUNT_STUDENTS_HEADERS,
+  ).appendRow([accountId, studentId, 'true', 'true']);
+  return {
+    id: accountId,
+    owner_type: CREDIT_OWNER_STUDENT,
+    owner_student_id: studentId,
+    owner_guardian_id: '',
+    active: 'true',
+    created_at: now,
+  };
+}
+
+function creditSummaryLabelGs(studentLabel, balanceLabel) {
+  return studentLabel + ' • ' + balanceLabel;
+}
+
+function toCreditViewGs(account) {
+  const student = latestStudentById(account.owner_student_id);
+  const studentLabel = student.full_name + ' • ' + studentAgeLabelGs(student);
+  const balanceCents = creditBalanceCentsGs(account.id);
+  const balanceLabel = formatBrlGs(balanceCents);
+  return {
+    id: account.id,
+    studentId: account.owner_student_id,
+    studentLabel: studentLabel,
+    balanceCents: balanceCents,
+    balanceLabel: balanceLabel,
+    summaryLabel: creditSummaryLabelGs(studentLabel, balanceLabel),
+  };
+}
+
+function planCreditDepositGs(amountCents, receivables) {
+  var amount;
+  try {
+    amount = parseCentsGs(amountCents);
+  } catch (error) {
+    throw new Error(
+      'INVALID_CENTS: O valor do crédito precisa ser um valor em centavos, número inteiro.',
+    );
+  }
+  if (amount <= 0) {
+    throw new Error(
+      'INVALID_CENTS: O valor do crédito precisa ser um valor em centavos, número inteiro.',
+    );
+  }
+  const open = sortOldestFirstGs(
+    receivables.filter(function (item) {
+      return item.remaining_cents > 0;
+    }),
+  );
+  let leftover = amount;
+  const allocations = [];
+  open.forEach(function (item) {
+    if (leftover <= 0) {
+      return;
+    }
+    const applied = Math.min(item.remaining_cents, leftover);
+    allocations.push({
+      receivable_id: item.id,
+      student_id: item.charged_student_id,
+      amount_cents: String(applied),
+    });
+    leftover -= applied;
+  });
+  return { allocations: allocations, creditCents: leftover };
+}
+
+function depositPersonalCreditUnlocked(userId, payload) {
+  const studentId =
+    payload && payload.studentId ? String(payload.studentId) : '';
+  if (!studentId) {
+    throw new Error('CREDIT_STUDENT_REQUIRED: Escolha o aluno do crédito.');
+  }
+  const student = latestStudentById(studentId);
+  const method = parsePaymentMethodGs(payload && payload.method);
+  const planned = planCreditDepositGs(
+    payload && payload.amountCents,
+    allocatableReceivablesGs(student.id),
+  );
+  const now = new Date().toISOString();
+  const paymentId = Utilities.getUuid();
+  openNamedSheet(PAYMENTS_SHEET, PAYMENTS_HEADERS).appendRow([
+    paymentId,
+    '',
+    student.id,
+    method,
+    String(payload.amountCents),
+    PAYMENT_STATUS_COMPLETED,
+    userId,
+    now,
+    '',
+  ]);
+  const allocationsSheet = openNamedSheet(
+    PAYMENT_ALLOCATIONS_SHEET,
+    PAYMENT_ALLOCATIONS_HEADERS,
+  );
+  planned.allocations.forEach(function (row) {
+    allocationsSheet.appendRow([
+      paymentId,
+      row.receivable_id,
+      row.student_id,
+      row.amount_cents,
+    ]);
+  });
+  const account = ensurePersonalCreditAccountGs(student.id, userId, now);
+  if (planned.creditCents > 0) {
+    openNamedSheet(CREDIT_MOVEMENTS_SHEET, CREDIT_MOVEMENTS_HEADERS).appendRow([
+      account.id,
+      CREDIT_KIND_DEPOSIT,
+      String(planned.creditCents),
+      CREDIT_SOURCE_PAYMENT,
+      paymentId,
+      student.id,
+      userId,
+      now,
+      '',
+    ]);
+    openNamedSheet(
+      PAYMENT_CREDIT_ALLOCATIONS_SHEET,
+      PAYMENT_CREDIT_ALLOCATIONS_HEADERS,
+    ).appendRow([paymentId, account.id, String(planned.creditCents)]);
+  }
+  return toCreditViewGs(account);
+}
+
+function refundPersonalCreditUnlocked(userId, payload) {
+  const studentId =
+    payload && payload.studentId ? String(payload.studentId) : '';
+  if (!studentId) {
+    throw new Error('CREDIT_STUDENT_REQUIRED: Escolha o aluno do crédito.');
+  }
+  const student = latestStudentById(studentId);
+  const account = findPersonalCreditAccountGs(student.id);
+  const balance = account ? creditBalanceCentsGs(account.id) : 0;
+  var amount;
+  try {
+    amount = parseCentsGs(payload && payload.amountCents);
+  } catch (error) {
+    throw new Error(
+      'INVALID_CENTS: O valor do crédito precisa ser um valor em centavos, número inteiro.',
+    );
+  }
+  if (amount <= 0) {
+    throw new Error(
+      'INVALID_CENTS: O valor do crédito precisa ser um valor em centavos, número inteiro.',
+    );
+  }
+  if (amount > balance) {
+    throw new Error(
+      'CREDIT_INSUFFICIENT: Não há crédito suficiente para devolver.',
+    );
+  }
+  const reason = parseRequiredReasonGs(
+    payload && payload.reason,
+    'CREDIT_REASON_REQUIRED',
+    'Informe o motivo da devolução.',
+  );
+  const now = new Date().toISOString();
+  openNamedSheet(CREDIT_MOVEMENTS_SHEET, CREDIT_MOVEMENTS_HEADERS).appendRow([
+    account.id,
+    CREDIT_KIND_REFUND,
+    String(-amount),
+    CREDIT_SOURCE_REFUND,
+    '',
+    student.id,
+    userId,
+    now,
+    reason,
+  ]);
+  return toCreditViewGs(account);
+}
+
+function listCreditAccounts(sessionToken) {
+  requireAction(sessionToken, 'credits.read');
+  return listCreditAccountRecords()
+    .filter(function (account) {
+      return account.owner_type === CREDIT_OWNER_STUDENT;
+    })
+    .slice()
+    .reverse()
+    .map(function (account) {
+      return toCreditViewGs(account);
+    });
+}
+
+function depositPersonalCredit(sessionToken, payload) {
+  const session = requireAction(sessionToken, 'credits.deposit');
+  return withScriptLock(function () {
+    setupSchema();
+    return depositPersonalCreditUnlocked(session.user_id, payload || {});
+  });
+}
+
+function refundPersonalCredit(sessionToken, payload) {
+  const session = requireAction(sessionToken, 'credits.refund');
+  return withScriptLock(function () {
+    setupSchema();
+    return refundPersonalCreditUnlocked(session.user_id, payload || {});
   });
 }
