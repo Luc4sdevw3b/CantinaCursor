@@ -257,7 +257,14 @@ export interface CreateSaleInput {
     discountKind?: string | null;
     discountInput?: unknown;
   }>;
-  paymentKind: 'pix';
+  paymentKind: 'pix' | 'cash' | 'mixed';
+  pixAmountCents?: number;
+  cashTenderedCents?: number;
+}
+
+export interface SaleSettlement {
+  kind: string;
+  amountCents: number;
 }
 
 export interface SaleItem {
@@ -274,19 +281,23 @@ export interface Sale {
   consumerStudentId: string | null;
   consumerLabel: string;
   status: 'paid';
-  paymentKind: 'pix';
+  paymentKind: 'pix' | 'cash' | 'mixed';
   grossTotalCents: number;
   discountTotalCents: number;
   netTotalCents: number;
   netLabel: string;
+  cashTenderedCents: number;
+  changeCents: number;
+  changeLabel: string | null;
+  settlements: SaleSettlement[];
   items: SaleItem[];
   summaryLabel: string;
   createdAt: string;
 }
 
 /**
- * Contrato técnico da Fase 12.
- * Sem dinheiro, fiado, crédito como movimento, caixa, reservas reais ou envio de WhatsApp.
+ * Contrato técnico da Fase 13.
+ * Sem fiado, crédito como movimento, caixa físico, reservas reais ou envio de WhatsApp.
  */
 export interface AppApi {
   getHealth(): Promise<AppHealth>;

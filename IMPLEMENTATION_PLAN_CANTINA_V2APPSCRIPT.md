@@ -190,6 +190,8 @@ Dinheiro e settlements são a Fase 13.
 - validações;
 - integração posterior ao caixa.
 
+Fiado e calendário são a Fase 14.
+
 # Marco E — Fiado e créditos
 
 ## Fase 14 — Recebíveis e calendário

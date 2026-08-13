@@ -37,7 +37,7 @@ Testar:
 - responsáveis: vários por aluno, um principal, irmãos por responsável compartilhado, autorização direcional, idade operacional para pedir responsável;
 - produtos: preço em centavos, categorias, histórico de preço, item avulso só da dona e fora do cardápio;
 - estoque diário: abertura por produto controlado, ledger, ajuste da dona com motivo, quantidade atual e `ACABOU` no zero;
-- vendas PIX: carrinho com snapshot, desconto só da dona, venda anônima ou de aluno, settlement PIX = líquido e baixa atômica no estoque;
+- vendas PIX, dinheiro e misto: carrinho com snapshot, desconto só da dona, venda anônima ou de aluno, settlements cuja soma é o líquido (PIX, dinheiro recebido e troco negativo) e baixa atômica no estoque;
 - validações.
 
 ## Integração remota — E2E env
@@ -91,6 +91,7 @@ Mínimo obrigatório do smoke local:
 13. cardápio fictício após o login (`Coxinha • Salgados • R$ 5,50`); item avulso visível só para a dona;
 14. estoque do dia após o login (`Coxinha • 10`, `Suco de uva • ACABOU`); ajuste visível só para a dona.
 15. venda PIX anônima após o login (`Anônima • Coxinha • R$ 5,50`) e estoque `Coxinha • 9`.
+16. venda dinheiro com troco após o login (`Anônima • Coxinha • R$ 5,50 • Dinheiro • Troco R$ 4,50`) e estoque `Coxinha • 9`.
 
 Não confundir com o ambiente Google E2E da Fase 3.
 

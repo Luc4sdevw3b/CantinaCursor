@@ -9,6 +9,47 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-13 14:22 — Implementada a Fase 13: dinheiro e settlements
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 13
+
+### Pedido / objetivo
+
+- Rodar a Fase 13: dinheiro, PIX + dinheiro, settlements, validações e integração posterior ao caixa.
+
+### Tentativa / implementação
+
+- Sem nova migration: `_sale_settlements` passa a aceitar `pix`, `cash` (valor recebido) e `change` (troco negativo). A soma continua igual ao líquido.
+- PIX cobre o total. Dinheiro exige valor recebido ≥ líquido e grava o troco. Misto exige PIX parcial + dinheiro que cubra o restante. Recebido insuficiente recusa `INSUFFICIENT_CASH`.
+- Preview local e E2E mantêm `Anônima • Coxinha • R$ 5,50` no PIX e mostram `Anônima • Coxinha • R$ 5,50 • Dinheiro • Troco R$ 4,50` ao receber R$ 10,00. Estoque continua baixando. Caixa físico não foi aberto (Fase 21).
+- Health smoke permanece igual. Schema version continua 9.
+
+### Resultado
+
+- Fase 13 concluída sobre o ambiente E2E isolado e o preview local.
+- Fiado, crédito, caixa, reservas reais e WhatsApp permanecem na Fase 14 em diante.
+- Nenhum ID Google, token, telefone real ou dado de planilha foi versionado.
+
+### Diferenças do pedido
+
+- Settlements de dinheiro ficam gravados agora; o caixa físico (abertura, troco inicial, fechamento) continua na Fase 21, como o plano pede “integração posterior ao caixa”.
+
+### Impacto técnico
+
+- `createSale` aceita `paymentKind` `pix` | `cash` | `mixed`, com `pixAmountCents` e `cashTenderedCents`. Dona e funcionário vendem nos três meios; desconto continua só da dona.
+
+### Testes
+
+- Unit, integração, typecheck, lint, format, build, version:check, validate:skill e E2E local passaram.
+- E2E remoto: smoke de health no deployment novo após `clasp push` + `clasp deploy`.
+
+### Pendências / próxima versão
+
+- Não iniciar a Fase 14 (recebíveis e calendário) sem pedido explícito.
+
 ## 2026-08-13 14:15 — Implementada a Fase 12: carrinho e PIX
 
 **Origem:** Pedido do usuário

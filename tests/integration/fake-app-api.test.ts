@@ -326,4 +326,54 @@ describe('FakeAppApi', () => {
       }),
     ).rejects.toThrow('FORBIDDEN');
   });
+
+  it('records cash with change and mixed PIX plus cash', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const coxinha = (await api.listProducts()).find(
+      (item) => item.name === 'Coxinha',
+    );
+    if (!coxinha) {
+      throw new Error('venda local incompleta');
+    }
+
+    await expect(
+      api.createSale({
+        items: [{ productId: coxinha.id, quantity: 1 }],
+        paymentKind: 'cash',
+        cashTenderedCents: 400,
+      }),
+    ).rejects.toThrow('INSUFFICIENT_CASH');
+
+    const cash = await api.createSale({
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'cash',
+      cashTenderedCents: 1000,
+    });
+    expect(cash.summaryLabel).toBe(
+      'Anônima • Coxinha • R$ 5,50 • Dinheiro • Troco R$ 4,50',
+    );
+    expect(cash.changeCents).toBe(450);
+    expect(
+      cash.settlements.some(
+        (item) => item.kind === 'change' && item.amountCents === -450,
+      ),
+    ).toBe(true);
+    expect(
+      (await api.listInventoryBalances()).items.find(
+        (item) => item.productName === 'Coxinha',
+      )?.physicalQuantity,
+    ).toBe(9);
+
+    const mixed = await api.createSale({
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'mixed',
+      pixAmountCents: 300,
+      cashTenderedCents: 300,
+    });
+    expect(mixed.summaryLabel).toBe(
+      'Anônima • Coxinha • R$ 5,50 • PIX + dinheiro • Troco R$ 0,50',
+    );
+    expect(mixed.paymentKind).toBe('mixed');
+  });
 });

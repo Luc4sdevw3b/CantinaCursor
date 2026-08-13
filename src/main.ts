@@ -65,10 +65,10 @@ app.innerHTML = `
     <section class="next-step" aria-labelledby="next-step-title">
       <p class="step-number">01</p>
       <div>
-        <h2 id="next-step-title">Carrinho e PIX</h2>
-        <p>Venda com snapshot de preço, desconto da dona e baixa atômica no estoque.</p>
+        <h2 id="next-step-title">Dinheiro e settlements</h2>
+        <p>PIX, dinheiro com troco e PIX + dinheiro, com baixa atômica no estoque.</p>
       </div>
-      <span class="phase-badge">Fase 12</span>
+      <span class="phase-badge">Fase 13</span>
     </section>
 
     <section class="students-panel" id="students-panel" hidden>
@@ -242,7 +242,24 @@ app.innerHTML = `
             <option value="">Venda anônima</option>
           </select>
         </label>
-        <button type="submit">Confirmar PIX</button>
+        <label>
+          Pagamento
+          <select id="sale-payment-kind">
+            <option value="pix">PIX</option>
+            <option value="cash">Dinheiro</option>
+            <option value="mixed">PIX + dinheiro</option>
+          </select>
+        </label>
+        <label id="sale-pix-amount-label" hidden>
+          PIX (R$)
+          <input id="sale-pix-amount" inputmode="decimal" placeholder="3,00" />
+        </label>
+        <label id="sale-cash-amount-label" hidden>
+          Recebido (R$)
+          <input id="sale-cash-amount" inputmode="decimal" placeholder="10,00" />
+        </label>
+        <p id="sale-change-preview"></p>
+        <button type="submit">Confirmar venda</button>
       </form>
       <ul id="sales-list"></ul>
     </section>
@@ -668,6 +685,24 @@ interface CartLine {
 
 const cart: CartLine[] = [];
 
+function syncPaymentFields(): void {
+  const kind = document.querySelector('#sale-payment-kind');
+  const pixLabel = document.querySelector('#sale-pix-amount-label');
+  const cashLabel = document.querySelector('#sale-cash-amount-label');
+  const preview = document.querySelector('#sale-change-preview');
+  const value = kind instanceof HTMLSelectElement ? kind.value : 'pix';
+  if (pixLabel instanceof HTMLElement) {
+    pixLabel.hidden = value !== 'mixed';
+  }
+  if (cashLabel instanceof HTMLElement) {
+    cashLabel.hidden = value !== 'cash' && value !== 'mixed';
+  }
+  if (preview) {
+    preview.textContent =
+      value === 'pix' ? '' : 'O troco é calculado na confirmação.';
+  }
+}
+
 function renderCart(): void {
   if (!(saleCartList instanceof HTMLElement)) {
     return;
@@ -700,6 +735,7 @@ async function renderSales(session: AppSession | null): Promise<void> {
     }
     cart.length = 0;
     renderCart();
+    syncPaymentFields();
     return;
   }
 
@@ -745,6 +781,7 @@ async function renderSales(session: AppSession | null): Promise<void> {
       salesList.append(item);
     }
     renderCart();
+    syncPaymentFields();
   } catch (error: unknown) {
     salesStatus.textContent =
       error instanceof Error
@@ -752,6 +789,10 @@ async function renderSales(session: AppSession | null): Promise<void> {
         : 'Não foi possível carregar as vendas.';
   }
 }
+
+document
+  .querySelector('#sale-payment-kind')
+  ?.addEventListener('change', syncPaymentFields);
 
 document
   .querySelector('#sale-cart-form')
@@ -811,6 +852,45 @@ document
       saleStudentSelect instanceof HTMLSelectElement
         ? saleStudentSelect.value || null
         : null;
+    const paymentKindSelect = document.querySelector('#sale-payment-kind');
+    const pixAmountInput = document.querySelector('#sale-pix-amount');
+    const cashAmountInput = document.querySelector('#sale-cash-amount');
+    const paymentKind =
+      paymentKindSelect instanceof HTMLSelectElement
+        ? paymentKindSelect.value
+        : 'pix';
+    if (
+      paymentKind !== 'pix' &&
+      paymentKind !== 'cash' &&
+      paymentKind !== 'mixed'
+    ) {
+      return;
+    }
+    let pixAmountCents: number | undefined;
+    let cashTenderedCents: number | undefined;
+    if (paymentKind === 'mixed' && pixAmountInput instanceof HTMLInputElement) {
+      const pix = parseReaisToCents(pixAmountInput.value);
+      if (!pix.ok) {
+        if (salesStatus) {
+          salesStatus.textContent = pix.error.message;
+        }
+        return;
+      }
+      pixAmountCents = pix.data;
+    }
+    if (
+      (paymentKind === 'cash' || paymentKind === 'mixed') &&
+      cashAmountInput instanceof HTMLInputElement
+    ) {
+      const cash = parseReaisToCents(cashAmountInput.value);
+      if (!cash.ok) {
+        if (salesStatus) {
+          salesStatus.textContent = cash.error.message;
+        }
+        return;
+      }
+      cashTenderedCents = cash.data;
+    }
     void api
       .createSale({
         consumerStudentId,
@@ -820,10 +900,18 @@ document
           discountKind: line.discountKind,
           discountInput: line.discountInput,
         })),
-        paymentKind: 'pix',
+        paymentKind,
+        pixAmountCents,
+        cashTenderedCents,
       })
       .then(() => {
         cart.length = 0;
+        if (pixAmountInput instanceof HTMLInputElement) {
+          pixAmountInput.value = '';
+        }
+        if (cashAmountInput instanceof HTMLInputElement) {
+          cashAmountInput.value = '';
+        }
         return api.getSession();
       })
       .then((session) =>

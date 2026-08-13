@@ -113,7 +113,7 @@ Turmas pertencem a um ano letivo. Histórico de matrícula fica em `_student_enr
 
 `_sale_settlements`: id, sale_id, kind, amount_cents, related_entity_id, created_at.
 
-Invariante: soma settlements = net_total. Nesta fase só existe settlement `pix` igual ao líquido. `consumer_student_id` vazio é venda anônima; `charged_student_id` = consumidor quando há aluno.
+Invariante: soma settlements = net_total. Kinds desta fase: `pix`, `cash` (valor recebido) e `change` (troco negativo). `consumer_student_id` vazio é venda anônima; `charged_student_id` = consumidor quando há aluno. Caixa físico ainda não consome esses settlements.
 
 ## Recebíveis
 

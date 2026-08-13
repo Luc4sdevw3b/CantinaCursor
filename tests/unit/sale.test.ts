@@ -4,6 +4,7 @@ import {
   ANONYMOUS_SALE_LABEL,
   planSaleLine,
   planSaleTotals,
+  planSettlements,
   saleSummaryLabel,
   validatePixPayment,
 } from '../../src/domain/sale';
@@ -67,7 +68,7 @@ describe('cart sale and PIX', () => {
     ).toBe(false);
   });
 
-  it('accepts PIX only and labels an anonymous cart', () => {
+  it('accepts PIX, cash with change and mixed settlements', () => {
     expect(validatePixPayment('pix')).toEqual({ ok: true, data: 'pix' });
     expect(validatePixPayment('cash').ok).toBe(false);
     expect(
@@ -77,5 +78,41 @@ describe('cart sale and PIX', () => {
         netLabel: 'R$ 5,50',
       }),
     ).toBe('Anônima • Coxinha • R$ 5,50');
+    const cash = planSettlements({
+      paymentKind: 'cash',
+      netTotalCents: 550,
+      cashTenderedCents: 1000,
+    });
+    expect(cash.ok).toBe(true);
+    if (cash.ok) {
+      expect(cash.data.changeCents).toBe(450);
+      expect(cash.data.rows.map((row) => row.kind)).toEqual(['cash', 'change']);
+    }
+    expect(
+      planSettlements({
+        paymentKind: 'cash',
+        netTotalCents: 550,
+        cashTenderedCents: 400,
+      }).ok,
+    ).toBe(false);
+    const mixed = planSettlements({
+      paymentKind: 'mixed',
+      netTotalCents: 550,
+      pixAmountCents: 300,
+      cashTenderedCents: 300,
+    });
+    expect(mixed.ok).toBe(true);
+    if (mixed.ok) {
+      expect(mixed.data.changeCents).toBe(50);
+    }
+    expect(
+      saleSummaryLabel({
+        consumerLabel: ANONYMOUS_SALE_LABEL,
+        descriptions: ['Coxinha'],
+        netLabel: 'R$ 5,50',
+        paymentKind: 'cash',
+        changeLabel: 'R$ 4,50',
+      }),
+    ).toBe('Anônima • Coxinha • R$ 5,50 • Dinheiro • Troco R$ 4,50');
   });
 });

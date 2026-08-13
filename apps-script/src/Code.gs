@@ -256,6 +256,9 @@ const SALE_STATUS_PAID = 'paid';
 const SALE_ITEM_PRODUCT = 'product';
 const SALE_ITEM_AD_HOC = 'ad_hoc';
 const SETTLEMENT_PIX = 'pix';
+const SETTLEMENT_CASH = 'cash';
+const SETTLEMENT_CHANGE = 'change';
+const PAYMENT_MIXED = 'mixed';
 const DISCOUNT_NONE = 'none';
 const DISCOUNT_AMOUNT = 'amount';
 const DISCOUNT_PERCENT = 'percent';
@@ -3456,6 +3459,145 @@ function saleConsumerLabelGs(consumerStudentId) {
   return student.full_name + ' • ' + studentAgeLabelGs(student);
 }
 
+function parsePaymentKindGs(value) {
+  if (
+    value === SETTLEMENT_PIX ||
+    value === SETTLEMENT_CASH ||
+    value === PAYMENT_MIXED
+  ) {
+    return value;
+  }
+  throw new Error(
+    'PAYMENT_KIND_UNSUPPORTED: Use PIX, dinheiro ou PIX + dinheiro.',
+  );
+}
+
+function planSettlementsGs(
+  paymentKind,
+  net,
+  pixAmountCents,
+  cashTenderedCents,
+) {
+  const kind = parsePaymentKindGs(paymentKind);
+  if (!Number.isInteger(net) || net <= 0) {
+    throw new Error(
+      'INVALID_CENTS: O total da venda precisa ser um valor em centavos, número inteiro.',
+    );
+  }
+  if (kind === SETTLEMENT_PIX) {
+    return {
+      paymentKind: SETTLEMENT_PIX,
+      rows: [{ kind: SETTLEMENT_PIX, amount_cents: String(net) }],
+      cashTenderedCents: 0,
+      changeCents: 0,
+    };
+  }
+  var tendered;
+  try {
+    tendered = parseCentsGs(cashTenderedCents);
+  } catch (error) {
+    throw new Error('CASH_TENDERED_REQUIRED: Informe o dinheiro recebido.');
+  }
+  if (tendered <= 0) {
+    throw new Error('CASH_TENDERED_REQUIRED: Informe o dinheiro recebido.');
+  }
+  if (kind === SETTLEMENT_CASH) {
+    if (tendered < net) {
+      throw new Error(
+        'INSUFFICIENT_CASH: O dinheiro recebido não cobre o restante da venda.',
+      );
+    }
+    const changeCents = tendered - net;
+    const rows = [{ kind: SETTLEMENT_CASH, amount_cents: String(tendered) }];
+    if (changeCents > 0) {
+      rows.push({
+        kind: SETTLEMENT_CHANGE,
+        amount_cents: String(-changeCents),
+      });
+    }
+    return {
+      paymentKind: SETTLEMENT_CASH,
+      rows: rows,
+      cashTenderedCents: tendered,
+      changeCents: changeCents,
+    };
+  }
+  var pix;
+  try {
+    pix = parseCentsGs(pixAmountCents);
+  } catch (error) {
+    throw new Error(
+      'INVALID_PIX_AMOUNT: No misto, o PIX precisa ser parte do total, não o total inteiro.',
+    );
+  }
+  if (pix <= 0 || pix >= net) {
+    throw new Error(
+      'INVALID_PIX_AMOUNT: No misto, o PIX precisa ser parte do total, não o total inteiro.',
+    );
+  }
+  const remaining = net - pix;
+  if (tendered < remaining) {
+    throw new Error(
+      'INSUFFICIENT_CASH: O dinheiro recebido não cobre o restante da venda.',
+    );
+  }
+  const mixedChange = tendered - remaining;
+  const mixedRows = [
+    { kind: SETTLEMENT_PIX, amount_cents: String(pix) },
+    { kind: SETTLEMENT_CASH, amount_cents: String(tendered) },
+  ];
+  if (mixedChange > 0) {
+    mixedRows.push({
+      kind: SETTLEMENT_CHANGE,
+      amount_cents: String(-mixedChange),
+    });
+  }
+  return {
+    paymentKind: PAYMENT_MIXED,
+    rows: mixedRows,
+    cashTenderedCents: tendered,
+    changeCents: mixedChange,
+  };
+}
+
+function paymentKindFromSettlementsGs(rows) {
+  const hasPix = rows.some(function (row) {
+    return row.kind === SETTLEMENT_PIX;
+  });
+  const hasCash = rows.some(function (row) {
+    return row.kind === SETTLEMENT_CASH;
+  });
+  if (hasPix && hasCash) {
+    return PAYMENT_MIXED;
+  }
+  if (hasCash) {
+    return SETTLEMENT_CASH;
+  }
+  return SETTLEMENT_PIX;
+}
+
+function saleSummaryLabelGs(
+  consumerLabel,
+  descriptions,
+  netLabel,
+  paymentKind,
+  changeLabel,
+) {
+  const base =
+    consumerLabel + ' • ' + descriptions.join(', ') + ' • ' + netLabel;
+  const extras = [];
+  if (paymentKind === SETTLEMENT_CASH) {
+    extras.push('Dinheiro');
+  }
+  if (paymentKind === PAYMENT_MIXED) {
+    extras.push('PIX + dinheiro');
+  }
+  if (changeLabel) {
+    extras.push('Troco ' + changeLabel);
+  }
+  return extras.length ? base + ' • ' + extras.join(' • ') : base;
+}
+
 function toSaleViewGs(sale) {
   const items = listSaleItemRecords()
     .filter(function (item) {
@@ -3471,9 +3613,30 @@ function toSaleViewGs(sale) {
         lineNetCents: Number(item.line_net_total_cents),
       };
     });
+  const settlementRows = listSettlementRecords().filter(function (item) {
+    return item.sale_id === sale.id;
+  });
+  const paymentKind = paymentKindFromSettlementsGs(settlementRows);
+  const cashTenderedCents = settlementRows
+    .filter(function (item) {
+      return item.kind === SETTLEMENT_CASH;
+    })
+    .reduce(function (total, item) {
+      return total + Number(item.amount_cents);
+    }, 0);
+  const changeCents = Math.abs(
+    settlementRows
+      .filter(function (item) {
+        return item.kind === SETTLEMENT_CHANGE;
+      })
+      .reduce(function (total, item) {
+        return total + Number(item.amount_cents);
+      }, 0),
+  );
   const netTotalCents = Number(sale.net_total_cents);
   const consumerLabel = saleConsumerLabelGs(sale.consumer_student_id);
   const netLabel = formatBrlGs(netTotalCents);
+  const changeLabel = changeCents > 0 ? formatBrlGs(changeCents) : null;
   const descriptions = items.map(function (item) {
     return item.description;
   });
@@ -3482,14 +3645,28 @@ function toSaleViewGs(sale) {
     consumerStudentId: sale.consumer_student_id || null,
     consumerLabel: consumerLabel,
     status: SALE_STATUS_PAID,
-    paymentKind: SETTLEMENT_PIX,
+    paymentKind: paymentKind,
     grossTotalCents: Number(sale.gross_total_cents),
     discountTotalCents: Number(sale.discount_total_cents),
     netTotalCents: netTotalCents,
     netLabel: netLabel,
+    cashTenderedCents: cashTenderedCents,
+    changeCents: changeCents,
+    changeLabel: changeLabel,
+    settlements: settlementRows.map(function (item) {
+      return {
+        kind: item.kind,
+        amountCents: Number(item.amount_cents),
+      };
+    }),
     items: items,
-    summaryLabel:
-      consumerLabel + ' • ' + descriptions.join(', ') + ' • ' + netLabel,
+    summaryLabel: saleSummaryLabelGs(
+      consumerLabel,
+      descriptions,
+      netLabel,
+      paymentKind,
+      changeLabel,
+    ),
     createdAt: sale.created_at,
   };
 }
@@ -3521,12 +3698,7 @@ function ensurePixCopySettingUnlocked() {
 }
 
 function createSaleUnlocked(userId, payload, actorIsOwner) {
-  if (!payload || payload.paymentKind !== SETTLEMENT_PIX) {
-    throw new Error(
-      'PAYMENT_KIND_UNSUPPORTED: Nesta fase a venda é somente PIX.',
-    );
-  }
-  const items = payload.items || [];
+  const items = payload && payload.items ? payload.items : [];
   if (!items.length) {
     throw new Error(
       'SALE_ITEMS_REQUIRED: Inclua pelo menos um item no carrinho.',
@@ -3572,6 +3744,12 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
     consumerId = student.id;
   }
   const totals = planSaleTotalsGs(planned);
+  const plannedSettlements = planSettlementsGs(
+    payload && payload.paymentKind,
+    Number(totals.net_total_cents),
+    payload && payload.pixAmountCents,
+    payload && payload.cashTenderedCents,
+  );
   const now = new Date().toISOString();
   const saleId = Utilities.getUuid();
   openNamedSheet(SALES_SHEET, SALES_HEADERS).appendRow([
@@ -3603,14 +3781,20 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
       line.line_net_total_cents,
     ]);
   });
-  openNamedSheet(SALE_SETTLEMENTS_SHEET, SALE_SETTLEMENTS_HEADERS).appendRow([
-    Utilities.getUuid(),
-    saleId,
-    SETTLEMENT_PIX,
-    totals.net_total_cents,
-    '',
-    now,
-  ]);
+  const settlementsSheet = openNamedSheet(
+    SALE_SETTLEMENTS_SHEET,
+    SALE_SETTLEMENTS_HEADERS,
+  );
+  plannedSettlements.rows.forEach(function (row) {
+    settlementsSheet.appendRow([
+      Utilities.getUuid(),
+      saleId,
+      row.kind,
+      row.amount_cents,
+      '',
+      now,
+    ]);
+  });
   const day = Object.keys(needed).length
     ? requireInventoryDayGs(businessDate)
     : null;

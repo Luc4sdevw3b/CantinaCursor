@@ -5,11 +5,14 @@ import {
   DEFAULT_PIX_COPY_TEXT,
   SALE_ITEMS_REQUIRED_ERROR,
   SALE_STATUS_PAID,
-  SETTLEMENT_PIX,
+  SETTLEMENT_CHANGE,
+  SETTLEMENT_CASH,
+  paymentKindFromSettlements,
   planSaleLine,
   planSaleTotals,
+  planSettlements,
   saleSummaryLabel,
-  validatePixPayment,
+  type PaymentKind,
   type SaleLineInput,
 } from '../../domain/sale';
 import { err, ok, type AppError, type Result } from '../../domain/result';
@@ -28,16 +31,25 @@ export interface SaleItemView {
   lineNetCents: number;
 }
 
+export interface SaleSettlementView {
+  kind: string;
+  amountCents: number;
+}
+
 export interface SaleView {
   id: string;
   consumerStudentId: string | null;
   consumerLabel: string;
   status: typeof SALE_STATUS_PAID;
-  paymentKind: typeof SETTLEMENT_PIX;
+  paymentKind: PaymentKind;
   grossTotalCents: number;
   discountTotalCents: number;
   netTotalCents: number;
   netLabel: string;
+  cashTenderedCents: number;
+  changeCents: number;
+  changeLabel: string | null;
+  settlements: SaleSettlementView[];
   items: SaleItemView[];
   summaryLabel: string;
   createdAt: string;
@@ -121,12 +133,10 @@ export class MemorySales {
     consumerStudentId?: string | null;
     items: SaleLineInput[];
     paymentKind: string;
+    pixAmountCents?: unknown;
+    cashTenderedCents?: unknown;
     actorIsOwner: boolean;
   }): Result<SaleView> {
-    const payment = validatePixPayment(input.paymentKind);
-    if (!payment.ok) {
-      return err(payment.error);
-    }
     if (!input.items.length) {
       return err(SALE_ITEMS_REQUIRED_ERROR);
     }
@@ -187,6 +197,15 @@ export class MemorySales {
       consumerId = student.data.id;
     }
     const totals = planSaleTotals(planned);
+    const settlements = planSettlements({
+      paymentKind: input.paymentKind,
+      netTotalCents: Number(totals.net_total_cents),
+      pixAmountCents: input.pixAmountCents,
+      cashTenderedCents: input.cashTenderedCents,
+    });
+    if (!settlements.ok) {
+      return err(settlements.error);
+    }
     const now = this.nowIso();
     const sale: SaleRecord = {
       id: this.createId(),
@@ -217,14 +236,16 @@ export class MemorySales {
         line_net_total_cents: line.line_net_total_cents,
       });
     }
-    this.settlements.push({
-      id: this.createId(),
-      sale_id: sale.id,
-      kind: SETTLEMENT_PIX,
-      amount_cents: sale.net_total_cents,
-      related_entity_id: '',
-      created_at: now,
-    });
+    for (const row of settlements.data.rows) {
+      this.settlements.push({
+        id: this.createId(),
+        sale_id: sale.id,
+        kind: row.kind,
+        amount_cents: row.amount_cents,
+        related_entity_id: '',
+        created_at: now,
+      });
+    }
     for (const [productId, quantity] of needed) {
       const moved = this.stock.recordSourceMovement({
         productId,
@@ -253,6 +274,18 @@ export class MemorySales {
         lineNetCents: Number(item.line_net_total_cents),
       }));
     const netTotalCents = Number(sale.net_total_cents);
+    const settlementRows = this.settlements.filter(
+      (item) => item.sale_id === sale.id,
+    );
+    const paymentKind = paymentKindFromSettlements(settlementRows);
+    const cashTenderedCents = settlementRows
+      .filter((item) => item.kind === SETTLEMENT_CASH)
+      .reduce((total, item) => total + Number(item.amount_cents), 0);
+    const changeCents = Math.abs(
+      settlementRows
+        .filter((item) => item.kind === SETTLEMENT_CHANGE)
+        .reduce((total, item) => total + Number(item.amount_cents), 0),
+    );
     let consumerLabel = ANONYMOUS_SALE_LABEL;
     if (sale.consumer_student_id) {
       const student = unwrap(this.roster.getStudent(sale.consumer_student_id));
@@ -263,16 +296,25 @@ export class MemorySales {
       consumerStudentId: sale.consumer_student_id || null,
       consumerLabel,
       status: SALE_STATUS_PAID,
-      paymentKind: SETTLEMENT_PIX,
+      paymentKind,
       grossTotalCents: Number(sale.gross_total_cents),
       discountTotalCents: Number(sale.discount_total_cents),
       netTotalCents,
       netLabel: formatBrl(netTotalCents),
+      cashTenderedCents,
+      changeCents,
+      changeLabel: changeCents > 0 ? formatBrl(changeCents) : null,
+      settlements: settlementRows.map((item) => ({
+        kind: item.kind,
+        amountCents: Number(item.amount_cents),
+      })),
       items,
       summaryLabel: saleSummaryLabel({
         consumerLabel,
         descriptions: items.map((item) => item.description),
         netLabel: formatBrl(netTotalCents),
+        paymentKind,
+        changeLabel: changeCents > 0 ? formatBrl(changeCents) : null,
       }),
       createdAt: sale.created_at,
     };

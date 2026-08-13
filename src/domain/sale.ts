@@ -7,6 +7,11 @@ export const SALE_STATUS_PAID = 'paid';
 export const SALE_ITEM_PRODUCT = 'product';
 export const SALE_ITEM_AD_HOC = 'ad_hoc';
 export const SETTLEMENT_PIX = 'pix';
+export const SETTLEMENT_CASH = 'cash';
+export const SETTLEMENT_CHANGE = 'change';
+export const PAYMENT_PIX = 'pix';
+export const PAYMENT_CASH = 'cash';
+export const PAYMENT_MIXED = 'mixed';
 export const DISCOUNT_NONE = 'none';
 export const DISCOUNT_AMOUNT = 'amount';
 export const DISCOUNT_PERCENT = 'percent';
@@ -23,7 +28,25 @@ export const SALE_ITEMS_REQUIRED_ERROR = {
 
 export const PAYMENT_KIND_UNSUPPORTED_ERROR = {
   code: 'PAYMENT_KIND_UNSUPPORTED',
-  message: 'Nesta fase a venda é somente PIX.',
+  message: 'Use PIX, dinheiro ou PIX + dinheiro.',
+  retryable: false,
+} as const;
+
+export const INSUFFICIENT_CASH_ERROR = {
+  code: 'INSUFFICIENT_CASH',
+  message: 'O dinheiro recebido não cobre o restante da venda.',
+  retryable: false,
+} as const;
+
+export const INVALID_PIX_AMOUNT_ERROR = {
+  code: 'INVALID_PIX_AMOUNT',
+  message: 'No misto, o PIX precisa ser parte do total, não o total inteiro.',
+  retryable: false,
+} as const;
+
+export const CASH_TENDERED_REQUIRED_ERROR = {
+  code: 'CASH_TENDERED_REQUIRED',
+  message: 'Informe o dinheiro recebido.',
   retryable: false,
 } as const;
 
@@ -59,6 +82,24 @@ export const PRODUCT_INACTIVE_ERROR = {
 
 export type DiscountKind =
   typeof DISCOUNT_NONE | typeof DISCOUNT_AMOUNT | typeof DISCOUNT_PERCENT;
+
+export type PaymentKind =
+  typeof PAYMENT_PIX | typeof PAYMENT_CASH | typeof PAYMENT_MIXED;
+
+export type SettlementKind =
+  typeof SETTLEMENT_PIX | typeof SETTLEMENT_CASH | typeof SETTLEMENT_CHANGE;
+
+export interface PlannedSettlement {
+  kind: SettlementKind;
+  amount_cents: string;
+}
+
+export interface PlannedSettlements {
+  paymentKind: PaymentKind;
+  rows: PlannedSettlement[];
+  cashTenderedCents: number;
+  changeCents: number;
+}
 
 export interface SaleLineInput {
   productId?: string | null;
@@ -235,19 +276,137 @@ export function planSaleTotals(lines: readonly PlannedSaleLine[]): {
   };
 }
 
+export function parsePaymentKind(value: unknown): Result<PaymentKind> {
+  if (
+    value === PAYMENT_PIX ||
+    value === PAYMENT_CASH ||
+    value === PAYMENT_MIXED
+  ) {
+    return ok(value);
+  }
+  return err(PAYMENT_KIND_UNSUPPORTED_ERROR);
+}
+
 export function validatePixPayment(
   kind: unknown,
 ): Result<typeof SETTLEMENT_PIX> {
-  if (kind !== SETTLEMENT_PIX) {
+  const parsed = parsePaymentKind(kind);
+  if (!parsed.ok || parsed.data !== PAYMENT_PIX) {
     return err(PAYMENT_KIND_UNSUPPORTED_ERROR);
   }
   return ok(SETTLEMENT_PIX);
+}
+
+export function planSettlements(input: {
+  paymentKind: unknown;
+  netTotalCents: number;
+  pixAmountCents?: unknown;
+  cashTenderedCents?: unknown;
+}): Result<PlannedSettlements> {
+  const kind = parsePaymentKind(input.paymentKind);
+  if (!kind.ok) {
+    return err(kind.error);
+  }
+  const net = input.netTotalCents;
+  if (!Number.isInteger(net) || net <= 0) {
+    return err({
+      code: 'INVALID_CENTS',
+      message:
+        'O total da venda precisa ser um valor em centavos, número inteiro.',
+      retryable: false,
+    });
+  }
+  if (kind.data === PAYMENT_PIX) {
+    return ok({
+      paymentKind: PAYMENT_PIX,
+      rows: [{ kind: SETTLEMENT_PIX, amount_cents: String(net) }],
+      cashTenderedCents: 0,
+      changeCents: 0,
+    });
+  }
+  const tendered = parseCents(input.cashTenderedCents);
+  if (!tendered.ok || tendered.data <= 0) {
+    return err(CASH_TENDERED_REQUIRED_ERROR);
+  }
+  if (kind.data === PAYMENT_CASH) {
+    if (tendered.data < net) {
+      return err(INSUFFICIENT_CASH_ERROR);
+    }
+    const changeCents = tendered.data - net;
+    const rows: PlannedSettlement[] = [
+      { kind: SETTLEMENT_CASH, amount_cents: String(tendered.data) },
+    ];
+    if (changeCents > 0) {
+      rows.push({
+        kind: SETTLEMENT_CHANGE,
+        amount_cents: String(-changeCents),
+      });
+    }
+    return ok({
+      paymentKind: PAYMENT_CASH,
+      rows,
+      cashTenderedCents: tendered.data,
+      changeCents,
+    });
+  }
+  const pix = parseCents(input.pixAmountCents);
+  if (!pix.ok || pix.data <= 0 || pix.data >= net) {
+    return err(INVALID_PIX_AMOUNT_ERROR);
+  }
+  const remaining = net - pix.data;
+  if (tendered.data < remaining) {
+    return err(INSUFFICIENT_CASH_ERROR);
+  }
+  const changeCents = tendered.data - remaining;
+  const rows: PlannedSettlement[] = [
+    { kind: SETTLEMENT_PIX, amount_cents: String(pix.data) },
+    { kind: SETTLEMENT_CASH, amount_cents: String(tendered.data) },
+  ];
+  if (changeCents > 0) {
+    rows.push({
+      kind: SETTLEMENT_CHANGE,
+      amount_cents: String(-changeCents),
+    });
+  }
+  return ok({
+    paymentKind: PAYMENT_MIXED,
+    rows,
+    cashTenderedCents: tendered.data,
+    changeCents,
+  });
+}
+
+export function paymentKindFromSettlements(
+  rows: readonly { kind: string }[],
+): PaymentKind {
+  const hasPix = rows.some((row) => row.kind === SETTLEMENT_PIX);
+  const hasCash = rows.some((row) => row.kind === SETTLEMENT_CASH);
+  if (hasPix && hasCash) {
+    return PAYMENT_MIXED;
+  }
+  if (hasCash) {
+    return PAYMENT_CASH;
+  }
+  return PAYMENT_PIX;
 }
 
 export function saleSummaryLabel(input: {
   consumerLabel: string;
   descriptions: readonly string[];
   netLabel: string;
+  paymentKind?: PaymentKind;
+  changeLabel?: string | null;
 }): string {
-  return `${input.consumerLabel} • ${input.descriptions.join(', ')} • ${input.netLabel}`;
+  const base = `${input.consumerLabel} • ${input.descriptions.join(', ')} • ${input.netLabel}`;
+  const extras: string[] = [];
+  if (input.paymentKind === PAYMENT_CASH) {
+    extras.push('Dinheiro');
+  }
+  if (input.paymentKind === PAYMENT_MIXED) {
+    extras.push('PIX + dinheiro');
+  }
+  if (input.changeLabel) {
+    extras.push(`Troco ${input.changeLabel}`);
+  }
+  return extras.length ? `${base} • ${extras.join(' • ')}` : base;
 }

@@ -239,8 +239,28 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
       page.getByText('Chave PIX de teste: cantina-e2e@example.test'),
     ).toBeVisible();
     await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click();
-    await page.getByRole('button', { name: 'Confirmar PIX' }).click();
-    await expect(page.getByText('Anônima • Coxinha • R$ 5,50')).toBeVisible();
+    await page.getByRole('button', { name: 'Confirmar venda' }).click();
+    await expect(
+      page.getByText('Anônima • Coxinha • R$ 5,50', { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText('Coxinha • 9')).toBeVisible();
+  });
+
+  test('records an anonymous cash sale with change after login', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Vendas', exact: true }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click();
+    await page.locator('#sale-payment-kind').selectOption('cash');
+    await page.locator('#sale-cash-amount').fill('10,00');
+    await page.getByRole('button', { name: 'Confirmar venda' }).click();
+    await expect(
+      page.getByText('Anônima • Coxinha • R$ 5,50 • Dinheiro • Troco R$ 4,50'),
+    ).toBeVisible();
     await expect(page.getByText('Coxinha • 9')).toBeVisible();
   });
 });

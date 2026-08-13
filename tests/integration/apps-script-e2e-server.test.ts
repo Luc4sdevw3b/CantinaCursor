@@ -252,7 +252,12 @@ interface ServerContext {
   createSale(
     sessionToken: string,
     payload: Record<string, unknown>,
-  ): { summaryLabel: string };
+  ): {
+    summaryLabel: string;
+    paymentKind: string;
+    changeCents: number;
+    settlements: Array<{ kind: string; amountCents: number }>;
+  };
   listSales(sessionToken: string): Array<{ summaryLabel: string }>;
   getPixCopyText(sessionToken: string): { text: string };
 }
@@ -1412,5 +1417,60 @@ describe('Apps Script E2E server', () => {
       }),
     ).toThrow('FORBIDDEN');
     expect(() => server.listSales('')).toThrow('UNAUTHENTICATED');
+  });
+
+  it('records cash with change and mixed PIX plus cash', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const coxinha = server
+      .listProducts(owner)
+      .find((item) => item.name === 'Coxinha');
+    if (!coxinha) {
+      throw new Error('venda E2E incompleta');
+    }
+
+    expect(() =>
+      server.createSale(owner, {
+        items: [{ productId: coxinha.id, quantity: 1 }],
+        paymentKind: 'cash',
+        cashTenderedCents: 400,
+      }),
+    ).toThrow('INSUFFICIENT_CASH');
+
+    const cash = server.createSale(owner, {
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'cash',
+      cashTenderedCents: 1000,
+    });
+    expect(cash.summaryLabel).toBe(
+      'Anônima • Coxinha • R$ 5,50 • Dinheiro • Troco R$ 4,50',
+    );
+    expect(cash.changeCents).toBe(450);
+    expect(
+      cash.settlements.some(
+        (item) => item.kind === 'change' && item.amountCents === -450,
+      ),
+    ).toBe(true);
+    expect(
+      server
+        .listInventoryBalances(owner)
+        .items.find((item) => item.productName === 'Coxinha')?.physicalQuantity,
+    ).toBe(9);
+
+    const mixed = server.createSale(owner, {
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'mixed',
+      pixAmountCents: 300,
+      cashTenderedCents: 300,
+    });
+    expect(mixed.summaryLabel).toBe(
+      'Anônima • Coxinha • R$ 5,50 • PIX + dinheiro • Troco R$ 0,50',
+    );
+    expect(mixed.paymentKind).toBe('mixed');
   });
 });
