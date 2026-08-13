@@ -1,3 +1,8 @@
+/**
+ * E2E local: preview Vite + FakeAppApi.
+ * Não usa Apps Script, google.script.run, Sheets, Drive, clasp,
+ * login Google, WhatsApp nem internet externa.
+ */
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
