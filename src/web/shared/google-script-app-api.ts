@@ -26,7 +26,9 @@ import type {
   CreatePaymentInput,
   CreditAccount,
   DepositPersonalCreditInput,
+  DepositGuardianCreditInput,
   RefundPersonalCreditInput,
+  RefundGuardianCreditInput,
   AddReceivableInterestInput,
   RenegotiateReceivableInput,
   Product,
@@ -112,6 +114,8 @@ export interface GoogleScriptRunner {
   listCreditAccounts(token: string): void;
   depositPersonalCredit(token: string, payload: unknown): void;
   refundPersonalCredit(token: string, payload: unknown): void;
+  depositGuardianCredit(token: string, payload: unknown): void;
+  refundGuardianCredit(token: string, payload: unknown): void;
 }
 
 export type SessionTokenStorage = Pick<
@@ -610,6 +614,22 @@ export class GoogleScriptAppApi implements AppApi {
   ): Promise<CreditAccount> {
     return this.callWithToken((runner, token) =>
       runner.refundPersonalCredit(token, input),
+    );
+  }
+
+  depositGuardianCredit(
+    input: DepositGuardianCreditInput,
+  ): Promise<CreditAccount> {
+    return this.callWithToken((runner, token) =>
+      runner.depositGuardianCredit(token, input),
+    );
+  }
+
+  refundGuardianCredit(
+    input: RefundGuardianCreditInput,
+  ): Promise<CreditAccount> {
+    return this.callWithToken((runner, token) =>
+      runner.refundGuardianCredit(token, input),
     );
   }
 

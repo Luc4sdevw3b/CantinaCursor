@@ -295,6 +295,14 @@ interface ServerContext {
     sessionToken: string,
     payload: Record<string, unknown>,
   ): { summaryLabel: string };
+  depositGuardianCredit(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): { summaryLabel: string };
+  refundGuardianCredit(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): { summaryLabel: string };
 }
 
 interface DriveMockFile {
@@ -1991,5 +1999,126 @@ describe('Apps Script E2E server', () => {
         reason: 'Devolução pedida',
       }).summaryLabel,
     ).toBe('Ana Souza • ~8 • R$ 0,00');
+  });
+
+  it('uses authorized guardian credit on fiado and keeps sibling and other parent separate', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const coxinha = server
+      .listProducts(owner)
+      .find((item) => item.name === 'Coxinha');
+    const students = server.listStudents(owner);
+    const ana = students.find(
+      (student) =>
+        student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+    );
+    const bruno = students.find((student) => student.fullName === 'Bruno Lima');
+    const maria = server
+      .listGuardians(owner)
+      .find((item) => item.fullName === 'Maria Souza');
+    const paulo = server
+      .listGuardians(owner)
+      .find((item) => item.fullName === 'Paulo Nunes');
+    if (!coxinha || !ana || !bruno || !maria || !paulo) {
+      throw new Error('crédito de responsável E2E incompleto');
+    }
+    const shortcuts = server.getDueDateShortcuts(owner);
+    const dueLabel = formatCivilDisplay(shortcuts.tomorrow);
+
+    server.linkGuardian(owner, ana.id, maria.id, {
+      isPrimary: true,
+      canUseGuardianCredit: true,
+    });
+    expect(
+      server.depositGuardianCredit(owner, {
+        guardianId: maria.id,
+        amountCents: 200,
+        method: 'pix',
+      }).summaryLabel,
+    ).toBe('Maria Souza • mãe • R$ 2,00');
+    expect(
+      server.depositGuardianCredit(owner, {
+        guardianId: paulo.id,
+        amountCents: 200,
+        method: 'pix',
+      }).summaryLabel,
+    ).toBe('Paulo Nunes • pai • R$ 2,00');
+
+    const sale = server.createSale(owner, {
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: shortcuts.tomorrow }],
+    });
+    expect(sale.summaryLabel).toBe(
+      `Ana Souza • ~8 • Coxinha • R$ 5,50 • Fiado • crédito resp. R$ 2,00 • ${dueLabel}`,
+    );
+    expect(
+      server.listCreditAccounts(owner).map((item) => item.summaryLabel),
+    ).toEqual(
+      expect.arrayContaining([
+        'Maria Souza • mãe • R$ 0,00',
+        'Paulo Nunes • pai • R$ 2,00',
+      ]),
+    );
+
+    server.createSale(owner, {
+      consumerStudentId: bruno.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: shortcuts.tomorrow }],
+    });
+    expect(
+      server.listCreditAccounts(owner).map((item) => item.summaryLabel),
+    ).toContain('Maria Souza • mãe • R$ 0,00');
+  });
+
+  it('auto-settles authorized child debt when depositing guardian credit', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const coxinha = server
+      .listProducts(owner)
+      .find((item) => item.name === 'Coxinha');
+    const ana = server
+      .listStudents(owner)
+      .find(
+        (student) =>
+          student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+      );
+    const maria = server
+      .listGuardians(owner)
+      .find((item) => item.fullName === 'Maria Souza');
+    if (!coxinha || !ana || !maria) {
+      throw new Error('crédito de responsável E2E incompleto');
+    }
+    const shortcuts = server.getDueDateShortcuts(owner);
+    server.createSale(owner, {
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: shortcuts.tomorrow }],
+    });
+    server.linkGuardian(owner, ana.id, maria.id, {
+      isPrimary: true,
+      autoSettle: true,
+    });
+    expect(
+      server.depositGuardianCredit(owner, {
+        guardianId: maria.id,
+        amountCents: 800,
+        method: 'pix',
+      }).summaryLabel,
+    ).toBe('Maria Souza • mãe • R$ 2,50');
+    expect(server.listReceivables(owner).upcoming).toHaveLength(0);
   });
 });

@@ -117,10 +117,18 @@ export function planGuardianLink(input: {
       student_id: input.studentId,
       guardian_id: input.guardianId,
       is_primary: makePrimary ? 'true' : 'false',
-      can_use_guardian_credit: input.canUseGuardianCredit ? 'true' : 'false',
-      auto_settle_debt_from_guardian_credit: input.autoSettle
-        ? 'true'
-        : 'false',
+      can_use_guardian_credit:
+        input.canUseGuardianCredit === undefined
+          ? (current?.can_use_guardian_credit ?? 'false')
+          : input.canUseGuardianCredit
+            ? 'true'
+            : 'false',
+      auto_settle_debt_from_guardian_credit:
+        input.autoSettle === undefined
+          ? (current?.auto_settle_debt_from_guardian_credit ?? 'false')
+          : input.autoSettle
+            ? 'true'
+            : 'false',
       active: 'true',
       started_at: current?.started_at ?? input.createdAt,
       ended_at: '',

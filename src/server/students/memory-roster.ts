@@ -7,6 +7,7 @@ import { civilDateFromTimestamp, isCivilDate } from '../../domain/civil-date';
 import { type EnrollmentRecord, planEnrollment } from '../../domain/enrollment';
 import {
   type GuardianLinkRecord,
+  latestActiveLinks,
   planGuardianLink,
   planGuardianUnlink,
   primaryGuardianId,
@@ -606,6 +607,20 @@ export class MemoryRoster {
       latestById(this.guardians)
         .filter((guardian) => includeInactive || guardian.active === 'true')
         .map((guardian) => this.toGuardian(guardian)),
+    );
+  }
+
+  getGuardian(id: string): Result<GuardianView> {
+    const found = this.findGuardian(id);
+    if (!found.ok) {
+      return err(found.error);
+    }
+    return ok(this.toGuardian(found.data));
+  }
+
+  listActiveGuardianLinks(): StudentGuardianLinkView[] {
+    return latestActiveLinks(this.guardianLinks).map((link) =>
+      this.toLink(link),
     );
   }
 

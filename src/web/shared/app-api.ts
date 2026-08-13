@@ -375,8 +375,10 @@ export interface Payment {
 
 export interface CreditAccount {
   id: string;
-  studentId: string;
-  studentLabel: string;
+  ownerType: 'student' | 'guardian';
+  studentId: string | null;
+  guardianId: string | null;
+  ownerLabel: string;
   balanceCents: number;
   balanceLabel: string;
   summaryLabel: string;
@@ -394,9 +396,21 @@ export interface RefundPersonalCreditInput {
   reason: string;
 }
 
+export interface DepositGuardianCreditInput {
+  guardianId: string;
+  amountCents: number;
+  method: 'pix' | 'cash';
+}
+
+export interface RefundGuardianCreditInput {
+  guardianId: string;
+  amountCents: number;
+  reason: string;
+}
+
 /**
- * Contrato técnico da Fase 17.
- * Sem crédito de responsável, pagamento familiar, caixa físico, reservas reais ou envio de WhatsApp.
+ * Contrato técnico da Fase 18.
+ * Sem pagamento familiar, caixa físico, reservas reais ou envio de WhatsApp.
  */
 export interface AppApi {
   getHealth(): Promise<AppHealth>;
@@ -481,5 +495,11 @@ export interface AppApi {
   ): Promise<CreditAccount>;
   refundPersonalCredit(
     input: RefundPersonalCreditInput,
+  ): Promise<CreditAccount>;
+  depositGuardianCredit(
+    input: DepositGuardianCreditInput,
+  ): Promise<CreditAccount>;
+  refundGuardianCredit(
+    input: RefundGuardianCreditInput,
   ): Promise<CreditAccount>;
 }

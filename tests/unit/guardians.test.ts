@@ -67,6 +67,37 @@ describe('guardians and siblings', () => {
     ]);
   });
 
+  it('keeps credit flags when the same link is saved again as primary', () => {
+    const created = planGuardianLink({
+      studentId: ANA,
+      guardianId: MARIA,
+      isPrimary: true,
+      canUseGuardianCredit: true,
+      autoSettle: true,
+      createdAt: '2026-08-13T16:00:00.000Z',
+      createId: () => 'aaaaaaaa-bbbb-4ccc-8ddd-000000000021',
+      existing: [],
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) {
+      return;
+    }
+    const again = planGuardianLink({
+      studentId: ANA,
+      guardianId: MARIA,
+      isPrimary: true,
+      createdAt: '2026-08-13T16:00:00.000Z',
+      createId: () => 'aaaaaaaa-bbbb-4ccc-8ddd-000000000099',
+      existing: [created.data.link],
+    });
+    expect(again.ok).toBe(true);
+    if (!again.ok) {
+      return;
+    }
+    expect(again.data.link.can_use_guardian_credit).toBe('true');
+    expect(again.data.link.auto_settle_debt_from_guardian_credit).toBe('true');
+  });
+
   it('authorizes siblings separately from non-siblings', () => {
     const links = [
       planGuardianLink({

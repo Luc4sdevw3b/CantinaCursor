@@ -44,7 +44,7 @@ app.innerHTML = `
         <p class="eyebrow">Web App em preparação</p>
         <div class="hero-title-row">
           <h1 id="page-title">Cantina V2 AppScript</h1>
-          <span class="phase-badge">Fase 17</span>
+          <span class="phase-badge">Fase 18</span>
         </div>
         <p class="intro">
           Uma base simples e confiável para a operação diária da cantina.
@@ -138,6 +138,31 @@ app.innerHTML = `
       </form>
       <h2>Irmãos autorizados</h2>
       <ul id="authorizations-list"></ul>
+      <h2>Crédito do responsável</h2>
+      <ul id="guardian-credit-links"></ul>
+      <form id="guardian-credit-auth-form">
+        <label>
+          Aluno
+          <select id="credit-auth-student" required>
+            <option value="">Escolha o aluno</option>
+          </select>
+        </label>
+        <label>
+          Responsável
+          <select id="credit-auth-guardian" required>
+            <option value="">Escolha o responsável</option>
+          </select>
+        </label>
+        <label class="checkbox-label">
+          <input id="credit-auth-can-use" type="checkbox" />
+          Pode usar crédito
+        </label>
+        <label class="checkbox-label">
+          <input id="credit-auth-auto-settle" type="checkbox" />
+          Autoquitar dívida
+        </label>
+        <button type="submit">Salvar autorização</button>
+      </form>
       <form id="age-setting-form">
         <label>
           Pedir responsável abaixo de
@@ -370,6 +395,42 @@ app.innerHTML = `
         <button type="submit">Devolver crédito</button>
       </form>
       <ul id="credits-list"></ul>
+      <h2>Crédito do responsável</h2>
+      <form id="guardian-credit-deposit-form">
+        <label>
+          Responsável
+          <select id="credit-guardian" required>
+            <option value="">Escolha o responsável</option>
+          </select>
+        </label>
+        <label>
+          Valor (R$)
+          <input id="guardian-credit-amount" inputmode="decimal" placeholder="2,00" />
+        </label>
+        <label>
+          Método
+          <select id="guardian-credit-method">
+            <option value="pix">PIX</option>
+            <option value="cash">Dinheiro</option>
+          </select>
+        </label>
+        <button type="submit">Entrar crédito do responsável</button>
+      </form>
+      <form id="guardian-credit-refund-form" hidden>
+        <label>
+          Valor (R$)
+          <input
+            id="guardian-credit-refund-amount"
+            inputmode="decimal"
+            placeholder="2,00"
+          />
+        </label>
+        <label>
+          Motivo
+          <input id="guardian-credit-refund-reason" required />
+        </label>
+        <button type="submit">Devolver crédito do responsável</button>
+      </form>
     </section>
 
     <section class="students-panel" id="adjust-panel" hidden>
@@ -710,6 +771,7 @@ const familyPanel = document.querySelector('#family-panel');
 const familyStatus = document.querySelector('#family-status');
 const guardiansList = document.querySelector('#guardians-list');
 const authorizationsList = document.querySelector('#authorizations-list');
+const guardianCreditLinks = document.querySelector('#guardian-credit-links');
 const ageSettingInput = document.querySelector('#guardian-age-setting');
 const saveAgeSetting = document.querySelector('#save-age-setting');
 
@@ -723,17 +785,41 @@ function guardianLine(guardian: {
   return `${guardian.fullName}${relation}${whatsapp}`;
 }
 
+function guardianCreditLinkLine(
+  student: StudentSummary,
+  link: {
+    guardianName: string;
+    isPrimary: boolean;
+    canUseGuardianCredit: boolean;
+    autoSettleDebtFromGuardianCredit: boolean;
+  },
+): string {
+  const flags: string[] = [];
+  if (link.isPrimary) {
+    flags.push('principal');
+  }
+  if (link.canUseGuardianCredit) {
+    flags.push('pode usar crédito');
+  }
+  if (link.autoSettleDebtFromGuardianCredit) {
+    flags.push('autoquita dívida');
+  }
+  return `${student.fullName} • ${student.ageLabel} • ${link.guardianName}${flags.length ? ` • ${flags.join(' • ')}` : ''}`;
+}
+
 async function renderFamily(session: AppSession | null): Promise<void> {
   if (
     !(familyPanel instanceof HTMLElement) ||
     !familyStatus ||
     !(guardiansList instanceof HTMLElement) ||
-    !(authorizationsList instanceof HTMLElement)
+    !(authorizationsList instanceof HTMLElement) ||
+    !(guardianCreditLinks instanceof HTMLElement)
   ) {
     return;
   }
   guardiansList.replaceChildren();
   authorizationsList.replaceChildren();
+  guardianCreditLinks.replaceChildren();
   if (!session) {
     familyStatus.textContent = 'Entre para ver os responsáveis.';
     return;
@@ -766,6 +852,60 @@ async function renderFamily(session: AppSession | null): Promise<void> {
       ? `${authorization.consumerName} pode lançar na conta de ${authorization.accountName}${age}${credit}`
       : `${authorization.consumerName} pode usar crédito de ${authorization.accountName}${age}`;
     authorizationsList.append(item);
+  }
+
+  const authStudent = document.querySelector('#credit-auth-student');
+  const authGuardian = document.querySelector('#credit-auth-guardian');
+  if (authStudent instanceof HTMLSelectElement) {
+    const current = authStudent.value;
+    authStudent.replaceChildren();
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = 'Escolha o aluno';
+    authStudent.append(empty);
+    for (const student of students.filter((item) => item.active)) {
+      const option = document.createElement('option');
+      option.value = student.id;
+      option.textContent = `${student.fullName} • ${student.ageLabel}`;
+      authStudent.append(option);
+    }
+    if (current && students.some((item) => item.id === current)) {
+      authStudent.value = current;
+    }
+  }
+  if (authGuardian instanceof HTMLSelectElement) {
+    const current = authGuardian.value;
+    authGuardian.replaceChildren();
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = 'Escolha o responsável';
+    authGuardian.append(empty);
+    for (const guardian of guardians.filter((item) => item.active)) {
+      const option = document.createElement('option');
+      option.value = guardian.id;
+      option.textContent = guardianLine(guardian);
+      authGuardian.append(option);
+    }
+    if (current && guardians.some((item) => item.id === current)) {
+      authGuardian.value = current;
+    }
+  }
+
+  const linkGroups = await Promise.all(
+    students.map((student) =>
+      api
+        .getStudentGuardians(student.id)
+        .then((links) =>
+          links
+            .filter((link) => link.active)
+            .map((link) => ({ student, link })),
+        ),
+    ),
+  );
+  for (const { student, link } of linkGroups.flat()) {
+    const item = document.createElement('li');
+    item.textContent = guardianCreditLinkLine(student, link);
+    guardianCreditLinks.append(item);
   }
 
   if (ageSettingInput instanceof HTMLInputElement) {
@@ -1314,6 +1454,10 @@ async function renderCredits(session: AppSession | null): Promise<void> {
   const list = document.querySelector('#credits-list');
   const studentSelect = document.querySelector('#credit-student');
   const refundForm = document.querySelector('#credit-refund-form');
+  const guardianRefundForm = document.querySelector(
+    '#guardian-credit-refund-form',
+  );
+  const guardianSelect = document.querySelector('#credit-guardian');
   if (
     !(panel instanceof HTMLElement) ||
     !status ||
@@ -1325,6 +1469,9 @@ async function renderCredits(session: AppSession | null): Promise<void> {
   if (refundForm instanceof HTMLElement) {
     refundForm.hidden = session?.role !== 'owner';
   }
+  if (guardianRefundForm instanceof HTMLElement) {
+    guardianRefundForm.hidden = session?.role !== 'owner';
+  }
   if (!session) {
     status.textContent = 'Entre para registrar crédito.';
     if (studentSelect instanceof HTMLSelectElement) {
@@ -1334,11 +1481,19 @@ async function renderCredits(session: AppSession | null): Promise<void> {
       empty.textContent = 'Escolha o aluno';
       studentSelect.append(empty);
     }
+    if (guardianSelect instanceof HTMLSelectElement) {
+      guardianSelect.replaceChildren();
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = 'Escolha o responsável';
+      guardianSelect.append(empty);
+    }
     return;
   }
   try {
-    const [students, accounts] = await Promise.all([
+    const [students, guardians, accounts] = await Promise.all([
       api.listStudents({ includeInactive: true }),
+      api.listGuardians({ includeInactive: true }),
       api.listCreditAccounts(),
     ]);
     if (studentSelect instanceof HTMLSelectElement) {
@@ -1358,9 +1513,26 @@ async function renderCredits(session: AppSession | null): Promise<void> {
         studentSelect.value = current;
       }
     }
+    if (guardianSelect instanceof HTMLSelectElement) {
+      const current = guardianSelect.value;
+      guardianSelect.replaceChildren();
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = 'Escolha o responsável';
+      guardianSelect.append(empty);
+      for (const guardian of guardians.filter((item) => item.active)) {
+        const option = document.createElement('option');
+        option.value = guardian.id;
+        option.textContent = guardianLine(guardian);
+        guardianSelect.append(option);
+      }
+      if (current && guardians.some((item) => item.id === current)) {
+        guardianSelect.value = current;
+      }
+    }
     status.textContent = accounts.length
       ? `${accounts.length} conta${accounts.length === 1 ? '' : 's'}.`
-      : 'Nenhum crédito pessoal ainda.';
+      : 'Nenhum crédito ainda.';
     for (const account of accounts) {
       const item = document.createElement('li');
       item.textContent = account.summaryLabel;
@@ -1808,6 +1980,168 @@ document
     void api
       .refundPersonalCredit({
         studentId,
+        amountCents: parsed.data,
+        reason: reasonInput.value,
+      })
+      .then(() => {
+        amountInput.value = '';
+        reasonInput.value = '';
+        return api.getSession();
+      })
+      .then((session) => renderCredits(session))
+      .catch((error: unknown) => {
+        if (status) {
+          status.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível devolver o crédito.';
+        }
+      });
+  });
+
+document
+  .querySelector('#guardian-credit-auth-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const status = document.querySelector('#family-status');
+    const studentSelect = document.querySelector('#credit-auth-student');
+    const guardianSelect = document.querySelector('#credit-auth-guardian');
+    const canUse = document.querySelector('#credit-auth-can-use');
+    const autoSettle = document.querySelector('#credit-auth-auto-settle');
+    if (
+      !(studentSelect instanceof HTMLSelectElement) ||
+      !(guardianSelect instanceof HTMLSelectElement) ||
+      !(canUse instanceof HTMLInputElement) ||
+      !(autoSettle instanceof HTMLInputElement)
+    ) {
+      return;
+    }
+    if (!studentSelect.value || !guardianSelect.value) {
+      if (status) {
+        status.textContent = 'Escolha o aluno e o responsável.';
+      }
+      return;
+    }
+    void api
+      .getStudentGuardians(studentSelect.value)
+      .then((links) => {
+        const current = links.find(
+          (link) => link.guardianId === guardianSelect.value && link.active,
+        );
+        return api.linkGuardian(studentSelect.value, guardianSelect.value, {
+          isPrimary: current?.isPrimary,
+          canUseGuardianCredit: canUse.checked,
+          autoSettle: autoSettle.checked,
+        });
+      })
+      .then(() => api.getSession())
+      .then((session) => renderFamily(session))
+      .catch((error: unknown) => {
+        if (status) {
+          status.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível salvar a autorização.';
+        }
+      });
+  });
+
+document
+  .querySelector('#guardian-credit-deposit-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const status = document.querySelector('#credits-status');
+    const guardianSelect = document.querySelector('#credit-guardian');
+    const amountInput = document.querySelector('#guardian-credit-amount');
+    const methodSelect = document.querySelector('#guardian-credit-method');
+    if (
+      !(guardianSelect instanceof HTMLSelectElement) ||
+      !(amountInput instanceof HTMLInputElement) ||
+      !(methodSelect instanceof HTMLSelectElement)
+    ) {
+      return;
+    }
+    const guardianId = guardianSelect.value;
+    if (!guardianId) {
+      if (status) {
+        status.textContent = 'Escolha o responsável.';
+      }
+      return;
+    }
+    const parsed = parseReaisToCents(amountInput.value);
+    if (!parsed.ok) {
+      if (status) {
+        status.textContent = parsed.error.message;
+      }
+      return;
+    }
+    const method = methodSelect.value;
+    if (method !== 'pix' && method !== 'cash') {
+      return;
+    }
+    void api
+      .depositGuardianCredit({
+        guardianId,
+        amountCents: parsed.data,
+        method,
+      })
+      .then(() => {
+        amountInput.value = '';
+        return api.getSession();
+      })
+      .then((session) =>
+        renderAgenda(session).then(() =>
+          renderPayments(session).then(() =>
+            renderCredits(session).then(() => renderAdjust(session)),
+          ),
+        ),
+      )
+      .catch((error: unknown) => {
+        if (status) {
+          status.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível entrar o crédito.';
+        }
+      });
+  });
+
+document
+  .querySelector('#guardian-credit-refund-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const status = document.querySelector('#credits-status');
+    const guardianSelect = document.querySelector('#credit-guardian');
+    const amountInput = document.querySelector(
+      '#guardian-credit-refund-amount',
+    );
+    const reasonInput = document.querySelector(
+      '#guardian-credit-refund-reason',
+    );
+    if (
+      !(guardianSelect instanceof HTMLSelectElement) ||
+      !(amountInput instanceof HTMLInputElement) ||
+      !(reasonInput instanceof HTMLInputElement)
+    ) {
+      return;
+    }
+    const guardianId = guardianSelect.value;
+    if (!guardianId) {
+      if (status) {
+        status.textContent = 'Escolha o responsável.';
+      }
+      return;
+    }
+    const parsed = parseReaisToCents(amountInput.value);
+    if (!parsed.ok) {
+      if (status) {
+        status.textContent = parsed.error.message;
+      }
+      return;
+    }
+    void api
+      .refundGuardianCredit({
+        guardianId,
         amountCents: parsed.data,
         reason: reasonInput.value,
       })

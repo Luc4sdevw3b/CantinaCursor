@@ -1,4 +1,4 @@
-import { applyPersonalCreditToFiado } from './credit';
+import { applyCreditLayersToFiado } from './credit';
 import { isImmutableId, isSheetRowNumber } from './ids';
 import { parseCents, percentAmount } from './money';
 import { parseSaleQuantity } from './quantity';
@@ -12,6 +12,7 @@ export const SETTLEMENT_CASH = 'cash';
 export const SETTLEMENT_CHANGE = 'change';
 export const SETTLEMENT_FIADO = 'fiado';
 export const SETTLEMENT_CREDIT = 'credit';
+export const SETTLEMENT_GUARDIAN_CREDIT = 'guardian_credit';
 export const PAYMENT_PIX = 'pix';
 export const PAYMENT_CASH = 'cash';
 export const PAYMENT_MIXED = 'mixed';
@@ -98,7 +99,8 @@ export type SettlementKind =
   | typeof SETTLEMENT_CASH
   | typeof SETTLEMENT_CHANGE
   | typeof SETTLEMENT_FIADO
-  | typeof SETTLEMENT_CREDIT;
+  | typeof SETTLEMENT_CREDIT
+  | typeof SETTLEMENT_GUARDIAN_CREDIT;
 
 export interface PlannedSettlement {
   kind: SettlementKind;
@@ -315,6 +317,7 @@ export function planSettlements(input: {
   pixAmountCents?: unknown;
   cashTenderedCents?: unknown;
   creditBalanceCents?: number;
+  guardianCreditCents?: number;
 }): Result<PlannedSettlements> {
   const kind = parsePaymentKind(input.paymentKind);
   if (!kind.ok) {
@@ -338,15 +341,22 @@ export function planSettlements(input: {
     });
   }
   if (kind.data === PAYMENT_FIADO) {
-    const applied = applyPersonalCreditToFiado({
+    const applied = applyCreditLayersToFiado({
       netTotalCents: net,
-      creditBalanceCents: input.creditBalanceCents ?? 0,
+      personalCreditCents: input.creditBalanceCents ?? 0,
+      guardianCreditCents: input.guardianCreditCents ?? 0,
     });
     const rows: PlannedSettlement[] = [];
-    if (applied.creditUsedCents > 0) {
+    if (applied.personalUsedCents > 0) {
       rows.push({
         kind: SETTLEMENT_CREDIT,
-        amount_cents: String(applied.creditUsedCents),
+        amount_cents: String(applied.personalUsedCents),
+      });
+    }
+    if (applied.guardianUsedCents > 0) {
+      rows.push({
+        kind: SETTLEMENT_GUARDIAN_CREDIT,
+        amount_cents: String(applied.guardianUsedCents),
       });
     }
     if (applied.fiadoCents > 0) {
@@ -420,7 +430,10 @@ export function paymentKindFromSettlements(
   const hasPix = rows.some((row) => row.kind === SETTLEMENT_PIX);
   const hasCash = rows.some((row) => row.kind === SETTLEMENT_CASH);
   const hasFiado = rows.some((row) => row.kind === SETTLEMENT_FIADO);
-  const hasCredit = rows.some((row) => row.kind === SETTLEMENT_CREDIT);
+  const hasCredit = rows.some(
+    (row) =>
+      row.kind === SETTLEMENT_CREDIT || row.kind === SETTLEMENT_GUARDIAN_CREDIT,
+  );
   if (hasFiado || hasCredit) {
     return PAYMENT_FIADO;
   }
@@ -441,6 +454,7 @@ export function saleSummaryLabel(input: {
   changeLabel?: string | null;
   dueDateLabel?: string | null;
   creditLabel?: string | null;
+  guardianCreditLabel?: string | null;
 }): string {
   const base = `${input.consumerLabel} • ${input.descriptions.join(', ')} • ${input.netLabel}`;
   const extras: string[] = [];
@@ -455,6 +469,9 @@ export function saleSummaryLabel(input: {
   }
   if (input.creditLabel) {
     extras.push(`crédito ${input.creditLabel}`);
+  }
+  if (input.guardianCreditLabel) {
+    extras.push(`crédito resp. ${input.guardianCreditLabel}`);
   }
   if (input.changeLabel) {
     extras.push(`Troco ${input.changeLabel}`);

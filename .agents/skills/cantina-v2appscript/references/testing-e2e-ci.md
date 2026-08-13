@@ -97,6 +97,7 @@ Mínimo obrigatório do smoke local:
 19. parcial manual: os mesmos dois fiados; alocar `R$ 2,50` só no vencimento de 14/08; atrasado permanece `R$ 5,50` em 12/08; **Próximos** vira `Ana Souza • ~8 • R$ 3,00 • Sexta-feira • 14/08/26`; pagamento `Ana Souza • ~8 • R$ 2,50 • PIX`.
 20. juros + renegociação: fiado da Ana para amanhã; dona lança `R$ 1,00` com motivo; agenda vira `Ana Souza • ~8 • R$ 6,50 • Sexta-feira • 14/08/26`; renegocia para +7 dias; agenda `Ana Souza • ~8 • R$ 6,50 • Quinta-feira • 20/08/26` e histórico `Ana Souza • ~8 • Sexta-feira • 14/08/26 → Quinta-feira • 20/08/26 • Pedido da responsável`. Funcionário não vê **Lançar juros**.
 21. crédito pessoal: depósito `R$ 2,00` da Ana; lista `Ana Souza • ~8 • R$ 2,00`; fiado Coxinha amanhã; venda `Ana Souza • ~8 • Coxinha • R$ 5,50 • Fiado • crédito R$ 2,00 • Sexta-feira • 14/08/26`; agenda `Ana Souza • ~8 • R$ 3,50 • Sexta-feira • 14/08/26`; crédito `R$ 0,00`; estoque `Coxinha • 9`. Dona devolve crédito. Funcionário não vê **Devolver crédito**.
+22. crédito de responsável: autorizar Ana ~8 a usar o crédito da Maria; depósito `R$ 2,00` da Maria; lista `Maria Souza • mãe • R$ 2,00`; fiado Coxinha da Ana amanhã; venda `… • Fiado • crédito resp. R$ 2,00 • Sexta-feira • 14/08/26`; agenda `Ana Souza • ~8 • R$ 3,50`; crédito da Maria `R$ 0,00`. Irmão sem autorização e o outro responsável não consomem essa conta.
 
 Não confundir com o ambiente Google E2E da Fase 3.
 

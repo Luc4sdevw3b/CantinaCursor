@@ -1,8 +1,10 @@
 import {
+  CREDIT_GUARDIAN_REQUIRED_ERROR,
   CREDIT_INSUFFICIENT_ERROR,
   CREDIT_KIND_DEPOSIT,
   CREDIT_KIND_REFUND,
   CREDIT_KIND_SALE,
+  CREDIT_OWNER_GUARDIAN,
   CREDIT_OWNER_STUDENT,
   CREDIT_SOURCE_PAYMENT,
   CREDIT_SOURCE_REFUND,
@@ -54,6 +56,7 @@ import {
   SETTLEMENT_CASH,
   SETTLEMENT_CREDIT,
   SETTLEMENT_FIADO,
+  SETTLEMENT_GUARDIAN_CREDIT,
   paymentKindFromSettlements,
   planSaleLine,
   planSaleTotals,
@@ -132,8 +135,10 @@ export interface PaymentView {
 
 export interface CreditView {
   id: string;
-  studentId: string;
-  studentLabel: string;
+  ownerType: typeof CREDIT_OWNER_STUDENT | typeof CREDIT_OWNER_GUARDIAN;
+  studentId: string | null;
+  guardianId: string | null;
+  ownerLabel: string;
   balanceCents: number;
   balanceLabel: string;
   summaryLabel: string;
@@ -243,7 +248,7 @@ interface PaymentCreditAllocationRecord {
 
 interface CreditAccountRecord {
   id: string;
-  owner_type: typeof CREDIT_OWNER_STUDENT;
+  owner_type: typeof CREDIT_OWNER_STUDENT | typeof CREDIT_OWNER_GUARDIAN;
   owner_student_id: string;
   owner_guardian_id: string;
   active: string;
@@ -368,6 +373,7 @@ export class MemorySales {
   listPayments(): Result<PaymentView[]> {
     return ok(
       this.payments
+        .filter((payment) => payment.payer_student_id)
         .slice()
         .reverse()
         .map((payment) => this.toPayment(payment)),
@@ -436,13 +442,17 @@ export class MemorySales {
   }
 
   listCreditAccounts(): Result<CreditView[]> {
-    return ok(
-      this.creditAccounts
-        .filter((account) => account.owner_type === CREDIT_OWNER_STUDENT)
-        .slice()
-        .reverse()
-        .map((account) => this.toCredit(account)),
-    );
+    const personal = this.creditAccounts
+      .filter((account) => account.owner_type === CREDIT_OWNER_STUDENT)
+      .slice()
+      .reverse()
+      .map((account) => this.toCredit(account));
+    const guardians = this.creditAccounts
+      .filter((account) => account.owner_type === CREDIT_OWNER_GUARDIAN)
+      .slice()
+      .reverse()
+      .map((account) => this.toCredit(account));
+    return ok([...personal, ...guardians]);
   }
 
   depositPersonalCredit(input: {
@@ -550,6 +560,128 @@ export class MemorySales {
       source_type: CREDIT_SOURCE_REFUND,
       source_id: '',
       student_id: student.data.id,
+      created_by: LOCAL_ACTOR_ID,
+      created_at: this.nowIso(),
+      note: planned.data.note,
+    });
+    return ok(this.toCredit(account));
+  }
+
+  depositGuardianCredit(input: {
+    guardianId?: string | null;
+    amountCents: unknown;
+    method: unknown;
+  }): Result<CreditView> {
+    if (!input.guardianId) {
+      return err(CREDIT_GUARDIAN_REQUIRED_ERROR);
+    }
+    const guardian = this.roster.getGuardian(input.guardianId);
+    if (!guardian.ok) {
+      return err(guardian.error);
+    }
+    const method = parsePaymentMethod(input.method);
+    if (!method.ok) {
+      return err(method.error);
+    }
+    const autoSettleStudentIds = new Set(
+      this.roster
+        .listActiveGuardianLinks()
+        .filter(
+          (link) =>
+            link.guardianId === guardian.data.id &&
+            link.autoSettleDebtFromGuardianCredit,
+        )
+        .map((link) => link.studentId),
+    );
+    const planned = planCreditDeposit({
+      amountCents: input.amountCents,
+      receivables: this.receivables
+        .filter((item) => autoSettleStudentIds.has(item.charged_student_id))
+        .map((item) => ({
+          id: item.id,
+          charged_student_id: item.charged_student_id,
+          due_date: item.due_date,
+          created_at: item.created_at,
+          remaining_cents: this.remainingCents(item.id),
+        })),
+    });
+    if (!planned.ok) {
+      return err(planned.error);
+    }
+    const now = this.nowIso();
+    const payment: PaymentRecord = {
+      id: this.createId(),
+      payer_guardian_id: guardian.data.id,
+      payer_student_id: '',
+      method: method.data,
+      amount_received_cents: String(input.amountCents),
+      status: PAYMENT_STATUS_COMPLETED,
+      created_by: LOCAL_ACTOR_ID,
+      created_at: now,
+      note: '',
+    };
+    this.payments.push(payment);
+    for (const row of planned.data.allocations) {
+      this.allocations.push({
+        payment_id: payment.id,
+        receivable_id: row.receivable_id,
+        student_id: row.student_id,
+        amount_cents: row.amount_cents,
+      });
+    }
+    const account = this.ensureGuardianCreditAccount(guardian.data.id, now);
+    if (planned.data.creditCents > 0) {
+      this.creditMovements.push({
+        credit_account_id: account.id,
+        kind: CREDIT_KIND_DEPOSIT,
+        amount_delta_cents: String(planned.data.creditCents),
+        source_type: CREDIT_SOURCE_PAYMENT,
+        source_id: payment.id,
+        student_id: '',
+        created_by: LOCAL_ACTOR_ID,
+        created_at: now,
+        note: '',
+      });
+      this.paymentCreditAllocations.push({
+        payment_id: payment.id,
+        credit_account_id: account.id,
+        amount_cents: String(planned.data.creditCents),
+      });
+    }
+    return ok(this.toCredit(account));
+  }
+
+  refundGuardianCredit(input: {
+    guardianId?: string | null;
+    amountCents: unknown;
+    reason: unknown;
+  }): Result<CreditView> {
+    if (!input.guardianId) {
+      return err(CREDIT_GUARDIAN_REQUIRED_ERROR);
+    }
+    const guardian = this.roster.getGuardian(input.guardianId);
+    if (!guardian.ok) {
+      return err(guardian.error);
+    }
+    const account = this.findGuardianCreditAccount(guardian.data.id);
+    const planned = planCreditRefund({
+      amountCents: input.amountCents,
+      balanceCents: account ? this.creditBalanceCents(account.id) : 0,
+      reason: input.reason,
+    });
+    if (!planned.ok) {
+      return err(planned.error);
+    }
+    if (!account) {
+      return err(CREDIT_INSUFFICIENT_ERROR);
+    }
+    this.creditMovements.push({
+      credit_account_id: account.id,
+      kind: CREDIT_KIND_REFUND,
+      amount_delta_cents: String(-Number(planned.data.amount_cents)),
+      source_type: CREDIT_SOURCE_REFUND,
+      source_id: '',
+      student_id: '',
       created_by: LOCAL_ACTOR_ID,
       created_at: this.nowIso(),
       note: planned.data.note,
@@ -696,9 +828,16 @@ export class MemorySales {
       consumerId = student.data.id;
     }
     const totals = planSaleTotals(planned);
+    const usableGuardianCredits = consumerId
+      ? this.usableGuardianCredits(consumerId)
+      : [];
     const creditBalanceCents =
       input.paymentKind === PAYMENT_FIADO && consumerId
         ? this.personalCreditBalance(consumerId)
+        : 0;
+    const guardianCreditCents =
+      input.paymentKind === PAYMENT_FIADO
+        ? usableGuardianCredits.reduce((total, item) => total + item.balance, 0)
         : 0;
     const settlements = planSettlements({
       paymentKind: input.paymentKind,
@@ -706,6 +845,7 @@ export class MemorySales {
       pixAmountCents: input.pixAmountCents,
       cashTenderedCents: input.cashTenderedCents,
       creditBalanceCents,
+      guardianCreditCents,
     });
     if (!settlements.ok) {
       return err(settlements.error);
@@ -792,15 +932,18 @@ export class MemorySales {
         reversal_id: '',
       });
     }
-    const creditUsedCents = settlements.data.rows
+    const personalUsedCents = settlements.data.rows
       .filter((row) => row.kind === SETTLEMENT_CREDIT)
       .reduce((total, row) => total + Number(row.amount_cents), 0);
-    if (creditUsedCents > 0 && consumerId) {
+    const guardianUsedCents = settlements.data.rows
+      .filter((row) => row.kind === SETTLEMENT_GUARDIAN_CREDIT)
+      .reduce((total, row) => total + Number(row.amount_cents), 0);
+    if (personalUsedCents > 0 && consumerId) {
       const account = this.ensurePersonalCreditAccount(consumerId, now);
       this.creditMovements.push({
         credit_account_id: account.id,
         kind: CREDIT_KIND_SALE,
-        amount_delta_cents: String(-creditUsedCents),
+        amount_delta_cents: String(-personalUsedCents),
         source_type: CREDIT_SOURCE_SALE,
         source_id: sale.id,
         student_id: consumerId,
@@ -808,6 +951,30 @@ export class MemorySales {
         created_at: now,
         note: '',
       });
+    }
+    if (guardianUsedCents > 0 && consumerId) {
+      let leftover = guardianUsedCents;
+      for (const item of usableGuardianCredits) {
+        if (leftover <= 0) {
+          break;
+        }
+        const used = Math.min(item.balance, leftover);
+        if (used <= 0) {
+          continue;
+        }
+        this.creditMovements.push({
+          credit_account_id: item.account.id,
+          kind: CREDIT_KIND_SALE,
+          amount_delta_cents: String(-used),
+          source_type: CREDIT_SOURCE_SALE,
+          source_id: sale.id,
+          student_id: consumerId,
+          created_by: LOCAL_ACTOR_ID,
+          created_at: now,
+          note: '',
+        });
+        leftover -= used;
+      }
     }
     for (const [productId, quantity] of needed) {
       const moved = this.stock.recordSourceMovement({
@@ -854,6 +1021,40 @@ export class MemorySales {
     );
   }
 
+  private findGuardianCreditAccount(
+    guardianId: string,
+  ): CreditAccountRecord | null {
+    return (
+      this.creditAccounts.find(
+        (account) =>
+          account.owner_type === CREDIT_OWNER_GUARDIAN &&
+          account.owner_guardian_id === guardianId &&
+          account.active === 'true',
+      ) ?? null
+    );
+  }
+
+  private usableGuardianCredits(studentId: string): Array<{
+    account: CreditAccountRecord;
+    balance: number;
+  }> {
+    return this.roster
+      .listActiveGuardianLinks()
+      .filter(
+        (link) => link.studentId === studentId && link.canUseGuardianCredit,
+      )
+      .slice()
+      .sort((left, right) => Number(right.isPrimary) - Number(left.isPrimary))
+      .flatMap((link) => {
+        const account = this.findGuardianCreditAccount(link.guardianId);
+        if (!account) {
+          return [];
+        }
+        const balance = this.creditBalanceCents(account.id);
+        return balance > 0 ? [{ account, balance }] : [];
+      });
+  }
+
   private creditBalanceCents(accountId: string): number {
     return this.creditMovements
       .filter((item) => item.credit_account_id === accountId)
@@ -891,17 +1092,62 @@ export class MemorySales {
     return account;
   }
 
+  private ensureGuardianCreditAccount(
+    guardianId: string,
+    now: string,
+  ): CreditAccountRecord {
+    const existing = this.findGuardianCreditAccount(guardianId);
+    if (existing) {
+      return existing;
+    }
+    const account: CreditAccountRecord = {
+      id: this.createId(),
+      owner_type: CREDIT_OWNER_GUARDIAN,
+      owner_student_id: '',
+      owner_guardian_id: guardianId,
+      active: 'true',
+      created_at: now,
+    };
+    this.creditAccounts.push(account);
+    this.syncGuardianCreditStudents(account.id, guardianId);
+    return account;
+  }
+
+  private syncGuardianCreditStudents(
+    accountId: string,
+    guardianId: string,
+  ): void {
+    for (const link of this.roster
+      .listActiveGuardianLinks()
+      .filter((item) => item.guardianId === guardianId)) {
+      this.creditAccountStudents.push({
+        credit_account_id: accountId,
+        student_id: link.studentId,
+        can_use: link.canUseGuardianCredit ? 'true' : 'false',
+        active: 'true',
+      });
+    }
+  }
+
   private toCredit(account: CreditAccountRecord): CreditView {
-    const studentLabel = this.studentLabel(account.owner_student_id);
+    const ownerLabel =
+      account.owner_type === CREDIT_OWNER_GUARDIAN
+        ? this.guardianLabel(account.owner_guardian_id)
+        : this.studentLabel(account.owner_student_id);
     const balanceCents = this.creditBalanceCents(account.id);
     const balanceLabel = formatBrl(balanceCents);
     return {
       id: account.id,
-      studentId: account.owner_student_id,
-      studentLabel,
+      ownerType: account.owner_type,
+      studentId: account.owner_student_id || null,
+      guardianId: account.owner_guardian_id || null,
+      ownerLabel,
       balanceCents,
       balanceLabel,
-      summaryLabel: creditSummaryLabel({ studentLabel, balanceLabel }),
+      summaryLabel: creditSummaryLabel({
+        studentLabel: ownerLabel,
+        balanceLabel,
+      }),
     };
   }
 
@@ -926,6 +1172,14 @@ export class MemorySales {
   private studentLabel(studentId: string): string {
     const student = unwrap(this.roster.getStudent(studentId));
     return `${student.fullName} • ${student.ageLabel}`;
+  }
+
+  private guardianLabel(guardianId: string): string {
+    const guardian = unwrap(this.roster.getGuardian(guardianId));
+    const relation = guardian.relationLabel
+      ? ` • ${guardian.relationLabel}`
+      : '';
+    return `${guardian.fullName}${relation}`;
   }
 
   private toDueDateHistory(item: DueDateHistoryRecord): DueDateHistoryView {
@@ -1043,7 +1297,12 @@ export class MemorySales {
     const creditCents = settlementRows
       .filter((item) => item.kind === SETTLEMENT_CREDIT)
       .reduce((total, item) => total + Number(item.amount_cents), 0);
+    const guardianCreditCents = settlementRows
+      .filter((item) => item.kind === SETTLEMENT_GUARDIAN_CREDIT)
+      .reduce((total, item) => total + Number(item.amount_cents), 0);
     const creditLabel = creditCents > 0 ? formatBrl(creditCents) : null;
+    const guardianCreditLabel =
+      guardianCreditCents > 0 ? formatBrl(guardianCreditCents) : null;
     return {
       id: sale.id,
       consumerStudentId: sale.consumer_student_id || null,
@@ -1071,6 +1330,7 @@ export class MemorySales {
         changeLabel,
         dueDateLabel,
         creditLabel,
+        guardianCreditLabel,
       }),
       createdAt: sale.created_at,
     };

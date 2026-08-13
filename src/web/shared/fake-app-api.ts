@@ -31,7 +31,9 @@ import type {
   CreatePaymentInput,
   CreditAccount,
   DepositPersonalCreditInput,
+  DepositGuardianCreditInput,
   RefundPersonalCreditInput,
+  RefundGuardianCreditInput,
   AddReceivableInterestInput,
   RenegotiateReceivableInput,
   Product,
@@ -412,6 +414,20 @@ export class FakeAppApi implements AppApi {
   ): Promise<CreditAccount> {
     this.assertAction('credits.refund');
     return throwResult(this.sales.refundPersonalCredit(input));
+  }
+
+  async depositGuardianCredit(
+    input: DepositGuardianCreditInput,
+  ): Promise<CreditAccount> {
+    this.assertAction('credits.deposit');
+    return throwResult(this.sales.depositGuardianCredit(input));
+  }
+
+  async refundGuardianCredit(
+    input: RefundGuardianCreditInput,
+  ): Promise<CreditAccount> {
+    this.assertAction('credits.refund');
+    return throwResult(this.sales.refundGuardianCredit(input));
   }
 
   private assertSession(): void {

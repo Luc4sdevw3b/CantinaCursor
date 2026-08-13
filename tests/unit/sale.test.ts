@@ -157,5 +157,29 @@ describe('cart sale and PIX', () => {
     ).toBe(
       'Ana Souza • ~8 • Coxinha • R$ 5,50 • Fiado • crédito R$ 2,00 • Sexta-feira • 14/08/26',
     );
+    const guardianCredited = planSettlements({
+      paymentKind: 'fiado',
+      netTotalCents: 550,
+      guardianCreditCents: 200,
+    });
+    expect(guardianCredited.ok).toBe(true);
+    if (guardianCredited.ok) {
+      expect(guardianCredited.data.rows).toEqual([
+        { kind: 'guardian_credit', amount_cents: '200' },
+        { kind: 'fiado', amount_cents: '350' },
+      ]);
+    }
+    expect(
+      saleSummaryLabel({
+        consumerLabel: 'Ana Souza • ~8',
+        descriptions: ['Coxinha'],
+        netLabel: 'R$ 5,50',
+        paymentKind: 'fiado',
+        guardianCreditLabel: 'R$ 2,00',
+        dueDateLabel: 'Sexta-feira • 14/08/26',
+      }),
+    ).toBe(
+      'Ana Souza • ~8 • Coxinha • R$ 5,50 • Fiado • crédito resp. R$ 2,00 • Sexta-feira • 14/08/26',
+    );
   });
 });

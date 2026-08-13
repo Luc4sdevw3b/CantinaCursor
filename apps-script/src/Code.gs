@@ -344,6 +344,7 @@ const CREDITS_MIGRATION_ID = '012_credits';
 const CREDITS_MIGRATION_CHECKSUM =
   'id|owner_type|owner_student_id|owner_guardian_id|active|created_at|credit_account_id|student_id|can_use|active|credit_account_id|kind|amount_delta_cents|source_type|source_id|student_id|created_by|created_at|note|payment_id|credit_account_id|amount_cents';
 const CREDIT_OWNER_STUDENT = 'student';
+const CREDIT_OWNER_GUARDIAN = 'guardian';
 const CREDIT_KIND_DEPOSIT = 'deposit';
 const CREDIT_KIND_SALE = 'sale';
 const CREDIT_KIND_REFUND = 'refund';
@@ -360,6 +361,7 @@ const SETTLEMENT_CASH = 'cash';
 const SETTLEMENT_CHANGE = 'change';
 const SETTLEMENT_FIADO = 'fiado';
 const SETTLEMENT_CREDIT = 'credit';
+const SETTLEMENT_GUARDIAN_CREDIT = 'guardian_credit';
 const PAYMENT_MIXED = 'mixed';
 const PAYMENT_FIADO = 'fiado';
 const RECEIVABLE_STATUS_OPEN = 'open';
@@ -2555,8 +2557,22 @@ function appendGuardianLinkGs(input) {
     student_id: input.studentId,
     guardian_id: input.guardianId,
     is_primary: makePrimary ? 'true' : 'false',
-    can_use_guardian_credit: input.canUseGuardianCredit ? 'true' : 'false',
-    auto_settle_debt_from_guardian_credit: input.autoSettle ? 'true' : 'false',
+    can_use_guardian_credit:
+      input.canUseGuardianCredit === undefined
+        ? current
+          ? current.can_use_guardian_credit
+          : 'false'
+        : input.canUseGuardianCredit
+          ? 'true'
+          : 'false',
+    auto_settle_debt_from_guardian_credit:
+      input.autoSettle === undefined
+        ? current
+          ? current.auto_settle_debt_from_guardian_credit
+          : 'false'
+        : input.autoSettle
+          ? 'true'
+          : 'false',
     active: 'true',
     started_at: current ? current.started_at : input.createdAt,
     ended_at: '',
@@ -2690,8 +2706,14 @@ function linkGuardian(sessionToken, studentId, guardianId, payload) {
       studentId: studentId,
       guardianId: guardianId,
       isPrimary: payload && payload.isPrimary === true,
-      canUseGuardianCredit: payload && payload.canUseGuardianCredit === true,
-      autoSettle: payload && payload.autoSettle === true,
+      canUseGuardianCredit:
+        payload && payload.canUseGuardianCredit === undefined
+          ? undefined
+          : payload && payload.canUseGuardianCredit === true,
+      autoSettle:
+        payload && payload.autoSettle === undefined
+          ? undefined
+          : payload && payload.autoSettle === true,
       note: payload && payload.note,
       createdAt: new Date().toISOString(),
     });
@@ -3874,6 +3896,7 @@ function planSettlementsGs(
   pixAmountCents,
   cashTenderedCents,
   creditBalanceCents,
+  guardianCreditCents,
 ) {
   const kind = parsePaymentKindGs(paymentKind);
   if (!Number.isInteger(net) || net <= 0) {
@@ -3890,14 +3913,28 @@ function planSettlementsGs(
     };
   }
   if (kind === PAYMENT_FIADO) {
-    const balance = Number.isInteger(creditBalanceCents)
+    const personalBalance = Number.isInteger(creditBalanceCents)
       ? Math.max(0, creditBalanceCents)
       : 0;
-    const creditUsed = Math.min(balance, net);
-    const fiadoCents = net - creditUsed;
+    const guardianBalance = Number.isInteger(guardianCreditCents)
+      ? Math.max(0, guardianCreditCents)
+      : 0;
+    const personalUsed = Math.min(personalBalance, net);
+    const afterPersonal = net - personalUsed;
+    const guardianUsed = Math.min(guardianBalance, afterPersonal);
+    const fiadoCents = afterPersonal - guardianUsed;
     const rows = [];
-    if (creditUsed > 0) {
-      rows.push({ kind: SETTLEMENT_CREDIT, amount_cents: String(creditUsed) });
+    if (personalUsed > 0) {
+      rows.push({
+        kind: SETTLEMENT_CREDIT,
+        amount_cents: String(personalUsed),
+      });
+    }
+    if (guardianUsed > 0) {
+      rows.push({
+        kind: SETTLEMENT_GUARDIAN_CREDIT,
+        amount_cents: String(guardianUsed),
+      });
     }
     if (fiadoCents > 0) {
       rows.push({ kind: SETTLEMENT_FIADO, amount_cents: String(fiadoCents) });
@@ -3988,7 +4025,9 @@ function paymentKindFromSettlementsGs(rows) {
     return row.kind === SETTLEMENT_FIADO;
   });
   const hasCredit = rows.some(function (row) {
-    return row.kind === SETTLEMENT_CREDIT;
+    return (
+      row.kind === SETTLEMENT_CREDIT || row.kind === SETTLEMENT_GUARDIAN_CREDIT
+    );
   });
   if (hasFiado || hasCredit) {
     return PAYMENT_FIADO;
@@ -4010,6 +4049,7 @@ function saleSummaryLabelGs(
   changeLabel,
   dueDateLabel,
   creditLabel,
+  guardianCreditLabel,
 ) {
   const base =
     consumerLabel + ' • ' + descriptions.join(', ') + ' • ' + netLabel;
@@ -4025,6 +4065,9 @@ function saleSummaryLabelGs(
   }
   if (creditLabel) {
     extras.push('crédito ' + creditLabel);
+  }
+  if (guardianCreditLabel) {
+    extras.push('crédito resp. ' + guardianCreditLabel);
   }
   if (changeLabel) {
     extras.push('Troco ' + changeLabel);
@@ -4092,7 +4135,16 @@ function toSaleViewGs(sale) {
     .reduce(function (total, item) {
       return total + Number(item.amount_cents);
     }, 0);
+  const guardianCreditCents = settlementRows
+    .filter(function (item) {
+      return item.kind === SETTLEMENT_GUARDIAN_CREDIT;
+    })
+    .reduce(function (total, item) {
+      return total + Number(item.amount_cents);
+    }, 0);
   const creditLabel = creditCents > 0 ? formatBrlGs(creditCents) : null;
+  const guardianCreditLabel =
+    guardianCreditCents > 0 ? formatBrlGs(guardianCreditCents) : null;
   return {
     id: sale.id,
     consumerStudentId: sale.consumer_student_id || null,
@@ -4122,6 +4174,7 @@ function toSaleViewGs(sale) {
       changeLabel,
       dueDateLabel,
       creditLabel,
+      guardianCreditLabel,
     ),
     createdAt: sale.created_at,
   };
@@ -4200,16 +4253,27 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
     consumerId = student.id;
   }
   const totals = planSaleTotalsGs(planned);
+  const usableGuardianCredits =
+    payload && payload.paymentKind === PAYMENT_FIADO && consumerId
+      ? usableGuardianCreditsGs(consumerId)
+      : [];
   const creditBalance =
     payload && payload.paymentKind === PAYMENT_FIADO && consumerId
       ? personalCreditBalanceGs(consumerId)
       : 0;
+  const guardianCreditBalance = usableGuardianCredits.reduce(function (
+    total,
+    item,
+  ) {
+    return total + item.balance;
+  }, 0);
   const plannedSettlements = planSettlementsGs(
     payload && payload.paymentKind,
     Number(totals.net_total_cents),
     payload && payload.pixAmountCents,
     payload && payload.cashTenderedCents,
     creditBalance,
+    guardianCreditBalance,
   );
   let installments = [];
   if (plannedSettlements.paymentKind === PAYMENT_FIADO) {
@@ -4308,19 +4372,26 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
       '',
     ]);
   });
-  const creditUsedCents = plannedSettlements.rows
+  const personalUsedCents = plannedSettlements.rows
     .filter(function (row) {
       return row.kind === SETTLEMENT_CREDIT;
     })
     .reduce(function (total, row) {
       return total + Number(row.amount_cents);
     }, 0);
-  if (creditUsedCents > 0 && consumerId) {
+  const guardianUsedCents = plannedSettlements.rows
+    .filter(function (row) {
+      return row.kind === SETTLEMENT_GUARDIAN_CREDIT;
+    })
+    .reduce(function (total, row) {
+      return total + Number(row.amount_cents);
+    }, 0);
+  if (personalUsedCents > 0 && consumerId) {
     const account = ensurePersonalCreditAccountGs(consumerId, userId, now);
     openNamedSheet(CREDIT_MOVEMENTS_SHEET, CREDIT_MOVEMENTS_HEADERS).appendRow([
       account.id,
       CREDIT_KIND_SALE,
-      String(-creditUsedCents),
+      String(-personalUsedCents),
       CREDIT_SOURCE_SALE,
       saleId,
       consumerId,
@@ -4328,6 +4399,33 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
       now,
       '',
     ]);
+  }
+  if (guardianUsedCents > 0 && consumerId) {
+    let leftover = guardianUsedCents;
+    usableGuardianCredits.forEach(function (item) {
+      if (leftover <= 0) {
+        return;
+      }
+      const used = Math.min(item.balance, leftover);
+      if (used <= 0) {
+        return;
+      }
+      openNamedSheet(
+        CREDIT_MOVEMENTS_SHEET,
+        CREDIT_MOVEMENTS_HEADERS,
+      ).appendRow([
+        item.account.id,
+        CREDIT_KIND_SALE,
+        String(-used),
+        CREDIT_SOURCE_SALE,
+        saleId,
+        consumerId,
+        userId,
+        now,
+        '',
+      ]);
+      leftover -= used;
+    });
   }
   const day = Object.keys(needed).length
     ? requireInventoryDayGs(businessDate)
@@ -4761,6 +4859,9 @@ function createPayment(sessionToken, payload) {
 function listPayments(sessionToken) {
   requireAction(sessionToken, 'receivables.read');
   return listPaymentRecords()
+    .filter(function (payment) {
+      return payment.payer_student_id;
+    })
     .slice()
     .reverse()
     .map(function (payment) {
@@ -5021,6 +5122,56 @@ function findPersonalCreditAccountGs(studentId) {
   return accounts.length ? accounts[accounts.length - 1] : null;
 }
 
+function findGuardianCreditAccountGs(guardianId) {
+  const accounts = listCreditAccountRecords().filter(function (account) {
+    return (
+      account.owner_type === CREDIT_OWNER_GUARDIAN &&
+      account.owner_guardian_id === guardianId &&
+      account.active === 'true'
+    );
+  });
+  return accounts.length ? accounts[accounts.length - 1] : null;
+}
+
+function listActiveGuardianLinksGs() {
+  const latest = {};
+  listGuardianLinkRecords().forEach(function (record) {
+    latest[record.id] = record;
+  });
+  return Object.keys(latest)
+    .map(function (id) {
+      return latest[id];
+    })
+    .filter(function (record) {
+      return record.active === 'true' && record.ended_at === '';
+    });
+}
+
+function usableGuardianCreditsGs(studentId) {
+  return listActiveGuardianLinksGs()
+    .filter(function (link) {
+      return (
+        link.student_id === studentId && link.can_use_guardian_credit === 'true'
+      );
+    })
+    .sort(function (left, right) {
+      return (
+        Number(right.is_primary === 'true') - Number(left.is_primary === 'true')
+      );
+    })
+    .map(function (link) {
+      const account = findGuardianCreditAccountGs(link.guardian_id);
+      if (!account) {
+        return null;
+      }
+      const balance = creditBalanceCentsGs(account.id);
+      return balance > 0 ? { account: account, balance: balance } : null;
+    })
+    .filter(function (item) {
+      return item;
+    });
+}
+
 function creditBalanceCentsGs(accountId) {
   return listCreditMovementRecords()
     .filter(function (item) {
@@ -5064,22 +5215,77 @@ function ensurePersonalCreditAccountGs(studentId, userId, now) {
   };
 }
 
+function ensureGuardianCreditAccountGs(guardianId, userId, now) {
+  const existing = findGuardianCreditAccountGs(guardianId);
+  if (existing) {
+    return existing;
+  }
+  const accountId = Utilities.getUuid();
+  openNamedSheet(CREDIT_ACCOUNTS_SHEET, CREDIT_ACCOUNTS_HEADERS).appendRow([
+    accountId,
+    CREDIT_OWNER_GUARDIAN,
+    '',
+    guardianId,
+    'true',
+    now,
+  ]);
+  const studentsSheet = openNamedSheet(
+    CREDIT_ACCOUNT_STUDENTS_SHEET,
+    CREDIT_ACCOUNT_STUDENTS_HEADERS,
+  );
+  listActiveGuardianLinksGs()
+    .filter(function (link) {
+      return link.guardian_id === guardianId;
+    })
+    .forEach(function (link) {
+      studentsSheet.appendRow([
+        accountId,
+        link.student_id,
+        link.can_use_guardian_credit === 'true' ? 'true' : 'false',
+        'true',
+      ]);
+    });
+  return {
+    id: accountId,
+    owner_type: CREDIT_OWNER_GUARDIAN,
+    owner_student_id: '',
+    owner_guardian_id: guardianId,
+    active: 'true',
+    created_at: now,
+  };
+}
+
+function guardianLabelGs(guardianId) {
+  const guardian = latestGuardianById(guardianId, true);
+  const relation = guardian.relation_label
+    ? ' • ' + guardian.relation_label
+    : '';
+  return guardian.full_name + relation;
+}
+
 function creditSummaryLabelGs(studentLabel, balanceLabel) {
   return studentLabel + ' • ' + balanceLabel;
 }
 
 function toCreditViewGs(account) {
-  const student = latestStudentById(account.owner_student_id);
-  const studentLabel = student.full_name + ' • ' + studentAgeLabelGs(student);
+  const ownerLabel =
+    account.owner_type === CREDIT_OWNER_GUARDIAN
+      ? guardianLabelGs(account.owner_guardian_id)
+      : (function () {
+          const student = latestStudentById(account.owner_student_id);
+          return student.full_name + ' • ' + studentAgeLabelGs(student);
+        })();
   const balanceCents = creditBalanceCentsGs(account.id);
   const balanceLabel = formatBrlGs(balanceCents);
   return {
     id: account.id,
-    studentId: account.owner_student_id,
-    studentLabel: studentLabel,
+    ownerType: account.owner_type,
+    studentId: account.owner_student_id || null,
+    guardianId: account.owner_guardian_id || null,
+    ownerLabel: ownerLabel,
     balanceCents: balanceCents,
     balanceLabel: balanceLabel,
-    summaryLabel: creditSummaryLabelGs(studentLabel, balanceLabel),
+    summaryLabel: creditSummaryLabelGs(ownerLabel, balanceLabel),
   };
 }
 
@@ -5226,7 +5432,8 @@ function refundPersonalCreditUnlocked(userId, payload) {
 
 function listCreditAccounts(sessionToken) {
   requireAction(sessionToken, 'credits.read');
-  return listCreditAccountRecords()
+  const records = listCreditAccountRecords();
+  const personal = records
     .filter(function (account) {
       return account.owner_type === CREDIT_OWNER_STUDENT;
     })
@@ -5235,6 +5442,16 @@ function listCreditAccounts(sessionToken) {
     .map(function (account) {
       return toCreditViewGs(account);
     });
+  const guardians = records
+    .filter(function (account) {
+      return account.owner_type === CREDIT_OWNER_GUARDIAN;
+    })
+    .slice()
+    .reverse()
+    .map(function (account) {
+      return toCreditViewGs(account);
+    });
+  return personal.concat(guardians);
 }
 
 function depositPersonalCredit(sessionToken, payload) {
@@ -5250,5 +5467,152 @@ function refundPersonalCredit(sessionToken, payload) {
   return withScriptLock(function () {
     setupSchema();
     return refundPersonalCreditUnlocked(session.user_id, payload || {});
+  });
+}
+
+function depositGuardianCreditUnlocked(userId, payload) {
+  const guardianId =
+    payload && payload.guardianId ? String(payload.guardianId) : '';
+  if (!guardianId) {
+    throw new Error(
+      'CREDIT_GUARDIAN_REQUIRED: Escolha o responsável do crédito.',
+    );
+  }
+  const guardian = latestGuardianById(guardianId, true);
+  const method = parsePaymentMethodGs(payload && payload.method);
+  const autoSettleIds = {};
+  listActiveGuardianLinksGs().forEach(function (link) {
+    if (
+      link.guardian_id === guardian.id &&
+      link.auto_settle_debt_from_guardian_credit === 'true'
+    ) {
+      autoSettleIds[link.student_id] = true;
+    }
+  });
+  const receivables = listReceivableRecords()
+    .filter(function (item) {
+      return autoSettleIds[item.charged_student_id];
+    })
+    .map(function (item) {
+      return {
+        id: item.id,
+        charged_student_id: item.charged_student_id,
+        due_date: item.due_date,
+        created_at: item.created_at,
+        remaining_cents: remainingCentsGs(item.id),
+      };
+    });
+  const planned = planCreditDepositGs(
+    payload && payload.amountCents,
+    receivables,
+  );
+  const now = new Date().toISOString();
+  const paymentId = Utilities.getUuid();
+  openNamedSheet(PAYMENTS_SHEET, PAYMENTS_HEADERS).appendRow([
+    paymentId,
+    guardian.id,
+    '',
+    method,
+    String(payload.amountCents),
+    PAYMENT_STATUS_COMPLETED,
+    userId,
+    now,
+    '',
+  ]);
+  const allocationsSheet = openNamedSheet(
+    PAYMENT_ALLOCATIONS_SHEET,
+    PAYMENT_ALLOCATIONS_HEADERS,
+  );
+  planned.allocations.forEach(function (row) {
+    allocationsSheet.appendRow([
+      paymentId,
+      row.receivable_id,
+      row.student_id,
+      row.amount_cents,
+    ]);
+  });
+  const account = ensureGuardianCreditAccountGs(guardian.id, userId, now);
+  if (planned.creditCents > 0) {
+    openNamedSheet(CREDIT_MOVEMENTS_SHEET, CREDIT_MOVEMENTS_HEADERS).appendRow([
+      account.id,
+      CREDIT_KIND_DEPOSIT,
+      String(planned.creditCents),
+      CREDIT_SOURCE_PAYMENT,
+      paymentId,
+      '',
+      userId,
+      now,
+      '',
+    ]);
+    openNamedSheet(
+      PAYMENT_CREDIT_ALLOCATIONS_SHEET,
+      PAYMENT_CREDIT_ALLOCATIONS_HEADERS,
+    ).appendRow([paymentId, account.id, String(planned.creditCents)]);
+  }
+  return toCreditViewGs(account);
+}
+
+function refundGuardianCreditUnlocked(userId, payload) {
+  const guardianId =
+    payload && payload.guardianId ? String(payload.guardianId) : '';
+  if (!guardianId) {
+    throw new Error(
+      'CREDIT_GUARDIAN_REQUIRED: Escolha o responsável do crédito.',
+    );
+  }
+  const guardian = latestGuardianById(guardianId, true);
+  const account = findGuardianCreditAccountGs(guardian.id);
+  const balance = account ? creditBalanceCentsGs(account.id) : 0;
+  var amount;
+  try {
+    amount = parseCentsGs(payload && payload.amountCents);
+  } catch (error) {
+    throw new Error(
+      'INVALID_CENTS: O valor do crédito precisa ser um valor em centavos, número inteiro.',
+    );
+  }
+  if (amount <= 0) {
+    throw new Error(
+      'INVALID_CENTS: O valor do crédito precisa ser um valor em centavos, número inteiro.',
+    );
+  }
+  if (amount > balance) {
+    throw new Error(
+      'CREDIT_INSUFFICIENT: Não há crédito suficiente para devolver.',
+    );
+  }
+  const reason = parseRequiredReasonGs(
+    payload && payload.reason,
+    'CREDIT_REASON_REQUIRED',
+    'Informe o motivo da devolução.',
+  );
+  const now = new Date().toISOString();
+  openNamedSheet(CREDIT_MOVEMENTS_SHEET, CREDIT_MOVEMENTS_HEADERS).appendRow([
+    account.id,
+    CREDIT_KIND_REFUND,
+    String(-amount),
+    CREDIT_SOURCE_REFUND,
+    '',
+    '',
+    userId,
+    now,
+    reason,
+  ]);
+  return toCreditViewGs(account);
+}
+
+function depositGuardianCredit(sessionToken, payload) {
+  const session = requireAction(sessionToken, 'credits.deposit');
+  return withScriptLock(function () {
+    setupSchema();
+    return depositGuardianCreditUnlocked(session.user_id, payload || {});
+  });
+}
+
+function refundGuardianCredit(sessionToken, payload) {
+  const session = requireAction(sessionToken, 'credits.refund');
+  return withScriptLock(function () {
+    setupSchema();
+    return refundGuardianCreditUnlocked(session.user_id, payload || {});
   });
 }

@@ -141,7 +141,7 @@ Todo valor recebido precisa ser alocado. Na Fase 15 o pagador é o aluno da dív
 
 `_credit_movements`: credit_account_id, kind, amount_delta_cents, source_type, source_id, student_id, created_by, created_at, note.
 
-Saldo = soma dos movimentos. Conta pessoal: `owner_type=student`. Fiado consome crédito pessoal primeiro. Depósito quita dívida pessoal oldest-first; sobra vira movimento `deposit`. Devolução da dona é movimento `refund`.
+Saldo = soma dos movimentos. Conta pessoal: `owner_type=student`. Conta de responsável: `owner_type=guardian`, pai e mãe separados. `_credit_account_students.can_use` espelha `can_use_guardian_credit` do vínculo. Fiado consome crédito pessoal primeiro e, se o filho pode usar, o crédito do responsável. Depósito no responsável só quita dívida do filho com `auto_settle_debt_from_guardian_credit`. Sem autorização, crédito do responsável pode coexistir com dívida do filho. Schema version 12 (`012_credits`).
 
 ## Estoque
 

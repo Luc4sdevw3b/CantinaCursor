@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyCreditLayersToFiado,
   applyPersonalCreditToFiado,
   CREDIT_INSUFFICIENT_ERROR,
   CREDIT_REASON_REQUIRED_ERROR,
@@ -28,6 +29,42 @@ describe('personal credit', () => {
         creditBalanceCents: 0,
       }),
     ).toEqual({ creditUsedCents: 0, fiadoCents: 550 });
+  });
+
+  it('uses personal credit before authorized guardian credit', () => {
+    expect(
+      applyCreditLayersToFiado({
+        netTotalCents: 550,
+        personalCreditCents: 200,
+        guardianCreditCents: 200,
+      }),
+    ).toEqual({
+      personalUsedCents: 200,
+      guardianUsedCents: 200,
+      fiadoCents: 150,
+    });
+    expect(
+      applyCreditLayersToFiado({
+        netTotalCents: 550,
+        personalCreditCents: 0,
+        guardianCreditCents: 200,
+      }),
+    ).toEqual({
+      personalUsedCents: 0,
+      guardianUsedCents: 200,
+      fiadoCents: 350,
+    });
+    expect(
+      applyCreditLayersToFiado({
+        netTotalCents: 550,
+        personalCreditCents: 0,
+        guardianCreditCents: 0,
+      }),
+    ).toEqual({
+      personalUsedCents: 0,
+      guardianUsedCents: 0,
+      fiadoCents: 550,
+    });
   });
 
   it('pays personal debt oldest-first and keeps leftover as credit', () => {
@@ -98,5 +135,11 @@ describe('personal credit', () => {
         balanceLabel: 'R$ 2,00',
       }),
     ).toBe('Ana Souza • ~8 • R$ 2,00');
+    expect(
+      creditSummaryLabel({
+        studentLabel: 'Maria Souza • mãe',
+        balanceLabel: 'R$ 2,00',
+      }),
+    ).toBe('Maria Souza • mãe • R$ 2,00');
   });
 });

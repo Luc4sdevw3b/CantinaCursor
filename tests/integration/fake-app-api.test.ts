@@ -696,4 +696,118 @@ describe('FakeAppApi', () => {
       }),
     ).rejects.toThrow('FORBIDDEN');
   });
+
+  it('uses authorized guardian credit on fiado and keeps the other parent separate', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const coxinha = (await api.listProducts()).find(
+      (item) => item.name === 'Coxinha',
+    );
+    const students = await api.listStudents();
+    const ana = students.find(
+      (student) =>
+        student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+    );
+    const bruno = students.find((student) => student.fullName === 'Bruno Lima');
+    const maria = (await api.listGuardians()).find(
+      (item) => item.fullName === 'Maria Souza',
+    );
+    const paulo = (await api.listGuardians()).find(
+      (item) => item.fullName === 'Paulo Nunes',
+    );
+    if (!coxinha || !ana || !bruno || !maria || !paulo) {
+      throw new Error('crédito de responsável local incompleto');
+    }
+
+    await api.linkGuardian(ana.id, maria.id, {
+      isPrimary: true,
+      canUseGuardianCredit: true,
+    });
+    expect(
+      (
+        await api.depositGuardianCredit({
+          guardianId: maria.id,
+          amountCents: 200,
+          method: 'pix',
+        })
+      ).summaryLabel,
+    ).toBe('Maria Souza • mãe • R$ 2,00');
+    await api.depositGuardianCredit({
+      guardianId: paulo.id,
+      amountCents: 200,
+      method: 'pix',
+    });
+
+    const sale = await api.createSale({
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: '2026-08-14' }],
+    });
+    expect(sale.summaryLabel).toBe(
+      'Ana Souza • ~8 • Coxinha • R$ 5,50 • Fiado • crédito resp. R$ 2,00 • Sexta-feira • 14/08/26',
+    );
+    const labels = (await api.listCreditAccounts()).map(
+      (item) => item.summaryLabel,
+    );
+    expect(labels).toContain('Maria Souza • mãe • R$ 0,00');
+    expect(labels).toContain('Paulo Nunes • pai • R$ 2,00');
+
+    await api.createSale({
+      consumerStudentId: bruno.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: '2026-08-14' }],
+    });
+    expect(
+      (await api.listCreditAccounts()).map((item) => item.summaryLabel),
+    ).toContain('Maria Souza • mãe • R$ 0,00');
+    expect(
+      (await api.listReceivables()).upcoming.map((item) => item.summaryLabel),
+    ).toEqual(
+      expect.arrayContaining([
+        'Ana Souza • ~8 • R$ 3,50 • Sexta-feira • 14/08/26',
+        'Bruno Lima • 11 • R$ 5,50 • Sexta-feira • 14/08/26',
+      ]),
+    );
+  });
+
+  it('auto-settles authorized child debt when depositing guardian credit', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const coxinha = (await api.listProducts()).find(
+      (item) => item.name === 'Coxinha',
+    );
+    const ana = (await api.listStudents()).find(
+      (student) =>
+        student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+    );
+    const maria = (await api.listGuardians()).find(
+      (item) => item.fullName === 'Maria Souza',
+    );
+    if (!coxinha || !ana || !maria) {
+      throw new Error('crédito de responsável local incompleto');
+    }
+
+    await api.createSale({
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: '2026-08-14' }],
+    });
+    await api.linkGuardian(ana.id, maria.id, {
+      isPrimary: true,
+      autoSettle: true,
+    });
+    expect(
+      (
+        await api.depositGuardianCredit({
+          guardianId: maria.id,
+          amountCents: 800,
+          method: 'pix',
+        })
+      ).summaryLabel,
+    ).toBe('Maria Souza • mãe • R$ 2,50');
+    expect((await api.listReceivables()).upcoming).toHaveLength(0);
+  });
 });

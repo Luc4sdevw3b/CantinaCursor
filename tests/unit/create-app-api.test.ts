@@ -89,6 +89,8 @@ function runnerWith(
     listCreditAccounts() {},
     depositPersonalCredit() {},
     refundPersonalCredit() {},
+    depositGuardianCredit() {},
+    refundGuardianCredit() {},
     ...extra,
   };
   return runner;

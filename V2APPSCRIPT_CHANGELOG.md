@@ -9,6 +9,45 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-13 16:20 — Implementada a Fase 18: crédito de responsável
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 18
+
+### Pedido / objetivo
+
+- Iniciar a Fase 18: conta de crédito por responsável, autorização por filho, autoquitação opcional e pai/mãe com contas separadas.
+
+### Tentativa / implementação
+
+- Sem migration nova: reusa `_credit_accounts` (`owner_type=guardian`), `_credit_account_students` e os flags já existentes em `_student_guardians`. Schema continua 12.
+- Fiado consome crédito pessoal primeiro e, se o filho **pode usar crédito**, o saldo do responsável. PIX/dinheiro não consomem. Sem autorização, o crédito do responsável pode coexistir com a dívida do filho. Depósito no responsável só quita dívida do filho com **autoquitar dívida**.
+- Pai e mãe são contas distintas. Irmão sem o flag não herda. Devolução continua só da dona. Preview: autorizar Ana ~8 na Maria; depósito `R$ 2,00`; fiado Coxinha vira `crédito resp. R$ 2,00` com agenda `R$ 3,50`.
+
+### Resultado
+
+- Fase 18 concluída sobre o ambiente E2E isolado e o preview local.
+- Pagamento familiar é a Fase 19. Caixa, reservas reais e WhatsApp permanecem nas fases seguintes.
+
+### Diferenças do pedido
+
+- Autoquitação entra no depósito do responsável, não no momento da venda. Na venda, o consumo é o flag **pode usar crédito**.
+
+### Impacto técnico
+
+- `depositGuardianCredit` e `refundGuardianCredit` entram no `AppApi`. Botões **Entrar crédito do responsável**, **Devolver crédito do responsável** e **Salvar autorização**. Confirmar venda e Registrar pagamento não mudam de rótulo.
+
+### Testes
+
+- Unit, integração, typecheck, lint, format, build, version:check, validate:skill e E2E local.
+- E2E remoto: smoke de health no deployment novo após `clasp push` + `clasp deploy`.
+
+### Pendências / próxima versão
+
+- Não iniciar a Fase 19 (pagamento familiar) sem pedido explícito.
+
 ## 2026-08-13 16:10 — Editar produtos no cardápio
 
 **Origem:** Pedido do usuário

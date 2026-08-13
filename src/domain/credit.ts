@@ -7,6 +7,7 @@ import {
 import { err, ok, type Result } from './result';
 
 export const CREDIT_OWNER_STUDENT = 'student';
+export const CREDIT_OWNER_GUARDIAN = 'guardian';
 export const CREDIT_KIND_DEPOSIT = 'deposit';
 export const CREDIT_KIND_SALE = 'sale';
 export const CREDIT_KIND_REFUND = 'refund';
@@ -17,6 +18,12 @@ export const CREDIT_SOURCE_REFUND = 'refund';
 export const CREDIT_STUDENT_REQUIRED_ERROR = {
   code: 'CREDIT_STUDENT_REQUIRED',
   message: 'Escolha o aluno do crédito.',
+  retryable: false,
+} as const;
+
+export const CREDIT_GUARDIAN_REQUIRED_ERROR = {
+  code: 'CREDIT_GUARDIAN_REQUIRED',
+  message: 'Escolha o responsável do crédito.',
   retryable: false,
 } as const;
 
@@ -53,6 +60,30 @@ export function applyPersonalCreditToFiado(input: {
   return {
     creditUsedCents: used,
     fiadoCents: input.netTotalCents - used,
+  };
+}
+
+export function applyCreditLayersToFiado(input: {
+  netTotalCents: number;
+  personalCreditCents: number;
+  guardianCreditCents: number;
+}): {
+  personalUsedCents: number;
+  guardianUsedCents: number;
+  fiadoCents: number;
+} {
+  const personal = applyPersonalCreditToFiado({
+    netTotalCents: input.netTotalCents,
+    creditBalanceCents: input.personalCreditCents,
+  });
+  const guardian = applyPersonalCreditToFiado({
+    netTotalCents: personal.fiadoCents,
+    creditBalanceCents: input.guardianCreditCents,
+  });
+  return {
+    personalUsedCents: personal.creditUsedCents,
+    guardianUsedCents: guardian.creditUsedCents,
+    fiadoCents: guardian.fiadoCents,
   };
 }
 
