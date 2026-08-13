@@ -82,6 +82,8 @@ function runnerWith(
     getPixCopyText() {},
     listReceivables() {},
     getDueDateShortcuts() {},
+    createPayment() {},
+    listPayments() {},
     ...extra,
   };
   return runner;

@@ -295,4 +295,130 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     ).toBeVisible();
     await expect(page.getByText('Coxinha • 9')).toBeVisible();
   });
+
+  test('pays the oldest fiado first and keeps the later due date', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Vendas', exact: true }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click();
+    await page
+      .locator('#sale-student')
+      .selectOption({ label: 'Ana Souza • ~8' });
+    await page.locator('#sale-payment-kind').selectOption('fiado');
+    await page.locator('#sale-due-date').fill('2026-08-12');
+    await page.getByRole('button', { name: 'Confirmar venda' }).click();
+    await expect(
+      page.getByText('Ana Souza • ~8 • R$ 5,50 • Quarta-feira • 12/08/26', {
+        exact: true,
+      }),
+    ).toBeVisible();
+
+    await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click();
+    await page
+      .locator('#sale-student')
+      .selectOption({ label: 'Ana Souza • ~8' });
+    await page.locator('#sale-payment-kind').selectOption('fiado');
+    await page.getByRole('button', { name: 'Amanhã' }).click();
+    await page.getByRole('button', { name: 'Confirmar venda' }).click();
+    await expect(
+      page.getByText('Ana Souza • ~8 • R$ 5,50 • Sexta-feira • 14/08/26', {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(page.getByText('Coxinha • 8')).toBeVisible();
+
+    await page
+      .locator('#payment-student')
+      .selectOption({ label: 'Ana Souza • ~8' });
+    await page.locator('#payment-amount').fill('5,50');
+    await page.getByRole('button', { name: 'Registrar pagamento' }).click();
+    await expect(
+      page
+        .locator('#payments-list')
+        .getByText('Ana Souza • ~8 • R$ 5,50 • PIX', {
+          exact: true,
+        }),
+    ).toBeVisible();
+    await expect(
+      page
+        .locator('#agenda-overdue')
+        .getByText('Ana Souza • ~8 • R$ 5,50 • Quarta-feira • 12/08/26', {
+          exact: true,
+        }),
+    ).toHaveCount(0);
+    await expect(
+      page
+        .locator('#agenda-upcoming')
+        .getByText('Ana Souza • ~8 • R$ 5,50 • Sexta-feira • 14/08/26', {
+          exact: true,
+        }),
+    ).toBeVisible();
+  });
+
+  test('allocates a manual partial onto the later fiado due date', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Pagamentos', exact: true }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click();
+    await page
+      .locator('#sale-student')
+      .selectOption({ label: 'Ana Souza • ~8' });
+    await page.locator('#sale-payment-kind').selectOption('fiado');
+    await page.locator('#sale-due-date').fill('2026-08-12');
+    await page.getByRole('button', { name: 'Confirmar venda' }).click();
+
+    await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click();
+    await page
+      .locator('#sale-student')
+      .selectOption({ label: 'Ana Souza • ~8' });
+    await page.locator('#sale-payment-kind').selectOption('fiado');
+    await page.getByRole('button', { name: 'Amanhã' }).click();
+    await page.getByRole('button', { name: 'Confirmar venda' }).click();
+    await expect(
+      page.getByText('Ana Souza • ~8 • R$ 5,50 • Sexta-feira • 14/08/26', {
+        exact: true,
+      }),
+    ).toBeVisible();
+
+    await page
+      .locator('#payment-student')
+      .selectOption({ label: 'Ana Souza • ~8' });
+    await page.locator('#payment-mode').selectOption('manual');
+    await page.locator('#payment-amount').fill('2,50');
+    await page
+      .locator('#payment-debts li')
+      .filter({ hasText: 'Sexta-feira • 14/08/26' })
+      .locator('input')
+      .fill('2,50');
+    await page.getByRole('button', { name: 'Registrar pagamento' }).click();
+    await expect(
+      page
+        .locator('#payments-list')
+        .getByText('Ana Souza • ~8 • R$ 2,50 • PIX', {
+          exact: true,
+        }),
+    ).toBeVisible();
+    await expect(
+      page
+        .locator('#agenda-overdue')
+        .getByText('Ana Souza • ~8 • R$ 5,50 • Quarta-feira • 12/08/26', {
+          exact: true,
+        }),
+    ).toBeVisible();
+    await expect(
+      page
+        .locator('#agenda-upcoming')
+        .getByText('Ana Souza • ~8 • R$ 3,00 • Sexta-feira • 14/08/26', {
+          exact: true,
+        }),
+    ).toBeVisible();
+  });
 });

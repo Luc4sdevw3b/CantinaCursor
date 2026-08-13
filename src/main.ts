@@ -7,6 +7,7 @@ import type {
   DueDateShortcuts,
   InventoryBalanceItem,
   Product,
+  Receivable,
   StudentSummary,
 } from './web/shared/app-api';
 import { createAppApi } from './web/shared/create-app-api';
@@ -66,10 +67,10 @@ app.innerHTML = `
     <section class="next-step" aria-labelledby="next-step-title">
       <p class="step-number">01</p>
       <div>
-        <h2 id="next-step-title">Recebíveis e calendário</h2>
-        <p>Fiado com vencimento, atalhos de data e agenda atrasado/hoje/próximo.</p>
+        <h2 id="next-step-title">Pagamento parcial</h2>
+        <p>Quita a dívida mais antiga primeiro, ou escolhe dívidas e aloca o valor na mão.</p>
       </div>
-      <span class="phase-badge">Fase 14</span>
+      <span class="phase-badge">Fase 15</span>
     </section>
 
     <section class="students-panel" id="students-panel" hidden>
@@ -288,6 +289,41 @@ app.innerHTML = `
       <ul id="agenda-upcoming"></ul>
     </section>
 
+    <section class="students-panel" id="payments-panel" hidden>
+      <h2>Pagamentos</h2>
+      <p id="payments-status">Entre para registrar pagamentos.</p>
+      <form id="payment-form">
+        <label>
+          Aluno
+          <select id="payment-student" required>
+            <option value="">Escolha o aluno</option>
+          </select>
+        </label>
+        <label>
+          Valor (R$)
+          <input id="payment-amount" inputmode="decimal" placeholder="5,50" />
+        </label>
+        <label>
+          Método
+          <select id="payment-method">
+            <option value="pix">PIX</option>
+            <option value="cash">Dinheiro</option>
+          </select>
+        </label>
+        <label>
+          Alocação
+          <select id="payment-mode">
+            <option value="oldest_first">Dívida mais antiga</option>
+            <option value="selected">Selecionadas</option>
+            <option value="manual">Manual</option>
+          </select>
+        </label>
+        <ul id="payment-debts" hidden></ul>
+        <button type="submit">Registrar pagamento</button>
+      </form>
+      <ul id="payments-list"></ul>
+    </section>
+
     <footer>
       <span>Versão ${APP_VERSION}</span>
       <span>Apps Script + Sheets + Drive</span>
@@ -366,6 +402,7 @@ async function showAuthenticated(session: AppSession | null): Promise<void> {
   await renderInventory(session);
   await renderSales(session);
   await renderAgenda(session);
+  await renderPayments(session);
 }
 
 document.querySelector('#login-owner')?.addEventListener('click', () => {
@@ -710,6 +747,7 @@ interface CartLine {
 
 const cart: CartLine[] = [];
 let dueDateShortcuts: DueDateShortcuts | null = null;
+let openReceivables: Receivable[] = [];
 
 function applyDueDateShortcut(civilDate: string): void {
   const dueDate = document.querySelector('#sale-due-date');
@@ -852,12 +890,13 @@ async function renderAgenda(session: AppSession | null): Promise<void> {
   upcomingList.replaceChildren();
   if (!session) {
     status.textContent = 'Entre para ver os vencimentos.';
+    openReceivables = [];
     return;
   }
   try {
     const agenda = await api.listReceivables();
-    const total =
-      agenda.overdue.length + agenda.today.length + agenda.upcoming.length;
+    openReceivables = [...agenda.overdue, ...agenda.today, ...agenda.upcoming];
+    const total = openReceivables.length;
     status.textContent =
       total === 0 ? 'Nenhum recebível.' : `${total} recebível(is).`;
     for (const item of agenda.overdue) {
@@ -880,6 +919,122 @@ async function renderAgenda(session: AppSession | null): Promise<void> {
       error instanceof Error
         ? error.message.replace(/^[A-Z_]+:\s*/, '')
         : 'Não foi possível carregar a agenda.';
+  }
+}
+
+function paymentModeValue(): 'oldest_first' | 'selected' | 'manual' {
+  const mode = document.querySelector('#payment-mode');
+  if (mode instanceof HTMLSelectElement && mode.value === 'selected') {
+    return 'selected';
+  }
+  if (mode instanceof HTMLSelectElement && mode.value === 'manual') {
+    return 'manual';
+  }
+  return 'oldest_first';
+}
+
+function renderPaymentDebts(): void {
+  const list = document.querySelector('#payment-debts');
+  const student = document.querySelector('#payment-student');
+  if (!(list instanceof HTMLElement)) {
+    return;
+  }
+  const mode = paymentModeValue();
+  const studentId = student instanceof HTMLSelectElement ? student.value : '';
+  list.replaceChildren();
+  list.hidden = mode === 'oldest_first' || !studentId;
+  if (list.hidden) {
+    return;
+  }
+  const debts = openReceivables.filter(
+    (item) => item.chargedStudentId === studentId,
+  );
+  for (const debt of debts) {
+    const row = document.createElement('li');
+    if (mode === 'selected') {
+      const label = document.createElement('label');
+      label.className = 'checkbox-label';
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.dataset.receivableId = debt.id;
+      label.append(box, document.createTextNode(` ${debt.summaryLabel}`));
+      row.append(label);
+    } else {
+      const label = document.createElement('label');
+      label.textContent = debt.summaryLabel;
+      const amount = document.createElement('input');
+      amount.dataset.receivableId = debt.id;
+      amount.inputMode = 'decimal';
+      amount.placeholder = '0,00';
+      row.append(label, amount);
+    }
+    list.append(row);
+  }
+}
+
+async function renderPayments(session: AppSession | null): Promise<void> {
+  const panel = document.querySelector('#payments-panel');
+  const status = document.querySelector('#payments-status');
+  const list = document.querySelector('#payments-list');
+  const studentSelect = document.querySelector('#payment-student');
+  if (
+    !(panel instanceof HTMLElement) ||
+    !status ||
+    !(list instanceof HTMLElement)
+  ) {
+    return;
+  }
+  panel.hidden = !session;
+  list.replaceChildren();
+  if (!session) {
+    status.textContent = 'Entre para registrar pagamentos.';
+    if (studentSelect instanceof HTMLSelectElement) {
+      studentSelect.replaceChildren();
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = 'Escolha o aluno';
+      studentSelect.append(empty);
+    }
+    renderPaymentDebts();
+    return;
+  }
+  try {
+    const [students, payments] = await Promise.all([
+      api.listStudents({ includeInactive: true }),
+      api.listPayments(),
+    ]);
+    if (studentSelect instanceof HTMLSelectElement) {
+      const current = studentSelect.value;
+      studentSelect.replaceChildren();
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = 'Escolha o aluno';
+      studentSelect.append(empty);
+      for (const student of students) {
+        const option = document.createElement('option');
+        option.value = student.id;
+        option.textContent = `${student.fullName} • ${student.ageLabel}`;
+        studentSelect.append(option);
+      }
+      if (current && students.some((item) => item.id === current)) {
+        studentSelect.value = current;
+      }
+    }
+    status.textContent =
+      payments.length === 0
+        ? 'Nenhum pagamento registrado ainda.'
+        : `${payments.length} pagamento(s).`;
+    for (const payment of payments) {
+      const item = document.createElement('li');
+      item.textContent = payment.summaryLabel;
+      list.append(item);
+    }
+    renderPaymentDebts();
+  } catch (error: unknown) {
+    status.textContent =
+      error instanceof Error
+        ? error.message.replace(/^[A-Z_]+:\s*/, '')
+        : 'Não foi possível carregar os pagamentos.';
   }
 }
 
@@ -1043,7 +1198,7 @@ document
           renderSales(session),
           renderInventory(session),
           renderAgenda(session),
-        ]),
+        ]).then(() => renderPayments(session)),
       )
       .catch((error: unknown) => {
         if (salesStatus) {
@@ -1054,6 +1209,115 @@ document
         }
       });
   });
+
+document
+  .querySelector('#payment-student')
+  ?.addEventListener('change', renderPaymentDebts);
+document
+  .querySelector('#payment-mode')
+  ?.addEventListener('change', renderPaymentDebts);
+
+document.querySelector('#payment-form')?.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const status = document.querySelector('#payments-status');
+  const student = document.querySelector('#payment-student');
+  const amountInput = document.querySelector('#payment-amount');
+  const methodSelect = document.querySelector('#payment-method');
+  if (
+    !(student instanceof HTMLSelectElement) ||
+    !(amountInput instanceof HTMLInputElement) ||
+    !(methodSelect instanceof HTMLSelectElement)
+  ) {
+    return;
+  }
+  const studentId = student.value;
+  if (!studentId) {
+    if (status) {
+      status.textContent = 'Escolha o aluno da dívida.';
+    }
+    return;
+  }
+  const method = methodSelect.value;
+  if (method !== 'pix' && method !== 'cash') {
+    return;
+  }
+  const mode = paymentModeValue();
+  const selectedReceivableIds: string[] = [];
+  const allocations: Array<{ receivableId: string; amountCents: number }> = [];
+  if (mode === 'selected') {
+    document
+      .querySelectorAll<HTMLInputElement>(
+        '#payment-debts input[type="checkbox"]',
+      )
+      .forEach((box) => {
+        if (box.checked && box.dataset.receivableId) {
+          selectedReceivableIds.push(box.dataset.receivableId);
+        }
+      });
+  }
+  if (mode === 'manual') {
+    const inputs = document.querySelectorAll<HTMLInputElement>(
+      '#payment-debts input[data-receivable-id]',
+    );
+    for (const input of inputs) {
+      if (!input.value.trim() || !input.dataset.receivableId) {
+        continue;
+      }
+      const parsed = parseReaisToCents(input.value);
+      if (!parsed.ok) {
+        if (status) {
+          status.textContent = parsed.error.message;
+        }
+        return;
+      }
+      allocations.push({
+        receivableId: input.dataset.receivableId,
+        amountCents: parsed.data,
+      });
+    }
+  }
+  let amountCents: number;
+  if (!amountInput.value.trim() && mode === 'manual') {
+    amountCents = allocations.reduce(
+      (total, line) => total + line.amountCents,
+      0,
+    );
+  } else {
+    const parsed = parseReaisToCents(amountInput.value);
+    if (!parsed.ok) {
+      if (status) {
+        status.textContent = parsed.error.message;
+      }
+      return;
+    }
+    amountCents = parsed.data;
+  }
+  void api
+    .createPayment({
+      studentId,
+      amountCents,
+      method,
+      mode,
+      selectedReceivableIds:
+        mode === 'selected' ? selectedReceivableIds : undefined,
+      allocations: mode === 'manual' ? allocations : undefined,
+    })
+    .then(() => {
+      amountInput.value = '';
+      return api.getSession();
+    })
+    .then((session) =>
+      renderAgenda(session).then(() => renderPayments(session)),
+    )
+    .catch((error: unknown) => {
+      if (status) {
+        status.textContent =
+          error instanceof Error
+            ? error.message.replace(/^[A-Z_]+:\s*/, '')
+            : 'Não foi possível registrar o pagamento.';
+      }
+    });
+});
 
 document.querySelector('#student-form')?.addEventListener('submit', (event) => {
   event.preventDefault();
@@ -1318,6 +1582,7 @@ void api
     await renderInventory(session);
     await renderSales(session);
     await renderAgenda(session);
+    await renderPayments(session);
   })
   .catch(() => {
     const status = document.querySelector('#health-status');

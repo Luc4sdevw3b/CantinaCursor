@@ -24,6 +24,7 @@ export const AUTH_ACTIONS = [
   'sales.read',
   'sales.write',
   'receivables.read',
+  'payments.write',
 ] as const;
 export type AuthAction = (typeof AUTH_ACTIONS)[number];
 
@@ -50,6 +51,7 @@ export const ACTION_ROLES: Record<AuthAction, readonly UserRole[]> = {
   'sales.read': ['owner', 'staff'],
   'sales.write': ['owner', 'staff'],
   'receivables.read': ['owner', 'staff'],
+  'payments.write': ['owner', 'staff'],
 };
 
 export const E2E_OWNER_SUBJECT = 'e2e-owner';

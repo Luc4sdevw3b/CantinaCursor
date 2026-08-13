@@ -9,6 +9,47 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-13 15:10 — Implementada a Fase 15: pagamento parcial
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 15
+
+### Pedido / objetivo
+
+- Rodar a Fase 15: pagamento parcial com dívida mais antiga, seleção, alocação manual e alocações gravadas.
+
+### Tentativa / implementação
+
+- Migration `011_payments` cria `_payments` e `_payment_allocations` (schema version 11). A 010 passa a gravar a versão 10; a 009 continua gravando 9.
+- `createPayment` exige aluno, PIX ou dinheiro, e aloca o valor recebido por completo. Padrão: dívida mais antiga (`due_date`, depois `created_at`, depois `id`). Selecionadas usam a mesma ordem só entre as escolhidas. Manual exige soma igual ao recebido e cada linha ≤ restante.
+- Saldo da agenda é charges − alocações. Restante zero some da agenda. Aluno inativo ainda pode pagar. Pagamento familiar, juros e crédito ficam fora.
+- Preview local: dois fiados da Ana (12/08 e 14/08); PIX `R$ 5,50` oldest-first tira o atrasado e deixa `Ana Souza • ~8 • R$ 5,50 • Sexta-feira • 14/08/26`. Manual `R$ 2,50` no 14/08 deixa `R$ 5,50` em 12/08 e `R$ 3,00` em 14/08. PIX/dinheiro/fiado e o health smoke permanecem iguais.
+
+### Resultado
+
+- Fase 15 concluída sobre o ambiente E2E isolado e o preview local.
+- Juros é a Fase 16. Crédito, caixa, reservas reais e WhatsApp permanecem nas fases seguintes.
+- Nenhum ID Google, token, telefone real ou dado de planilha foi versionado.
+
+### Diferenças do pedido
+
+- Um pagamento nesta fase é de um aluno só (`payer_student_id`). Responsável pagando filhos é a Fase 19.
+
+### Impacto técnico
+
+- `payments.write` para dona e funcionário. `createPayment` e `listPayments` entram no `AppApi`. Confirmar venda continua **Confirmar venda**. Registrar pagamento é **Registrar pagamento**.
+
+### Testes
+
+- Unit, integração, typecheck, lint, format, build, version:check, validate:skill e E2E local passaram.
+- E2E remoto: smoke de health no deployment novo após `clasp push` + `clasp deploy`.
+
+### Pendências / próxima versão
+
+- Não iniciar a Fase 16 (juros e renegociação) sem pedido explícito.
+
 ## 2026-08-13 14:45 — Implementada a Fase 14: recebíveis e calendário
 
 **Origem:** Pedido do usuário

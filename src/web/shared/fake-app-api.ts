@@ -27,6 +27,8 @@ import type {
   LinkGuardianInput,
   OpenInventoryDayInput,
   AdjustInventoryInput,
+  Payment,
+  CreatePaymentInput,
   Product,
   ProductCategory,
   ProductFields,
@@ -361,6 +363,16 @@ export class FakeAppApi implements AppApi {
   async getDueDateShortcuts(): Promise<DueDateShortcuts> {
     this.assertAction('receivables.read');
     return throwResult(this.sales.getDueDateShortcuts());
+  }
+
+  async createPayment(input: CreatePaymentInput): Promise<Payment> {
+    this.assertAction('payments.write');
+    return throwResult(this.sales.createPayment(input));
+  }
+
+  async listPayments(): Promise<Payment[]> {
+    this.assertAction('receivables.read');
+    return throwResult(this.sales.listPayments());
   }
 
   private assertSession(): void {

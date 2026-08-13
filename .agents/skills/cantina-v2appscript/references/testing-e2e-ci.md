@@ -93,6 +93,8 @@ Mínimo obrigatório do smoke local:
 15. venda PIX anônima após o login (`Anônima • Coxinha • R$ 5,50`) e estoque `Coxinha • 9`.
 16. venda dinheiro com troco após o login (`Anônima • Coxinha • R$ 5,50 • Dinheiro • Troco R$ 4,50`) e estoque `Coxinha • 9`.
 17. fiado com data após o login (`Ana Souza • ~8 • Coxinha • R$ 5,50 • Fiado • Sexta-feira • 14/08/26`), agenda em **Próximos** (`Ana Souza • ~8 • R$ 5,50 • Sexta-feira • 14/08/26`) e estoque `Coxinha • 9`.
+18. parcial oldest-first: dois fiados da Ana (12/08 e amanhã); pagar `R$ 5,50` PIX na dívida mais antiga; atrasado some; **Próximos** permanece `Ana Souza • ~8 • R$ 5,50 • Sexta-feira • 14/08/26`; pagamento `Ana Souza • ~8 • R$ 5,50 • PIX`; estoque `Coxinha • 8`.
+19. parcial manual: os mesmos dois fiados; alocar `R$ 2,50` só no vencimento de 14/08; atrasado permanece `R$ 5,50` em 12/08; **Próximos** vira `Ana Souza • ~8 • R$ 3,00 • Sexta-feira • 14/08/26`; pagamento `Ana Souza • ~8 • R$ 2,50 • PIX`.
 
 Não confundir com o ambiente Google E2E da Fase 3.
 

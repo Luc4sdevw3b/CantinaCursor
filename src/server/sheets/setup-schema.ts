@@ -44,6 +44,9 @@ import {
   RECEIVABLES_SHEET,
   RECEIVABLE_CHARGES_SHEET,
   RECEIVABLE_DUE_DATE_HISTORY_SHEET,
+  PAYMENTS_MIGRATION_ID,
+  PAYMENTS_SHEET,
+  PAYMENT_ALLOCATIONS_SHEET,
 } from './schema';
 import { deserializeRecord, serializeRecord } from './serialize';
 import { ensureSheet } from './ensure-sheet';
@@ -342,6 +345,26 @@ export function setupSchema(
       );
       if (!history.ok) {
         return err(history.error);
+      }
+      meta.data.appendRow(
+        serializeRecord(META_SHEET.headers, {
+          key: 'schema_version',
+          value: '10',
+        }),
+      );
+    }
+
+    if (migration.id === PAYMENTS_MIGRATION_ID) {
+      const payments = ensureSheet(input.spreadsheet, PAYMENTS_SHEET);
+      if (!payments.ok) {
+        return err(payments.error);
+      }
+      const allocations = ensureSheet(
+        input.spreadsheet,
+        PAYMENT_ALLOCATIONS_SHEET,
+      );
+      if (!allocations.ok) {
+        return err(allocations.error);
       }
       meta.data.appendRow(
         serializeRecord(META_SHEET.headers, {

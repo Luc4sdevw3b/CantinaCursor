@@ -268,10 +268,15 @@ interface ServerContext {
     plus7: string;
   };
   listReceivables(sessionToken: string): {
-    overdue: Array<{ summaryLabel: string }>;
-    today: Array<{ summaryLabel: string }>;
-    upcoming: Array<{ summaryLabel: string }>;
+    overdue: Array<{ id: string; summaryLabel: string }>;
+    today: Array<{ id: string; summaryLabel: string }>;
+    upcoming: Array<{ id: string; summaryLabel: string }>;
   };
+  createPayment(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): { summaryLabel: string };
+  listPayments(sessionToken: string): Array<{ summaryLabel: string }>;
 }
 
 interface DriveMockFile {
@@ -594,7 +599,7 @@ describe('Apps Script E2E server', () => {
     expect(health.status).toBe('ready');
     expect(health.adapter).toBe('google-script');
     expect(health.spreadsheetConfigured).toBe(true);
-    expect(health.schemaVersion).toBe(10);
+    expect(health.schemaVersion).toBe(11);
     expect(health.backupConfigured).toBe(true);
     expect(health.lastBackupAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(JSON.stringify(health)).not.toContain('private-e2e-sheet-id');
@@ -677,7 +682,7 @@ describe('Apps Script E2E server', () => {
     const second = server.setupSchema();
 
     expect(first).toEqual(second);
-    expect(first.schemaVersion).toBe(10);
+    expect(first.schemaVersion).toBe(11);
     expect(first.appliedMigrations).toEqual([
       '001_foundation',
       '002_operation_requests',
@@ -689,6 +694,7 @@ describe('Apps Script E2E server', () => {
       '008_inventory',
       '009_sales',
       '010_receivables',
+      '011_payments',
     ]);
     expect(sheets.get('_meta')?.rows[0]).toEqual(['key', 'value']);
     expect(sheets.get('_schema_migrations')?.rows[0]).toEqual([
@@ -821,6 +827,28 @@ describe('Apps Script E2E server', () => {
       sheets
         .get('_schema_migrations')
         ?.rows.filter((row) => row[0] === '010_receivables'),
+    ).toHaveLength(1);
+    expect(sheets.get('_payments')?.rows[0]).toEqual([
+      'id',
+      'payer_guardian_id',
+      'payer_student_id',
+      'method',
+      'amount_received_cents',
+      'status',
+      'created_by',
+      'created_at',
+      'note',
+    ]);
+    expect(sheets.get('_payment_allocations')?.rows[0]).toEqual([
+      'payment_id',
+      'receivable_id',
+      'student_id',
+      'amount_cents',
+    ]);
+    expect(
+      sheets
+        .get('_schema_migrations')
+        ?.rows.filter((row) => row[0] === '011_payments'),
     ).toHaveLength(1);
   });
 
@@ -963,7 +991,7 @@ describe('Apps Script E2E server', () => {
     const backup = server.runBackup(token, 'manual');
 
     expect(backup.reason).toBe('manual');
-    expect(backup.schemaVersion).toBe(10);
+    expect(backup.schemaVersion).toBe(11);
     expect(JSON.stringify(backup)).not.toContain('e2e-sheet-id');
     expect(JSON.stringify(backup)).not.toContain('e2e-backup-folder');
     expect(projectTriggers).toEqual(['runScheduledBackup']);
@@ -1598,5 +1626,121 @@ describe('Apps Script E2E server', () => {
       'Ana Souza • ~8 • Coxinha • R$ 5,50 • Fiado • 2 vencimentos',
     );
     expect(server.listReceivables(owner).upcoming).toHaveLength(3);
+  });
+
+  it('pays oldest fiado first and keeps the remaining receivable', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const coxinha = server
+      .listProducts(owner)
+      .find((item) => item.name === 'Coxinha');
+    const ana = server
+      .listStudents(owner)
+      .find(
+        (student) =>
+          student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+      );
+    if (!coxinha || !ana) {
+      throw new Error('pagamento E2E incompleto');
+    }
+    const shortcuts = server.getDueDateShortcuts(owner);
+    const overdueLabel = formatCivilDisplay('2026-01-01');
+    const upcomingLabel = formatCivilDisplay(shortcuts.plus7);
+
+    server.createSale(owner, {
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: '2026-01-01' }],
+    });
+    server.createSale(owner, {
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: shortcuts.plus7 }],
+    });
+
+    const payment = server.createPayment(owner, {
+      studentId: ana.id,
+      amountCents: 550,
+      method: 'pix',
+      mode: 'oldest_first',
+    });
+    expect(payment.summaryLabel).toBe('Ana Souza • ~8 • R$ 5,50 • PIX');
+    expect(server.listReceivables(owner).overdue).toHaveLength(0);
+    expect(server.listReceivables(owner).upcoming[0]?.summaryLabel).toBe(
+      `Ana Souza • ~8 • R$ 5,50 • ${upcomingLabel}`,
+    );
+    expect(server.listPayments(owner)[0]?.summaryLabel).toBe(
+      'Ana Souza • ~8 • R$ 5,50 • PIX',
+    );
+    expect(
+      server
+        .listInventoryBalances(owner)
+        .items.find((item) => item.productName === 'Coxinha')?.physicalQuantity,
+    ).toBe(8);
+    expect(overdueLabel).toContain('01/01/26');
+  });
+
+  it('allocates a manual partial onto the later due date', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const coxinha = server
+      .listProducts(owner)
+      .find((item) => item.name === 'Coxinha');
+    const ana = server
+      .listStudents(owner)
+      .find(
+        (student) =>
+          student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+      );
+    if (!coxinha || !ana) {
+      throw new Error('pagamento E2E incompleto');
+    }
+    const shortcuts = server.getDueDateShortcuts(owner);
+    const overdueLabel = formatCivilDisplay('2026-01-01');
+    const upcomingLabel = formatCivilDisplay(shortcuts.plus7);
+
+    server.createSale(owner, {
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: '2026-01-01' }],
+    });
+    server.createSale(owner, {
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: shortcuts.plus7 }],
+    });
+    const upcoming = server.listReceivables(owner).upcoming[0];
+    if (!upcoming) {
+      throw new Error('recebível futuro ausente');
+    }
+
+    const payment = server.createPayment(owner, {
+      studentId: ana.id,
+      amountCents: 250,
+      method: 'pix',
+      mode: 'manual',
+      allocations: [{ receivableId: upcoming.id, amountCents: 250 }],
+    });
+    expect(payment.summaryLabel).toBe('Ana Souza • ~8 • R$ 2,50 • PIX');
+    expect(server.listReceivables(owner).overdue[0]?.summaryLabel).toBe(
+      `Ana Souza • ~8 • R$ 5,50 • ${overdueLabel}`,
+    );
+    expect(server.listReceivables(owner).upcoming[0]?.summaryLabel).toBe(
+      `Ana Souza • ~8 • R$ 3,00 • ${upcomingLabel}`,
+    );
   });
 });

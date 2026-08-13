@@ -7,6 +7,14 @@ import {
 import { INVENTORY_SALE_KIND } from '../../domain/inventory';
 import { formatBrl } from '../../domain/money';
 import {
+  parsePaymentMethod,
+  PAYMENT_STATUS_COMPLETED,
+  PAYMENT_STUDENT_REQUIRED_ERROR,
+  paymentSummaryLabel,
+  planPaymentAllocations,
+  type PaymentMethod,
+} from '../../domain/payment';
+import {
   dueDateLabelForDates,
   FIADO_STUDENT_REQUIRED_ERROR,
   planFiadoInstallments,
@@ -82,9 +90,23 @@ export interface ReceivableView {
   dueDateLabel: string;
   amountCents: number;
   amountLabel: string;
+  remainingCents: number;
+  remainingLabel: string;
   status: typeof RECEIVABLE_STATUS_OPEN;
   bucket: 'overdue' | 'today' | 'upcoming';
   summaryLabel: string;
+}
+
+export interface PaymentView {
+  id: string;
+  payerStudentId: string;
+  studentLabel: string;
+  method: PaymentMethod;
+  amountCents: number;
+  amountLabel: string;
+  status: typeof PAYMENT_STATUS_COMPLETED;
+  summaryLabel: string;
+  createdAt: string;
 }
 
 export interface ReceivableAgendaView {
@@ -152,6 +174,25 @@ interface ReceivableChargeRecord {
   reversal_id: string;
 }
 
+interface PaymentRecord {
+  id: string;
+  payer_guardian_id: string;
+  payer_student_id: string;
+  method: PaymentMethod;
+  amount_received_cents: string;
+  status: typeof PAYMENT_STATUS_COMPLETED;
+  created_by: string;
+  created_at: string;
+  note: string;
+}
+
+interface PaymentAllocationRecord {
+  payment_id: string;
+  receivable_id: string;
+  student_id: string;
+  amount_cents: string;
+}
+
 function fail(error: AppError): never {
   throw new Error(`${error.code}: ${error.message}`);
 }
@@ -169,6 +210,8 @@ export class MemorySales {
   private settlements: SettlementRecord[] = [];
   private receivables: ReceivableRecord[] = [];
   private charges: ReceivableChargeRecord[] = [];
+  private payments: PaymentRecord[] = [];
+  private allocations: PaymentAllocationRecord[] = [];
 
   constructor(
     private readonly catalog: MemoryCatalog,
@@ -206,6 +249,9 @@ export class MemorySales {
     const dueToday: ReceivableView[] = [];
     const upcoming: ReceivableView[] = [];
     for (const receivable of this.receivables) {
+      if (this.remainingCents(receivable.id) <= 0) {
+        continue;
+      }
       const view = this.toReceivable(receivable, today);
       if (view.bucket === 'overdue') {
         overdue.push(view);
@@ -219,6 +265,76 @@ export class MemorySales {
     dueToday.sort((left, right) => left.dueDate.localeCompare(right.dueDate));
     upcoming.sort((left, right) => left.dueDate.localeCompare(right.dueDate));
     return ok({ overdue, today: dueToday, upcoming });
+  }
+
+  listPayments(): Result<PaymentView[]> {
+    return ok(
+      this.payments
+        .slice()
+        .reverse()
+        .map((payment) => this.toPayment(payment)),
+    );
+  }
+
+  createPayment(input: {
+    studentId?: string | null;
+    amountCents: unknown;
+    method: unknown;
+    mode: unknown;
+    selectedReceivableIds?: readonly string[];
+    allocations?: readonly { receivableId?: unknown; amountCents?: unknown }[];
+  }): Result<PaymentView> {
+    if (!input.studentId) {
+      return err(PAYMENT_STUDENT_REQUIRED_ERROR);
+    }
+    const student = this.roster.getStudent(input.studentId);
+    if (!student.ok) {
+      return err(student.error);
+    }
+    const method = parsePaymentMethod(input.method);
+    if (!method.ok) {
+      return err(method.error);
+    }
+    const planned = planPaymentAllocations({
+      amountCents: input.amountCents,
+      mode: input.mode,
+      receivables: this.receivables
+        .filter((item) => item.charged_student_id === student.data.id)
+        .map((item) => ({
+          id: item.id,
+          charged_student_id: item.charged_student_id,
+          due_date: item.due_date,
+          created_at: item.created_at,
+          remaining_cents: this.remainingCents(item.id),
+        })),
+      selectedReceivableIds: input.selectedReceivableIds,
+      allocations: input.allocations,
+    });
+    if (!planned.ok) {
+      return err(planned.error);
+    }
+    const now = this.nowIso();
+    const payment: PaymentRecord = {
+      id: this.createId(),
+      payer_guardian_id: '',
+      payer_student_id: student.data.id,
+      method: method.data,
+      amount_received_cents: String(input.amountCents),
+      status: PAYMENT_STATUS_COMPLETED,
+      created_by: LOCAL_ACTOR_ID,
+      created_at: now,
+      note: '',
+    };
+    this.payments.push(payment);
+    for (const row of planned.data) {
+      this.allocations.push({
+        payment_id: payment.id,
+        receivable_id: row.receivable_id,
+        student_id: row.student_id,
+        amount_cents: row.amount_cents,
+      });
+    }
+    return ok(this.toPayment(payment));
   }
 
   createSale(input: {
@@ -398,19 +514,27 @@ export class MemorySales {
       .map((item) => item.due_date);
   }
 
+  private remainingCents(receivableId: string): number {
+    const charged = this.charges
+      .filter((item) => item.receivable_id === receivableId)
+      .reduce((total, item) => total + Number(item.amount_cents), 0);
+    const allocated = this.allocations
+      .filter((item) => item.receivable_id === receivableId)
+      .reduce((total, item) => total + Number(item.amount_cents), 0);
+    return charged - allocated;
+  }
+
   private toReceivable(
     receivable: ReceivableRecord,
     today: string,
   ): ReceivableView {
-    const amountCents = this.charges
-      .filter((item) => item.receivable_id === receivable.id)
-      .reduce((total, item) => total + Number(item.amount_cents), 0);
+    const remainingCents = this.remainingCents(receivable.id);
     const student = unwrap(
       this.roster.getStudent(receivable.charged_student_id),
     );
     const studentLabel = `${student.fullName} • ${student.ageLabel}`;
     const dueDateLabel = formatCivilDisplay(receivable.due_date);
-    const amountLabel = formatBrl(amountCents);
+    const remainingLabel = formatBrl(remainingCents);
     return {
       id: receivable.id,
       chargedStudentId: receivable.charged_student_id,
@@ -418,15 +542,39 @@ export class MemorySales {
       sourceSaleId: receivable.source_sale_id,
       dueDate: receivable.due_date,
       dueDateLabel,
-      amountCents,
-      amountLabel,
+      amountCents: remainingCents,
+      amountLabel: remainingLabel,
+      remainingCents,
+      remainingLabel,
       status: RECEIVABLE_STATUS_OPEN,
       bucket: agendaBucket(receivable.due_date, today),
       summaryLabel: receivableSummaryLabel({
         studentLabel,
-        amountLabel,
+        amountLabel: remainingLabel,
         dueDateLabel,
       }),
+    };
+  }
+
+  private toPayment(payment: PaymentRecord): PaymentView {
+    const student = unwrap(this.roster.getStudent(payment.payer_student_id));
+    const studentLabel = `${student.fullName} • ${student.ageLabel}`;
+    const amountCents = Number(payment.amount_received_cents);
+    const amountLabel = formatBrl(amountCents);
+    return {
+      id: payment.id,
+      payerStudentId: payment.payer_student_id,
+      studentLabel,
+      method: payment.method,
+      amountCents,
+      amountLabel,
+      status: PAYMENT_STATUS_COMPLETED,
+      summaryLabel: paymentSummaryLabel({
+        studentLabel,
+        amountLabel,
+        method: payment.method,
+      }),
+      createdAt: payment.created_at,
     };
   }
 

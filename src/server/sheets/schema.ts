@@ -58,8 +58,9 @@ export const PRODUCTS_MIGRATION_ID = '007_products';
 export const INVENTORY_MIGRATION_ID = '008_inventory';
 export const SALES_MIGRATION_ID = '009_sales';
 export const RECEIVABLES_MIGRATION_ID = '010_receivables';
+export const PAYMENTS_MIGRATION_ID = '011_payments';
 export const FOUNDATION_SCHEMA_VERSION = 1;
-export const CURRENT_SCHEMA_VERSION = 10;
+export const CURRENT_SCHEMA_VERSION = 11;
 
 export const USERS_SHEET: SheetSchema = {
   name: '_users',
@@ -308,4 +309,24 @@ export const RECEIVABLE_DUE_DATE_HISTORY_SHEET: SheetSchema = {
     'changed_by',
     'changed_at',
   ],
+};
+
+export const PAYMENTS_SHEET: SheetSchema = {
+  name: '_payments',
+  headers: [
+    'id',
+    'payer_guardian_id',
+    'payer_student_id',
+    'method',
+    'amount_received_cents',
+    'status',
+    'created_by',
+    'created_at',
+    'note',
+  ],
+};
+
+export const PAYMENT_ALLOCATIONS_SHEET: SheetSchema = {
+  name: '_payment_allocations',
+  headers: ['payment_id', 'receivable_id', 'student_id', 'amount_cents'],
 };

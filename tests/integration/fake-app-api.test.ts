@@ -434,4 +434,99 @@ describe('FakeAppApi', () => {
     );
     expect((await api.listReceivables()).upcoming).toHaveLength(3);
   });
+
+  it('pays oldest fiado first and keeps the remaining receivable', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const coxinha = (await api.listProducts()).find(
+      (item) => item.name === 'Coxinha',
+    );
+    const ana = (await api.listStudents()).find(
+      (student) =>
+        student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+    );
+    if (!coxinha || !ana) {
+      throw new Error('pagamento local incompleto');
+    }
+
+    await api.createSale({
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: '2026-08-12' }],
+    });
+    await api.createSale({
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: '2026-08-14' }],
+    });
+
+    const payment = await api.createPayment({
+      studentId: ana.id,
+      amountCents: 550,
+      method: 'pix',
+      mode: 'oldest_first',
+    });
+    expect(payment.summaryLabel).toBe('Ana Souza • ~8 • R$ 5,50 • PIX');
+    expect((await api.listReceivables()).overdue).toHaveLength(0);
+    expect((await api.listReceivables()).upcoming[0]?.summaryLabel).toBe(
+      'Ana Souza • ~8 • R$ 5,50 • Sexta-feira • 14/08/26',
+    );
+    expect((await api.listPayments())[0]?.summaryLabel).toBe(
+      'Ana Souza • ~8 • R$ 5,50 • PIX',
+    );
+    expect(
+      (await api.listInventoryBalances()).items.find(
+        (item) => item.productName === 'Coxinha',
+      )?.physicalQuantity,
+    ).toBe(8);
+  });
+
+  it('allocates a manual partial onto the selected due date', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const coxinha = (await api.listProducts()).find(
+      (item) => item.name === 'Coxinha',
+    );
+    const ana = (await api.listStudents()).find(
+      (student) =>
+        student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+    );
+    if (!coxinha || !ana) {
+      throw new Error('pagamento local incompleto');
+    }
+
+    await api.createSale({
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: '2026-08-12' }],
+    });
+    await api.createSale({
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: '2026-08-14' }],
+    });
+    const upcoming = (await api.listReceivables()).upcoming[0];
+    if (!upcoming) {
+      throw new Error('recebível futuro ausente');
+    }
+
+    const payment = await api.createPayment({
+      studentId: ana.id,
+      amountCents: 250,
+      method: 'pix',
+      mode: 'manual',
+      allocations: [{ receivableId: upcoming.id, amountCents: 250 }],
+    });
+    expect(payment.summaryLabel).toBe('Ana Souza • ~8 • R$ 2,50 • PIX');
+    expect((await api.listReceivables()).overdue[0]?.summaryLabel).toBe(
+      'Ana Souza • ~8 • R$ 5,50 • Quarta-feira • 12/08/26',
+    );
+    expect((await api.listReceivables()).upcoming[0]?.summaryLabel).toBe(
+      'Ana Souza • ~8 • R$ 3,00 • Sexta-feira • 14/08/26',
+    );
+  });
 });

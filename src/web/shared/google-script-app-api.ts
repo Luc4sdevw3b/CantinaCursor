@@ -22,6 +22,8 @@ import type {
   LinkGuardianInput,
   OpenInventoryDayInput,
   AdjustInventoryInput,
+  Payment,
+  CreatePaymentInput,
   Product,
   ProductCategory,
   ProductFields,
@@ -97,6 +99,8 @@ export interface GoogleScriptRunner {
   getPixCopyText(token: string): void;
   listReceivables(token: string): void;
   getDueDateShortcuts(token: string): void;
+  createPayment(token: string, payload: unknown): void;
+  listPayments(token: string): void;
 }
 
 export type SessionTokenStorage = Pick<
@@ -548,6 +552,16 @@ export class GoogleScriptAppApi implements AppApi {
     return this.callWithToken((runner, token) =>
       runner.getDueDateShortcuts(token),
     );
+  }
+
+  createPayment(input: CreatePaymentInput): Promise<Payment> {
+    return this.callWithToken((runner, token) =>
+      runner.createPayment(token, input),
+    );
+  }
+
+  listPayments(): Promise<Payment[]> {
+    return this.callWithToken((runner, token) => runner.listPayments(token));
   }
 
   private callWithToken<T>(

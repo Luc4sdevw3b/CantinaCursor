@@ -2,7 +2,7 @@
 
 Aplicação web da cantina, planejada para Google Apps Script + Google Sheets + Google Drive.
 
-O projeto está na Fase 14 (`0.1.0-dev`): fiado com vencimento, atalhos de data e agenda atrasado/hoje/próximo. Pagamento parcial fica na Fase 15. O caixa físico fica na Fase 21.
+O projeto está na Fase 15 (`0.1.0-dev`): pagamento parcial (dívida mais antiga, selecionadas ou alocação manual). Juros e renegociação ficam na Fase 16. O caixa físico fica na Fase 21.
 
 Consulte:
 

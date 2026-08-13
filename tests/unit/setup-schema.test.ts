@@ -12,6 +12,7 @@ import {
   INVENTORY_MIGRATION_ID,
   SALES_MIGRATION_ID,
   RECEIVABLES_MIGRATION_ID,
+  PAYMENTS_MIGRATION_ID,
 } from '../../src/server/sheets/schema';
 
 describe('setupSchema', () => {
@@ -30,7 +31,7 @@ describe('setupSchema', () => {
     expect(first).toEqual({
       ok: true,
       data: {
-        schemaVersion: 10,
+        schemaVersion: 11,
         appliedMigrations: [
           FOUNDATION_MIGRATION_ID,
           OPERATION_REQUESTS_MIGRATION_ID,
@@ -42,11 +43,12 @@ describe('setupSchema', () => {
           INVENTORY_MIGRATION_ID,
           SALES_MIGRATION_ID,
           RECEIVABLES_MIGRATION_ID,
+          PAYMENTS_MIGRATION_ID,
         ],
       },
     });
     expect(second).toEqual(first);
-    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(10);
+    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(11);
     expect(sheets.get('_meta')?.getHeaders()).toEqual(['key', 'value']);
     expect(sheets.get('_operation_requests')?.getHeaders()).toEqual([
       'request_id',
@@ -212,6 +214,23 @@ describe('setupSchema', () => {
       'changed_by',
       'changed_at',
     ]);
+    expect(sheets.get('_payments')?.getHeaders()).toEqual([
+      'id',
+      'payer_guardian_id',
+      'payer_student_id',
+      'method',
+      'amount_received_cents',
+      'status',
+      'created_by',
+      'created_at',
+      'note',
+    ]);
+    expect(sheets.get('_payment_allocations')?.getHeaders()).toEqual([
+      'payment_id',
+      'receivable_id',
+      'student_id',
+      'amount_cents',
+    ]);
   });
 
   it('applies only the operation-requests migration when foundation already exists', () => {
@@ -254,9 +273,10 @@ describe('setupSchema', () => {
         INVENTORY_MIGRATION_ID,
         SALES_MIGRATION_ID,
         RECEIVABLES_MIGRATION_ID,
+        PAYMENTS_MIGRATION_ID,
       ]);
     }
-    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(10);
+    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(11);
   });
 
   it('refuses PROD', () => {

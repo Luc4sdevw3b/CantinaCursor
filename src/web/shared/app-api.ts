@@ -313,6 +313,8 @@ export interface Receivable {
   dueDateLabel: string;
   amountCents: number;
   amountLabel: string;
+  remainingCents: number;
+  remainingLabel: string;
   status: 'open';
   bucket: 'overdue' | 'today' | 'upcoming';
   summaryLabel: string;
@@ -324,9 +326,30 @@ export interface ReceivableAgenda {
   upcoming: Receivable[];
 }
 
+export interface CreatePaymentInput {
+  studentId: string;
+  amountCents: number;
+  method: 'pix' | 'cash';
+  mode: 'oldest_first' | 'selected' | 'manual';
+  selectedReceivableIds?: string[];
+  allocations?: Array<{ receivableId: string; amountCents: number }>;
+}
+
+export interface Payment {
+  id: string;
+  payerStudentId: string;
+  studentLabel: string;
+  method: 'pix' | 'cash';
+  amountCents: number;
+  amountLabel: string;
+  status: 'completed';
+  summaryLabel: string;
+  createdAt: string;
+}
+
 /**
- * Contrato técnico da Fase 14.
- * Sem pagamento parcial, juros, crédito como movimento, caixa físico, reservas reais ou envio de WhatsApp.
+ * Contrato técnico da Fase 15.
+ * Sem juros, crédito como movimento, pagamento familiar, caixa físico, reservas reais ou envio de WhatsApp.
  */
 export interface AppApi {
   getHealth(): Promise<AppHealth>;
@@ -401,4 +424,6 @@ export interface AppApi {
   getPixCopyText(): Promise<{ text: string }>;
   listReceivables(): Promise<ReceivableAgenda>;
   getDueDateShortcuts(): Promise<DueDateShortcuts>;
+  createPayment(input: CreatePaymentInput): Promise<Payment>;
+  listPayments(): Promise<Payment[]>;
 }

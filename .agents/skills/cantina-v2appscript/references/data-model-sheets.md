@@ -123,7 +123,7 @@ Invariante: soma settlements = net_total. Kinds desta fase: `pix`, `cash` (valor
 
 `_receivable_due_date_history`: receivable_id, old_due_date, new_due_date, reason, changed_by, changed_at.
 
-Saldo é derivado de charges, pagamentos e reversões; não de um campo editável. Na Fase 14 a venda fiado cria recebível `open` com charge `principal`/`sale`. O histórico de vencimento fica vazio até a Fase 16. Schema version 10 (`010_receivables`).
+Saldo é derivado de charges, pagamentos e reversões; não de um campo editável. A venda fiado cria recebível `open` com charge `principal`/`sale`. Pagamento parcial (Fase 15) grava alocações; o restante some da agenda quando chega a zero. O histórico de vencimento fica vazio até a Fase 16. Schema version 11 (`011_payments`). A 010 continua gravando a versão 10.
 
 ## Pagamentos
 
@@ -131,9 +131,7 @@ Saldo é derivado de charges, pagamentos e reversões; não de um campo editáve
 
 `_payment_allocations`: payment_id, receivable_id, student_id, amount_cents.
 
-`_payment_credit_allocations`: payment_id, credit_account_id, amount_cents.
-
-Todo valor recebido precisa ser alocado.
+Todo valor recebido precisa ser alocado. Na Fase 15 o pagador é o aluno da dívida (`payer_student_id`); `payer_guardian_id` fica vazio até a Fase 19. Métodos: `pix` ou `cash`. Status: `completed`. Modos: dívida mais antiga, selecionadas ou alocação manual. `_payment_credit_allocations` fica para as fases de crédito.
 
 ## Créditos
 

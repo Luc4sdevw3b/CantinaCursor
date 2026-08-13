@@ -26,6 +26,9 @@ import {
   RECEIVABLES_SHEET,
   RECEIVABLE_CHARGES_SHEET,
   RECEIVABLE_DUE_DATE_HISTORY_SHEET,
+  PAYMENTS_MIGRATION_ID,
+  PAYMENTS_SHEET,
+  PAYMENT_ALLOCATIONS_SHEET,
   SCHOOL_YEARS_SHEET,
   SESSIONS_SHEET,
   SETTINGS_SHEET,
@@ -134,6 +137,15 @@ export const RECEIVABLES_MIGRATION: Migration = {
   ]),
 };
 
+export const PAYMENTS_MIGRATION: Migration = {
+  id: PAYMENTS_MIGRATION_ID,
+  description: 'Cria pagamentos e alocações em recebíveis',
+  checksum: checksumHeaders([
+    ...PAYMENTS_SHEET.headers,
+    ...PAYMENT_ALLOCATIONS_SHEET.headers,
+  ]),
+};
+
 export const MIGRATION_CATALOG: readonly Migration[] = [
   FOUNDATION_MIGRATION,
   OPERATION_REQUESTS_MIGRATION,
@@ -145,6 +157,7 @@ export const MIGRATION_CATALOG: readonly Migration[] = [
   INVENTORY_MIGRATION,
   SALES_MIGRATION,
   RECEIVABLES_MIGRATION,
+  PAYMENTS_MIGRATION,
 ];
 
 export function pendingMigrations(

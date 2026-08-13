@@ -26,7 +26,7 @@ const FOUNDATION_MIGRATION_CHECKSUM = 'meta|schema_migrations';
 const OPERATION_REQUESTS_MIGRATION_ID = '002_operation_requests';
 const OPERATION_REQUESTS_MIGRATION_CHECKSUM =
   'request_id|operation_type|result_entity_id|status|created_at';
-const CURRENT_SCHEMA_VERSION = 10;
+const CURRENT_SCHEMA_VERSION = 11;
 const BACKUPS_SHEET = '_backups';
 const BACKUPS_HEADERS = [
   'id',
@@ -284,6 +284,28 @@ const RECEIVABLE_DUE_DATE_HISTORY_HEADERS = [
 const RECEIVABLES_MIGRATION_ID = '010_receivables';
 const RECEIVABLES_MIGRATION_CHECKSUM =
   'id|charged_student_id|source_sale_id|due_date|status|created_by|created_at|id|receivable_id|kind|amount_cents|reason_code|note|created_by|created_at|reversal_id|receivable_id|old_due_date|new_due_date|reason|changed_by|changed_at';
+const PAYMENTS_SHEET = '_payments';
+const PAYMENTS_HEADERS = [
+  'id',
+  'payer_guardian_id',
+  'payer_student_id',
+  'method',
+  'amount_received_cents',
+  'status',
+  'created_by',
+  'created_at',
+  'note',
+];
+const PAYMENT_ALLOCATIONS_SHEET = '_payment_allocations';
+const PAYMENT_ALLOCATIONS_HEADERS = [
+  'payment_id',
+  'receivable_id',
+  'student_id',
+  'amount_cents',
+];
+const PAYMENTS_MIGRATION_ID = '011_payments';
+const PAYMENTS_MIGRATION_CHECKSUM =
+  'id|payer_guardian_id|payer_student_id|method|amount_received_cents|status|created_by|created_at|note|payment_id|receivable_id|student_id|amount_cents';
 const PIX_COPY_TEXT_KEY = 'pix_copy_text';
 const DEFAULT_PIX_COPY_TEXT = 'Chave PIX de teste: cantina-e2e@example.test';
 const SALE_STATUS_PAID = 'paid';
@@ -298,6 +320,12 @@ const PAYMENT_FIADO = 'fiado';
 const RECEIVABLE_STATUS_OPEN = 'open';
 const RECEIVABLE_CHARGE_PRINCIPAL = 'principal';
 const RECEIVABLE_REASON_SALE = 'sale';
+const PAYMENT_STATUS_COMPLETED = 'completed';
+const PAYMENT_METHOD_PIX = 'pix';
+const PAYMENT_METHOD_CASH = 'cash';
+const PAYMENT_MODE_OLDEST_FIRST = 'oldest_first';
+const PAYMENT_MODE_SELECTED = 'selected';
+const PAYMENT_MODE_MANUAL = 'manual';
 const WEEKDAY_LABELS = [
   'Domingo',
   'Segunda-feira',
@@ -341,6 +369,7 @@ const ACTION_ROLES = {
   'sales.read': ['owner', 'staff'],
   'sales.write': ['owner', 'staff'],
   'receivables.read': ['owner', 'staff'],
+  'payments.write': ['owner', 'staff'],
 };
 const BACKUP_FILE_PREFIX = 'cantina-backup';
 const BACKUP_FOLDER_NAME = 'Cantina V2 AppScript E2E backups';
@@ -739,6 +768,8 @@ function resetE2EUnlocked() {
     RECEIVABLES_SHEET,
     RECEIVABLE_CHARGES_SHEET,
     RECEIVABLE_DUE_DATE_HISTORY_SHEET,
+    PAYMENTS_SHEET,
+    PAYMENT_ALLOCATIONS_SHEET,
   ].forEach(function (name) {
     const sheet = spreadsheet.getSheetByName(name);
     if (sheet) {
@@ -804,6 +835,7 @@ function assertKnownMigrations(applied) {
     INVENTORY_MIGRATION_ID,
     SALES_MIGRATION_ID,
     RECEIVABLES_MIGRATION_ID,
+    PAYMENTS_MIGRATION_ID,
   ];
   applied.forEach(function (id) {
     if (catalog.indexOf(id) === -1) {
@@ -835,7 +867,8 @@ function setupSchema() {
     applied.indexOf(PRODUCTS_MIGRATION_ID) === -1 ||
     applied.indexOf(INVENTORY_MIGRATION_ID) === -1 ||
     applied.indexOf(SALES_MIGRATION_ID) === -1 ||
-    applied.indexOf(RECEIVABLES_MIGRATION_ID) === -1;
+    applied.indexOf(RECEIVABLES_MIGRATION_ID) === -1 ||
+    applied.indexOf(PAYMENTS_MIGRATION_ID) === -1;
   let pendingCopy = null;
   if (pending) {
     try {
@@ -1020,13 +1053,29 @@ function setupSchema() {
       RECEIVABLE_DUE_DATE_HISTORY_SHEET,
       RECEIVABLE_DUE_DATE_HISTORY_HEADERS,
     );
-    meta.appendRow(['schema_version', String(CURRENT_SCHEMA_VERSION)]);
+    meta.appendRow(['schema_version', '10']);
     migrations.appendRow([
       RECEIVABLES_MIGRATION_ID,
       createdAt,
       CANTINA_APP_VERSION,
       RECEIVABLES_MIGRATION_CHECKSUM,
       'Cria recebíveis, charges e histórico de vencimento',
+    ]);
+  }
+  if (applied.indexOf(PAYMENTS_MIGRATION_ID) === -1) {
+    getOrCreateSheet(spreadsheet, PAYMENTS_SHEET, PAYMENTS_HEADERS);
+    getOrCreateSheet(
+      spreadsheet,
+      PAYMENT_ALLOCATIONS_SHEET,
+      PAYMENT_ALLOCATIONS_HEADERS,
+    );
+    meta.appendRow(['schema_version', String(CURRENT_SCHEMA_VERSION)]);
+    migrations.appendRow([
+      PAYMENTS_MIGRATION_ID,
+      createdAt,
+      CANTINA_APP_VERSION,
+      PAYMENTS_MIGRATION_CHECKSUM,
+      'Cria pagamentos e alocações em recebíveis',
     ]);
   }
   if (pendingCopy) {
@@ -3667,6 +3716,38 @@ function listReceivableChargeRecords() {
   );
 }
 
+function listPaymentRecords() {
+  return listSheetRecords(
+    openNamedSheet(PAYMENTS_SHEET, PAYMENTS_HEADERS),
+    PAYMENTS_HEADERS,
+  );
+}
+
+function listPaymentAllocationRecords() {
+  return listSheetRecords(
+    openNamedSheet(PAYMENT_ALLOCATIONS_SHEET, PAYMENT_ALLOCATIONS_HEADERS),
+    PAYMENT_ALLOCATIONS_HEADERS,
+  );
+}
+
+function remainingCentsGs(receivableId) {
+  const charged = listReceivableChargeRecords()
+    .filter(function (item) {
+      return item.receivable_id === receivableId;
+    })
+    .reduce(function (total, item) {
+      return total + Number(item.amount_cents);
+    }, 0);
+  const allocated = listPaymentAllocationRecords()
+    .filter(function (item) {
+      return item.receivable_id === receivableId;
+    })
+    .reduce(function (total, item) {
+      return total + Number(item.amount_cents);
+    }, 0);
+  return charged - allocated;
+}
+
 function saleConsumerLabelGs(consumerStudentId) {
   if (!consumerStudentId) {
     return ANONYMOUS_SALE_LABEL;
@@ -4154,17 +4235,10 @@ function getDueDateShortcuts(sessionToken) {
   return dueDateShortcutsGs(todayCivil());
 }
 
-function toReceivableViewGs(receivable, today) {
-  const amountCents = listReceivableChargeRecords()
-    .filter(function (item) {
-      return item.receivable_id === receivable.id;
-    })
-    .reduce(function (total, item) {
-      return total + Number(item.amount_cents);
-    }, 0);
+function toReceivableViewGs(receivable, today, remainingCents) {
+  const remainingLabel = formatBrlGs(remainingCents);
   const studentLabel = saleConsumerLabelGs(receivable.charged_student_id);
   const dueDateLabel = formatCivilDisplayGs(receivable.due_date);
-  const amountLabel = formatBrlGs(amountCents);
   return {
     id: receivable.id,
     chargedStudentId: receivable.charged_student_id,
@@ -4172,13 +4246,15 @@ function toReceivableViewGs(receivable, today) {
     sourceSaleId: receivable.source_sale_id,
     dueDate: receivable.due_date,
     dueDateLabel: dueDateLabel,
-    amountCents: amountCents,
-    amountLabel: amountLabel,
+    amountCents: remainingCents,
+    amountLabel: remainingLabel,
+    remainingCents: remainingCents,
+    remainingLabel: remainingLabel,
     status: RECEIVABLE_STATUS_OPEN,
     bucket: agendaBucketGs(receivable.due_date, today),
     summaryLabel: receivableSummaryLabelGs(
       studentLabel,
-      amountLabel,
+      remainingLabel,
       dueDateLabel,
     ),
   };
@@ -4191,7 +4267,11 @@ function listReceivables(sessionToken) {
   const dueToday = [];
   const upcoming = [];
   listReceivableRecords().forEach(function (receivable) {
-    const view = toReceivableViewGs(receivable, today);
+    const remaining = remainingCentsGs(receivable.id);
+    if (remaining <= 0) {
+      return;
+    }
+    const view = toReceivableViewGs(receivable, today, remaining);
     if (view.bucket === 'overdue') {
       overdue.push(view);
     } else if (view.bucket === 'today') {
@@ -4222,4 +4302,295 @@ function listReceivables(sessionToken) {
         : 0;
   });
   return { overdue: overdue, today: dueToday, upcoming: upcoming };
+}
+
+function parsePaymentMethodGs(value) {
+  if (value === PAYMENT_METHOD_PIX || value === PAYMENT_METHOD_CASH) {
+    return value;
+  }
+  throw new Error('PAYMENT_METHOD_UNSUPPORTED: Use PIX ou dinheiro.');
+}
+
+function parsePaymentModeGs(value) {
+  if (
+    value === PAYMENT_MODE_OLDEST_FIRST ||
+    value === PAYMENT_MODE_SELECTED ||
+    value === PAYMENT_MODE_MANUAL
+  ) {
+    return value;
+  }
+  throw new Error(
+    'PAYMENT_MODE_UNSUPPORTED: Use a dívida mais antiga, selecionadas ou alocação manual.',
+  );
+}
+
+function parsePaymentAmountGs(value) {
+  const amount = parseCentsGs(value);
+  if (amount <= 0) {
+    throw new Error(
+      'INVALID_CENTS: O valor do pagamento precisa ser um valor em centavos, número inteiro.',
+    );
+  }
+  return amount;
+}
+
+function sortOldestFirstGs(receivables) {
+  return receivables.slice().sort(function (left, right) {
+    if (left.due_date !== right.due_date) {
+      return left.due_date < right.due_date ? -1 : 1;
+    }
+    if (left.created_at !== right.created_at) {
+      return left.created_at < right.created_at ? -1 : 1;
+    }
+    if (left.id === right.id) {
+      return 0;
+    }
+    return left.id < right.id ? -1 : 1;
+  });
+}
+
+function allocateOldestFirstGs(amountCents, receivables) {
+  const open = sortOldestFirstGs(
+    receivables.filter(function (item) {
+      return item.remaining_cents > 0;
+    }),
+  );
+  const total = open.reduce(function (sum, item) {
+    return sum + item.remaining_cents;
+  }, 0);
+  if (!open.length || total <= 0) {
+    throw new Error(
+      'NO_OPEN_RECEIVABLES: Este aluno não tem dívida em aberto.',
+    );
+  }
+  if (amountCents > total) {
+    throw new Error(
+      'PAYMENT_EXCEEDS_BALANCE: O valor é maior que a dívida escolhida.',
+    );
+  }
+  let leftover = amountCents;
+  const rows = [];
+  open.forEach(function (item) {
+    if (leftover <= 0) {
+      return;
+    }
+    const applied = Math.min(item.remaining_cents, leftover);
+    rows.push({
+      receivable_id: item.id,
+      student_id: item.charged_student_id,
+      amount_cents: String(applied),
+    });
+    leftover -= applied;
+  });
+  if (leftover !== 0) {
+    throw new Error(
+      'PAYMENT_ALLOCATION_MISMATCH: A soma das alocações precisa ser igual ao valor recebido.',
+    );
+  }
+  return rows;
+}
+
+function planPaymentAllocationsGs(
+  amountCents,
+  mode,
+  receivables,
+  selectedReceivableIds,
+  allocations,
+) {
+  const parsedMode = parsePaymentModeGs(mode);
+  const amount = parsePaymentAmountGs(amountCents);
+  const byId = {};
+  receivables.forEach(function (item) {
+    byId[item.id] = item;
+  });
+  if (parsedMode === PAYMENT_MODE_MANUAL) {
+    const lines = allocations || [];
+    if (!lines.length) {
+      throw new Error(
+        'PAYMENT_ALLOCATION_MISMATCH: A soma das alocações precisa ser igual ao valor recebido.',
+      );
+    }
+    const rows = [];
+    let total = 0;
+    lines.forEach(function (line) {
+      const receivableId =
+        line && line.receivableId ? String(line.receivableId) : '';
+      const receivable = byId[receivableId];
+      if (!receivable || receivable.remaining_cents <= 0) {
+        throw new Error(
+          'RECEIVABLE_NOT_FOUND: Dívida não encontrada para este aluno.',
+        );
+      }
+      const already = rows.some(function (row) {
+        return row.receivable_id === receivable.id;
+      });
+      if (already) {
+        throw new Error(
+          'PAYMENT_ALLOCATION_MISMATCH: A soma das alocações precisa ser igual ao valor recebido.',
+        );
+      }
+      const lineAmount = parsePaymentAmountGs(
+        line && line.amountCents !== undefined
+          ? line.amountCents
+          : line.amount_cents,
+      );
+      if (lineAmount > receivable.remaining_cents) {
+        throw new Error(
+          'PAYMENT_EXCEEDS_BALANCE: O valor é maior que a dívida escolhida.',
+        );
+      }
+      total += lineAmount;
+      rows.push({
+        receivable_id: receivable.id,
+        student_id: receivable.charged_student_id,
+        amount_cents: String(lineAmount),
+      });
+    });
+    if (total !== amount) {
+      throw new Error(
+        'PAYMENT_ALLOCATION_MISMATCH: A soma das alocações precisa ser igual ao valor recebido.',
+      );
+    }
+    return rows;
+  }
+  let pool = receivables;
+  if (parsedMode === PAYMENT_MODE_SELECTED) {
+    const selected = selectedReceivableIds || [];
+    if (!selected.length) {
+      throw new Error('PAYMENT_SELECTION_REQUIRED: Selecione as dívidas.');
+    }
+    const picked = [];
+    selected.forEach(function (id) {
+      const receivable = byId[id];
+      if (!receivable || receivable.remaining_cents <= 0) {
+        throw new Error(
+          'RECEIVABLE_NOT_FOUND: Dívida não encontrada para este aluno.',
+        );
+      }
+      const already = picked.some(function (item) {
+        return item.id === receivable.id;
+      });
+      if (!already) {
+        picked.push(receivable);
+      }
+    });
+    pool = picked;
+  }
+  return allocateOldestFirstGs(amount, pool);
+}
+
+function paymentSummaryLabelGs(studentLabel, amountLabel, method) {
+  const methodLabel = method === PAYMENT_METHOD_CASH ? 'Dinheiro' : 'PIX';
+  return studentLabel + ' • ' + amountLabel + ' • ' + methodLabel;
+}
+
+function toPaymentViewGs(payment) {
+  const studentLabel = saleConsumerLabelGs(payment.payer_student_id);
+  const amountCents = Number(payment.amount_received_cents);
+  const amountLabel = formatBrlGs(amountCents);
+  return {
+    id: payment.id,
+    payerStudentId: payment.payer_student_id,
+    studentLabel: studentLabel,
+    method: payment.method,
+    amountCents: amountCents,
+    amountLabel: amountLabel,
+    status: payment.status,
+    summaryLabel: paymentSummaryLabelGs(
+      studentLabel,
+      amountLabel,
+      payment.method,
+    ),
+    createdAt: payment.created_at,
+  };
+}
+
+function allocatableReceivablesGs(studentId) {
+  return listReceivableRecords()
+    .filter(function (item) {
+      return item.charged_student_id === studentId;
+    })
+    .map(function (item) {
+      return {
+        id: item.id,
+        charged_student_id: item.charged_student_id,
+        due_date: item.due_date,
+        created_at: item.created_at,
+        remaining_cents: remainingCentsGs(item.id),
+      };
+    });
+}
+
+function createPaymentUnlocked(userId, payload) {
+  const studentId =
+    payload && payload.studentId ? String(payload.studentId) : '';
+  if (!studentId) {
+    throw new Error('PAYMENT_STUDENT_REQUIRED: Escolha o aluno da dívida.');
+  }
+  const student = latestStudentById(studentId);
+  const method = parsePaymentMethodGs(payload && payload.method);
+  const rows = planPaymentAllocationsGs(
+    payload && payload.amountCents,
+    payload && payload.mode,
+    allocatableReceivablesGs(student.id),
+    payload && payload.selectedReceivableIds,
+    payload && payload.allocations,
+  );
+  const now = new Date().toISOString();
+  const paymentId = Utilities.getUuid();
+  const amountReceived = rows.reduce(function (total, row) {
+    return total + Number(row.amount_cents);
+  }, 0);
+  openNamedSheet(PAYMENTS_SHEET, PAYMENTS_HEADERS).appendRow([
+    paymentId,
+    '',
+    student.id,
+    method,
+    String(amountReceived),
+    PAYMENT_STATUS_COMPLETED,
+    userId,
+    now,
+    '',
+  ]);
+  const allocationsSheet = openNamedSheet(
+    PAYMENT_ALLOCATIONS_SHEET,
+    PAYMENT_ALLOCATIONS_HEADERS,
+  );
+  rows.forEach(function (row) {
+    allocationsSheet.appendRow([
+      paymentId,
+      row.receivable_id,
+      row.student_id,
+      row.amount_cents,
+    ]);
+  });
+  return toPaymentViewGs({
+    id: paymentId,
+    payer_guardian_id: '',
+    payer_student_id: student.id,
+    method: method,
+    amount_received_cents: String(amountReceived),
+    status: PAYMENT_STATUS_COMPLETED,
+    created_by: userId,
+    created_at: now,
+    note: '',
+  });
+}
+
+function createPayment(sessionToken, payload) {
+  const session = requireAction(sessionToken, 'payments.write');
+  return withScriptLock(function () {
+    setupSchema();
+    return createPaymentUnlocked(session.user_id, payload || {});
+  });
+}
+
+function listPayments(sessionToken) {
+  requireAction(sessionToken, 'receivables.read');
+  return listPaymentRecords()
+    .slice()
+    .reverse()
+    .map(function (payment) {
+      return toPaymentViewGs(payment);
+    });
 }
