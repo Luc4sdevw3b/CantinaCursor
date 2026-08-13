@@ -114,5 +114,24 @@ describe('cart sale and PIX', () => {
         changeLabel: 'R$ 4,50',
       }),
     ).toBe('Anônima • Coxinha • R$ 5,50 • Dinheiro • Troco R$ 4,50');
+    const fiado = planSettlements({
+      paymentKind: 'fiado',
+      netTotalCents: 550,
+    });
+    expect(fiado.ok).toBe(true);
+    if (fiado.ok) {
+      expect(fiado.data.rows).toEqual([{ kind: 'fiado', amount_cents: '550' }]);
+    }
+    expect(
+      saleSummaryLabel({
+        consumerLabel: 'Ana Souza • ~8',
+        descriptions: ['Coxinha'],
+        netLabel: 'R$ 5,50',
+        paymentKind: 'fiado',
+        dueDateLabel: 'Sexta-feira • 14/08/26',
+      }),
+    ).toBe(
+      'Ana Souza • ~8 • Coxinha • R$ 5,50 • Fiado • Sexta-feira • 14/08/26',
+    );
   });
 });

@@ -202,6 +202,8 @@ Fiado e calendário são a Fase 14.
 - picker/atalhos;
 - agenda atrasado/hoje/próximo.
 
+Parcial é a Fase 15.
+
 ## Fase 15 — Parcial
 
 - oldest-first;

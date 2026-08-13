@@ -80,6 +80,8 @@ function runnerWith(
     createSale() {},
     listSales() {},
     getPixCopyText() {},
+    listReceivables() {},
+    getDueDateShortcuts() {},
     ...extra,
   };
   return runner;

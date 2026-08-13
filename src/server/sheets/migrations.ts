@@ -22,6 +22,10 @@ import {
   SALES_SHEET,
   SALE_ITEMS_SHEET,
   SALE_SETTLEMENTS_SHEET,
+  RECEIVABLES_MIGRATION_ID,
+  RECEIVABLES_SHEET,
+  RECEIVABLE_CHARGES_SHEET,
+  RECEIVABLE_DUE_DATE_HISTORY_SHEET,
   SCHOOL_YEARS_SHEET,
   SESSIONS_SHEET,
   SETTINGS_SHEET,
@@ -120,6 +124,16 @@ export const SALES_MIGRATION: Migration = {
   ]),
 };
 
+export const RECEIVABLES_MIGRATION: Migration = {
+  id: RECEIVABLES_MIGRATION_ID,
+  description: 'Cria recebíveis, charges e histórico de vencimento',
+  checksum: checksumHeaders([
+    ...RECEIVABLES_SHEET.headers,
+    ...RECEIVABLE_CHARGES_SHEET.headers,
+    ...RECEIVABLE_DUE_DATE_HISTORY_SHEET.headers,
+  ]),
+};
+
 export const MIGRATION_CATALOG: readonly Migration[] = [
   FOUNDATION_MIGRATION,
   OPERATION_REQUESTS_MIGRATION,
@@ -130,6 +144,7 @@ export const MIGRATION_CATALOG: readonly Migration[] = [
   PRODUCTS_MIGRATION,
   INVENTORY_MIGRATION,
   SALES_MIGRATION,
+  RECEIVABLES_MIGRATION,
 ];
 
 export function pendingMigrations(

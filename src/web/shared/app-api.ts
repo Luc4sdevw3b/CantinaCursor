@@ -257,9 +257,10 @@ export interface CreateSaleInput {
     discountKind?: string | null;
     discountInput?: unknown;
   }>;
-  paymentKind: 'pix' | 'cash' | 'mixed';
+  paymentKind: 'pix' | 'cash' | 'mixed' | 'fiado';
   pixAmountCents?: number;
   cashTenderedCents?: number;
+  installments?: Array<{ dueDate: string; amountCents?: number }>;
 }
 
 export interface SaleSettlement {
@@ -281,7 +282,7 @@ export interface Sale {
   consumerStudentId: string | null;
   consumerLabel: string;
   status: 'paid';
-  paymentKind: 'pix' | 'cash' | 'mixed';
+  paymentKind: 'pix' | 'cash' | 'mixed' | 'fiado';
   grossTotalCents: number;
   discountTotalCents: number;
   netTotalCents: number;
@@ -289,15 +290,43 @@ export interface Sale {
   cashTenderedCents: number;
   changeCents: number;
   changeLabel: string | null;
+  dueDateLabel: string | null;
   settlements: SaleSettlement[];
   items: SaleItem[];
   summaryLabel: string;
   createdAt: string;
 }
 
+export interface DueDateShortcuts {
+  today: string;
+  tomorrow: string;
+  nextFriday: string;
+  plus7: string;
+}
+
+export interface Receivable {
+  id: string;
+  chargedStudentId: string;
+  studentLabel: string;
+  sourceSaleId: string;
+  dueDate: string;
+  dueDateLabel: string;
+  amountCents: number;
+  amountLabel: string;
+  status: 'open';
+  bucket: 'overdue' | 'today' | 'upcoming';
+  summaryLabel: string;
+}
+
+export interface ReceivableAgenda {
+  overdue: Receivable[];
+  today: Receivable[];
+  upcoming: Receivable[];
+}
+
 /**
- * Contrato técnico da Fase 13.
- * Sem fiado, crédito como movimento, caixa físico, reservas reais ou envio de WhatsApp.
+ * Contrato técnico da Fase 14.
+ * Sem pagamento parcial, juros, crédito como movimento, caixa físico, reservas reais ou envio de WhatsApp.
  */
 export interface AppApi {
   getHealth(): Promise<AppHealth>;
@@ -370,4 +399,6 @@ export interface AppApi {
   createSale(input: CreateSaleInput): Promise<Sale>;
   listSales(): Promise<Sale[]>;
   getPixCopyText(): Promise<{ text: string }>;
+  listReceivables(): Promise<ReceivableAgenda>;
+  getDueDateShortcuts(): Promise<DueDateShortcuts>;
 }

@@ -40,6 +40,10 @@ import {
   SALES_SHEET,
   SALE_ITEMS_SHEET,
   SALE_SETTLEMENTS_SHEET,
+  RECEIVABLES_MIGRATION_ID,
+  RECEIVABLES_SHEET,
+  RECEIVABLE_CHARGES_SHEET,
+  RECEIVABLE_DUE_DATE_HISTORY_SHEET,
 } from './schema';
 import { deserializeRecord, serializeRecord } from './serialize';
 import { ensureSheet } from './ensure-sheet';
@@ -315,6 +319,30 @@ export function setupSchema(
           value: DEFAULT_PIX_COPY_TEXT,
         }),
       );
+      meta.data.appendRow(
+        serializeRecord(META_SHEET.headers, {
+          key: 'schema_version',
+          value: '9',
+        }),
+      );
+    }
+
+    if (migration.id === RECEIVABLES_MIGRATION_ID) {
+      const receivables = ensureSheet(input.spreadsheet, RECEIVABLES_SHEET);
+      if (!receivables.ok) {
+        return err(receivables.error);
+      }
+      const charges = ensureSheet(input.spreadsheet, RECEIVABLE_CHARGES_SHEET);
+      if (!charges.ok) {
+        return err(charges.error);
+      }
+      const history = ensureSheet(
+        input.spreadsheet,
+        RECEIVABLE_DUE_DATE_HISTORY_SHEET,
+      );
+      if (!history.ok) {
+        return err(history.error);
+      }
       meta.data.appendRow(
         serializeRecord(META_SHEET.headers, {
           key: 'schema_version',

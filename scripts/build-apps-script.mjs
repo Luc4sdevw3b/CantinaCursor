@@ -33,10 +33,10 @@ html = html
   .replace('<head>', '<head>\n    <base target="_top" />')
   .replace(stylesheetMatch[0], `<style>${css}</style>`)
   .replace(scriptMatch[0], '')
-  .replace(
-    '</body>',
-    `<script>${javascript.replace(/<\/script/gi, '<\\/script')}</script>\n  </body>`,
-  );
+  .replace('</body>', () => {
+    const script = javascript.replace(/<\/script/gi, '<\\/script');
+    return `<script>${script}</script>\n  </body>`;
+  });
 
 await rm(outputDir, { recursive: true, force: true });
 await mkdir(outputDir, { recursive: true });
@@ -51,6 +51,11 @@ const appIndex = html.indexOf('id="app"');
 const lastScript = html.lastIndexOf('<script>');
 if (appIndex === -1 || lastScript < appIndex) {
   throw new Error('BUILD_ERROR: o bundle JS precisa vir depois de #app.');
+}
+if (html.includes('</body>&')) {
+  throw new Error(
+    'BUILD_ERROR: o HTML inlined corrompeu $&& do JavaScript minificado.',
+  );
 }
 
 console.log('Apps Script bundle criado em apps-script/dist.');

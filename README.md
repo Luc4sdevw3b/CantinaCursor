@@ -2,7 +2,7 @@
 
 Aplicação web da cantina, planejada para Google Apps Script + Google Sheets + Google Drive.
 
-O projeto está na Fase 13 (`0.1.0-dev`): vendas PIX, dinheiro com troco e PIX + dinheiro, com snapshot de preço e baixa atômica no estoque. O caixa físico fica na Fase 21.
+O projeto está na Fase 14 (`0.1.0-dev`): fiado com vencimento, atalhos de data e agenda atrasado/hoje/próximo. Pagamento parcial fica na Fase 15. O caixa físico fica na Fase 21.
 
 Consulte:
 

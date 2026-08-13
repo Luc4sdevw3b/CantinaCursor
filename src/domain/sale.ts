@@ -9,9 +9,11 @@ export const SALE_ITEM_AD_HOC = 'ad_hoc';
 export const SETTLEMENT_PIX = 'pix';
 export const SETTLEMENT_CASH = 'cash';
 export const SETTLEMENT_CHANGE = 'change';
+export const SETTLEMENT_FIADO = 'fiado';
 export const PAYMENT_PIX = 'pix';
 export const PAYMENT_CASH = 'cash';
 export const PAYMENT_MIXED = 'mixed';
+export const PAYMENT_FIADO = 'fiado';
 export const DISCOUNT_NONE = 'none';
 export const DISCOUNT_AMOUNT = 'amount';
 export const DISCOUNT_PERCENT = 'percent';
@@ -28,7 +30,7 @@ export const SALE_ITEMS_REQUIRED_ERROR = {
 
 export const PAYMENT_KIND_UNSUPPORTED_ERROR = {
   code: 'PAYMENT_KIND_UNSUPPORTED',
-  message: 'Use PIX, dinheiro ou PIX + dinheiro.',
+  message: 'Use PIX, dinheiro, PIX + dinheiro ou fiado.',
   retryable: false,
 } as const;
 
@@ -84,10 +86,16 @@ export type DiscountKind =
   typeof DISCOUNT_NONE | typeof DISCOUNT_AMOUNT | typeof DISCOUNT_PERCENT;
 
 export type PaymentKind =
-  typeof PAYMENT_PIX | typeof PAYMENT_CASH | typeof PAYMENT_MIXED;
+  | typeof PAYMENT_PIX
+  | typeof PAYMENT_CASH
+  | typeof PAYMENT_MIXED
+  | typeof PAYMENT_FIADO;
 
 export type SettlementKind =
-  typeof SETTLEMENT_PIX | typeof SETTLEMENT_CASH | typeof SETTLEMENT_CHANGE;
+  | typeof SETTLEMENT_PIX
+  | typeof SETTLEMENT_CASH
+  | typeof SETTLEMENT_CHANGE
+  | typeof SETTLEMENT_FIADO;
 
 export interface PlannedSettlement {
   kind: SettlementKind;
@@ -280,7 +288,8 @@ export function parsePaymentKind(value: unknown): Result<PaymentKind> {
   if (
     value === PAYMENT_PIX ||
     value === PAYMENT_CASH ||
-    value === PAYMENT_MIXED
+    value === PAYMENT_MIXED ||
+    value === PAYMENT_FIADO
   ) {
     return ok(value);
   }
@@ -320,6 +329,14 @@ export function planSettlements(input: {
     return ok({
       paymentKind: PAYMENT_PIX,
       rows: [{ kind: SETTLEMENT_PIX, amount_cents: String(net) }],
+      cashTenderedCents: 0,
+      changeCents: 0,
+    });
+  }
+  if (kind.data === PAYMENT_FIADO) {
+    return ok({
+      paymentKind: PAYMENT_FIADO,
+      rows: [{ kind: SETTLEMENT_FIADO, amount_cents: String(net) }],
       cashTenderedCents: 0,
       changeCents: 0,
     });
@@ -381,6 +398,10 @@ export function paymentKindFromSettlements(
 ): PaymentKind {
   const hasPix = rows.some((row) => row.kind === SETTLEMENT_PIX);
   const hasCash = rows.some((row) => row.kind === SETTLEMENT_CASH);
+  const hasFiado = rows.some((row) => row.kind === SETTLEMENT_FIADO);
+  if (hasFiado) {
+    return PAYMENT_FIADO;
+  }
   if (hasPix && hasCash) {
     return PAYMENT_MIXED;
   }
@@ -396,6 +417,7 @@ export function saleSummaryLabel(input: {
   netLabel: string;
   paymentKind?: PaymentKind;
   changeLabel?: string | null;
+  dueDateLabel?: string | null;
 }): string {
   const base = `${input.consumerLabel} • ${input.descriptions.join(', ')} • ${input.netLabel}`;
   const extras: string[] = [];
@@ -405,8 +427,14 @@ export function saleSummaryLabel(input: {
   if (input.paymentKind === PAYMENT_MIXED) {
     extras.push('PIX + dinheiro');
   }
+  if (input.paymentKind === PAYMENT_FIADO) {
+    extras.push('Fiado');
+  }
   if (input.changeLabel) {
     extras.push(`Troco ${input.changeLabel}`);
+  }
+  if (input.dueDateLabel) {
+    extras.push(input.dueDateLabel);
   }
   return extras.length ? `${base} • ${extras.join(' • ')}` : base;
 }

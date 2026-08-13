@@ -92,6 +92,7 @@ Mínimo obrigatório do smoke local:
 14. estoque do dia após o login (`Coxinha • 10`, `Suco de uva • ACABOU`); ajuste visível só para a dona.
 15. venda PIX anônima após o login (`Anônima • Coxinha • R$ 5,50`) e estoque `Coxinha • 9`.
 16. venda dinheiro com troco após o login (`Anônima • Coxinha • R$ 5,50 • Dinheiro • Troco R$ 4,50`) e estoque `Coxinha • 9`.
+17. fiado com data após o login (`Ana Souza • ~8 • Coxinha • R$ 5,50 • Fiado • Sexta-feira • 14/08/26`), agenda em **Próximos** (`Ana Souza • ~8 • R$ 5,50 • Sexta-feira • 14/08/26`) e estoque `Coxinha • 9`.
 
 Não confundir com o ambiente Google E2E da Fase 3.
 

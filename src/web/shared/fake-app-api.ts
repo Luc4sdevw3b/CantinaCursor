@@ -17,6 +17,7 @@ import type {
   CreateSchoolYearInput,
   CreateSaleInput,
   CreateStudentInput,
+  DueDateShortcuts,
   Guardian,
   GuardianProfileFields,
   GuardianSettings,
@@ -31,6 +32,7 @@ import type {
   ProductFields,
   ProductPriceHistory,
   ReactivateStudentInput,
+  ReceivableAgenda,
   Sale,
   SchoolYear,
   SiblingAuthorization,
@@ -349,6 +351,16 @@ export class FakeAppApi implements AppApi {
   async getPixCopyText(): Promise<{ text: string }> {
     this.assertAction('sales.read');
     return throwResult(this.sales.getPixCopyText());
+  }
+
+  async listReceivables(): Promise<ReceivableAgenda> {
+    this.assertAction('receivables.read');
+    return throwResult(this.sales.listReceivables());
+  }
+
+  async getDueDateShortcuts(): Promise<DueDateShortcuts> {
+    this.assertAction('receivables.read');
+    return throwResult(this.sales.getDueDateShortcuts());
   }
 
   private assertSession(): void {

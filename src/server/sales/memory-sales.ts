@@ -1,8 +1,26 @@
+import {
+  agendaBucket,
+  dueDateShortcuts,
+  formatCivilDisplay,
+  todayCivilSaoPaulo,
+} from '../../domain/civil-date';
 import { INVENTORY_SALE_KIND } from '../../domain/inventory';
 import { formatBrl } from '../../domain/money';
 import {
+  dueDateLabelForDates,
+  FIADO_STUDENT_REQUIRED_ERROR,
+  planFiadoInstallments,
+  RECEIVABLE_CHARGE_PRINCIPAL,
+  RECEIVABLE_REASON_SALE,
+  RECEIVABLE_STATUS_OPEN,
+  receivableSummaryLabel,
+  type FiadoInstallmentInput,
+} from '../../domain/receivable';
+import { err, ok, type AppError, type Result } from '../../domain/result';
+import {
   ANONYMOUS_SALE_LABEL,
   DEFAULT_PIX_COPY_TEXT,
+  PAYMENT_FIADO,
   SALE_ITEMS_REQUIRED_ERROR,
   SALE_STATUS_PAID,
   SETTLEMENT_CHANGE,
@@ -15,7 +33,6 @@ import {
   type PaymentKind,
   type SaleLineInput,
 } from '../../domain/sale';
-import { err, ok, type AppError, type Result } from '../../domain/result';
 import type { MemoryCatalog } from '../products/memory-catalog';
 import type { MemoryStock } from '../inventory/memory-stock';
 import type { MemoryRoster } from '../students/memory-roster';
@@ -49,10 +66,31 @@ export interface SaleView {
   cashTenderedCents: number;
   changeCents: number;
   changeLabel: string | null;
+  dueDateLabel: string | null;
   settlements: SaleSettlementView[];
   items: SaleItemView[];
   summaryLabel: string;
   createdAt: string;
+}
+
+export interface ReceivableView {
+  id: string;
+  chargedStudentId: string;
+  studentLabel: string;
+  sourceSaleId: string;
+  dueDate: string;
+  dueDateLabel: string;
+  amountCents: number;
+  amountLabel: string;
+  status: typeof RECEIVABLE_STATUS_OPEN;
+  bucket: 'overdue' | 'today' | 'upcoming';
+  summaryLabel: string;
+}
+
+export interface ReceivableAgendaView {
+  overdue: ReceivableView[];
+  today: ReceivableView[];
+  upcoming: ReceivableView[];
 }
 
 interface SaleRecord {
@@ -92,6 +130,28 @@ interface SettlementRecord {
   created_at: string;
 }
 
+interface ReceivableRecord {
+  id: string;
+  charged_student_id: string;
+  source_sale_id: string;
+  due_date: string;
+  status: string;
+  created_by: string;
+  created_at: string;
+}
+
+interface ReceivableChargeRecord {
+  id: string;
+  receivable_id: string;
+  kind: string;
+  amount_cents: string;
+  reason_code: string;
+  note: string;
+  created_by: string;
+  created_at: string;
+  reversal_id: string;
+}
+
 function fail(error: AppError): never {
   throw new Error(`${error.code}: ${error.message}`);
 }
@@ -107,6 +167,8 @@ export class MemorySales {
   private sales: SaleRecord[] = [];
   private items: SaleItemRecord[] = [];
   private settlements: SettlementRecord[] = [];
+  private receivables: ReceivableRecord[] = [];
+  private charges: ReceivableChargeRecord[] = [];
 
   constructor(
     private readonly catalog: MemoryCatalog,
@@ -120,6 +182,15 @@ export class MemorySales {
     return ok({ text: DEFAULT_PIX_COPY_TEXT });
   }
 
+  getDueDateShortcuts(): Result<{
+    today: string;
+    tomorrow: string;
+    nextFriday: string;
+    plus7: string;
+  }> {
+    return ok(dueDateShortcuts(todayCivilSaoPaulo(this.nowIso())));
+  }
+
   listSales(): Result<SaleView[]> {
     return ok(
       this.sales
@@ -129,12 +200,34 @@ export class MemorySales {
     );
   }
 
+  listReceivables(): Result<ReceivableAgendaView> {
+    const today = todayCivilSaoPaulo(this.nowIso());
+    const overdue: ReceivableView[] = [];
+    const dueToday: ReceivableView[] = [];
+    const upcoming: ReceivableView[] = [];
+    for (const receivable of this.receivables) {
+      const view = this.toReceivable(receivable, today);
+      if (view.bucket === 'overdue') {
+        overdue.push(view);
+      } else if (view.bucket === 'today') {
+        dueToday.push(view);
+      } else {
+        upcoming.push(view);
+      }
+    }
+    overdue.sort((left, right) => left.dueDate.localeCompare(right.dueDate));
+    dueToday.sort((left, right) => left.dueDate.localeCompare(right.dueDate));
+    upcoming.sort((left, right) => left.dueDate.localeCompare(right.dueDate));
+    return ok({ overdue, today: dueToday, upcoming });
+  }
+
   createSale(input: {
     consumerStudentId?: string | null;
     items: SaleLineInput[];
     paymentKind: string;
     pixAmountCents?: unknown;
     cashTenderedCents?: unknown;
+    installments?: readonly FiadoInstallmentInput[];
     actorIsOwner: boolean;
   }): Result<SaleView> {
     if (!input.items.length) {
@@ -206,6 +299,20 @@ export class MemorySales {
     if (!settlements.ok) {
       return err(settlements.error);
     }
+    let installments: Array<{ due_date: string; amount_cents: string }> = [];
+    if (settlements.data.paymentKind === PAYMENT_FIADO) {
+      if (!consumerId) {
+        return err(FIADO_STUDENT_REQUIRED_ERROR);
+      }
+      const plannedFiado = planFiadoInstallments({
+        netTotalCents: Number(totals.net_total_cents),
+        installments: input.installments ?? [],
+      });
+      if (!plannedFiado.ok) {
+        return err(plannedFiado.error);
+      }
+      installments = plannedFiado.data;
+    }
     const now = this.nowIso();
     const sale: SaleRecord = {
       id: this.createId(),
@@ -246,6 +353,29 @@ export class MemorySales {
         created_at: now,
       });
     }
+    for (const installment of installments) {
+      const receivableId = this.createId();
+      this.receivables.push({
+        id: receivableId,
+        charged_student_id: consumerId,
+        source_sale_id: sale.id,
+        due_date: installment.due_date,
+        status: RECEIVABLE_STATUS_OPEN,
+        created_by: LOCAL_ACTOR_ID,
+        created_at: now,
+      });
+      this.charges.push({
+        id: this.createId(),
+        receivable_id: receivableId,
+        kind: RECEIVABLE_CHARGE_PRINCIPAL,
+        amount_cents: installment.amount_cents,
+        reason_code: RECEIVABLE_REASON_SALE,
+        note: '',
+        created_by: LOCAL_ACTOR_ID,
+        created_at: now,
+        reversal_id: '',
+      });
+    }
     for (const [productId, quantity] of needed) {
       const moved = this.stock.recordSourceMovement({
         productId,
@@ -260,6 +390,44 @@ export class MemorySales {
       }
     }
     return ok(this.toSale(sale));
+  }
+
+  private dueDatesForSale(saleId: string): string[] {
+    return this.receivables
+      .filter((item) => item.source_sale_id === saleId)
+      .map((item) => item.due_date);
+  }
+
+  private toReceivable(
+    receivable: ReceivableRecord,
+    today: string,
+  ): ReceivableView {
+    const amountCents = this.charges
+      .filter((item) => item.receivable_id === receivable.id)
+      .reduce((total, item) => total + Number(item.amount_cents), 0);
+    const student = unwrap(
+      this.roster.getStudent(receivable.charged_student_id),
+    );
+    const studentLabel = `${student.fullName} • ${student.ageLabel}`;
+    const dueDateLabel = formatCivilDisplay(receivable.due_date);
+    const amountLabel = formatBrl(amountCents);
+    return {
+      id: receivable.id,
+      chargedStudentId: receivable.charged_student_id,
+      studentLabel,
+      sourceSaleId: receivable.source_sale_id,
+      dueDate: receivable.due_date,
+      dueDateLabel,
+      amountCents,
+      amountLabel,
+      status: RECEIVABLE_STATUS_OPEN,
+      bucket: agendaBucket(receivable.due_date, today),
+      summaryLabel: receivableSummaryLabel({
+        studentLabel,
+        amountLabel,
+        dueDateLabel,
+      }),
+    };
   }
 
   private toSale(sale: SaleRecord): SaleView {
@@ -291,6 +459,9 @@ export class MemorySales {
       const student = unwrap(this.roster.getStudent(sale.consumer_student_id));
       consumerLabel = `${student.fullName} • ${student.ageLabel}`;
     }
+    const dueDateLabel = dueDateLabelForDates(this.dueDatesForSale(sale.id));
+    const netLabel = formatBrl(netTotalCents);
+    const changeLabel = changeCents > 0 ? formatBrl(changeCents) : null;
     return {
       id: sale.id,
       consumerStudentId: sale.consumer_student_id || null,
@@ -300,10 +471,11 @@ export class MemorySales {
       grossTotalCents: Number(sale.gross_total_cents),
       discountTotalCents: Number(sale.discount_total_cents),
       netTotalCents,
-      netLabel: formatBrl(netTotalCents),
+      netLabel,
       cashTenderedCents,
       changeCents,
-      changeLabel: changeCents > 0 ? formatBrl(changeCents) : null,
+      changeLabel,
+      dueDateLabel,
       settlements: settlementRows.map((item) => ({
         kind: item.kind,
         amountCents: Number(item.amount_cents),
@@ -312,9 +484,10 @@ export class MemorySales {
       summaryLabel: saleSummaryLabel({
         consumerLabel,
         descriptions: items.map((item) => item.description),
-        netLabel: formatBrl(netTotalCents),
+        netLabel,
         paymentKind,
-        changeLabel: changeCents > 0 ? formatBrl(changeCents) : null,
+        changeLabel,
+        dueDateLabel,
       }),
       createdAt: sale.created_at,
     };

@@ -14,6 +14,7 @@ describe('authorize', () => {
     expect(authorize('staff', 'inventory.read').ok).toBe(true);
     expect(authorize('owner', 'inventory.open').ok).toBe(true);
     expect(authorize('staff', 'sales.write').ok).toBe(true);
+    expect(authorize('staff', 'receivables.read').ok).toBe(true);
   });
 
   it('rejects missing role and staff on owner-only actions', () => {

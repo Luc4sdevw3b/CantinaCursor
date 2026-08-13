@@ -11,6 +11,7 @@ import {
   PRODUCTS_MIGRATION_ID,
   INVENTORY_MIGRATION_ID,
   SALES_MIGRATION_ID,
+  RECEIVABLES_MIGRATION_ID,
 } from '../../src/server/sheets/schema';
 
 describe('setupSchema', () => {
@@ -29,7 +30,7 @@ describe('setupSchema', () => {
     expect(first).toEqual({
       ok: true,
       data: {
-        schemaVersion: 9,
+        schemaVersion: 10,
         appliedMigrations: [
           FOUNDATION_MIGRATION_ID,
           OPERATION_REQUESTS_MIGRATION_ID,
@@ -40,11 +41,12 @@ describe('setupSchema', () => {
           PRODUCTS_MIGRATION_ID,
           INVENTORY_MIGRATION_ID,
           SALES_MIGRATION_ID,
+          RECEIVABLES_MIGRATION_ID,
         ],
       },
     });
     expect(second).toEqual(first);
-    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(9);
+    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(10);
     expect(sheets.get('_meta')?.getHeaders()).toEqual(['key', 'value']);
     expect(sheets.get('_operation_requests')?.getHeaders()).toEqual([
       'request_id',
@@ -182,6 +184,34 @@ describe('setupSchema', () => {
       'related_entity_id',
       'created_at',
     ]);
+    expect(sheets.get('_receivables')?.getHeaders()).toEqual([
+      'id',
+      'charged_student_id',
+      'source_sale_id',
+      'due_date',
+      'status',
+      'created_by',
+      'created_at',
+    ]);
+    expect(sheets.get('_receivable_charges')?.getHeaders()).toEqual([
+      'id',
+      'receivable_id',
+      'kind',
+      'amount_cents',
+      'reason_code',
+      'note',
+      'created_by',
+      'created_at',
+      'reversal_id',
+    ]);
+    expect(sheets.get('_receivable_due_date_history')?.getHeaders()).toEqual([
+      'receivable_id',
+      'old_due_date',
+      'new_due_date',
+      'reason',
+      'changed_by',
+      'changed_at',
+    ]);
   });
 
   it('applies only the operation-requests migration when foundation already exists', () => {
@@ -223,9 +253,10 @@ describe('setupSchema', () => {
         PRODUCTS_MIGRATION_ID,
         INVENTORY_MIGRATION_ID,
         SALES_MIGRATION_ID,
+        RECEIVABLES_MIGRATION_ID,
       ]);
     }
-    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(9);
+    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(10);
   });
 
   it('refuses PROD', () => {

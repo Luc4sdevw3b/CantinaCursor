@@ -376,4 +376,62 @@ describe('FakeAppApi', () => {
     );
     expect(mixed.paymentKind).toBe('mixed');
   });
+
+  it('records student fiado with due date and refuses anonymous fiado', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const coxinha = (await api.listProducts()).find(
+      (item) => item.name === 'Coxinha',
+    );
+    const ana = (await api.listStudents()).find(
+      (student) =>
+        student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+    );
+    if (!coxinha || !ana) {
+      throw new Error('venda local incompleta');
+    }
+
+    await expect(
+      api.createSale({
+        items: [{ productId: coxinha.id, quantity: 1 }],
+        paymentKind: 'fiado',
+        installments: [{ dueDate: '2026-08-14' }],
+      }),
+    ).rejects.toThrow('FIADO_STUDENT_REQUIRED');
+
+    const sale = await api.createSale({
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: '2026-08-14' }],
+    });
+    expect(sale.summaryLabel).toBe(
+      'Ana Souza • ~8 • Coxinha • R$ 5,50 • Fiado • Sexta-feira • 14/08/26',
+    );
+    expect(sale.paymentKind).toBe('fiado');
+    expect(sale.dueDateLabel).toBe('Sexta-feira • 14/08/26');
+    expect((await api.getDueDateShortcuts()).tomorrow).toBe('2026-08-14');
+    expect((await api.listReceivables()).upcoming[0]?.summaryLabel).toBe(
+      'Ana Souza • ~8 • R$ 5,50 • Sexta-feira • 14/08/26',
+    );
+    expect(
+      (await api.listInventoryBalances()).items.find(
+        (item) => item.productName === 'Coxinha',
+      )?.physicalQuantity,
+    ).toBe(9);
+
+    const split = await api.createSale({
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [
+        { dueDate: '2026-08-14', amountCents: 300 },
+        { dueDate: '2026-08-20', amountCents: 250 },
+      ],
+    });
+    expect(split.summaryLabel).toBe(
+      'Ana Souza • ~8 • Coxinha • R$ 5,50 • Fiado • 2 vencimentos',
+    );
+    expect((await api.listReceivables()).upcoming).toHaveLength(3);
+  });
 });

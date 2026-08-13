@@ -26,7 +26,7 @@ const FOUNDATION_MIGRATION_CHECKSUM = 'meta|schema_migrations';
 const OPERATION_REQUESTS_MIGRATION_ID = '002_operation_requests';
 const OPERATION_REQUESTS_MIGRATION_CHECKSUM =
   'request_id|operation_type|result_entity_id|status|created_at';
-const CURRENT_SCHEMA_VERSION = 9;
+const CURRENT_SCHEMA_VERSION = 10;
 const BACKUPS_SHEET = '_backups';
 const BACKUPS_HEADERS = [
   'id',
@@ -250,6 +250,40 @@ const SALE_SETTLEMENTS_HEADERS = [
 const SALES_MIGRATION_ID = '009_sales';
 const SALES_MIGRATION_CHECKSUM =
   'id|consumer_student_id|charged_student_id|status|gross_total_cents|discount_total_cents|net_total_cents|source_reservation_id|created_by|created_at|reversal_id|id|sale_id|product_id|item_kind|description_snapshot|quantity|unit_price_cents|discount_kind|discount_input|discount_amount_cents|line_net_total_cents|id|sale_id|kind|amount_cents|related_entity_id|created_at';
+const RECEIVABLES_SHEET = '_receivables';
+const RECEIVABLES_HEADERS = [
+  'id',
+  'charged_student_id',
+  'source_sale_id',
+  'due_date',
+  'status',
+  'created_by',
+  'created_at',
+];
+const RECEIVABLE_CHARGES_SHEET = '_receivable_charges';
+const RECEIVABLE_CHARGES_HEADERS = [
+  'id',
+  'receivable_id',
+  'kind',
+  'amount_cents',
+  'reason_code',
+  'note',
+  'created_by',
+  'created_at',
+  'reversal_id',
+];
+const RECEIVABLE_DUE_DATE_HISTORY_SHEET = '_receivable_due_date_history';
+const RECEIVABLE_DUE_DATE_HISTORY_HEADERS = [
+  'receivable_id',
+  'old_due_date',
+  'new_due_date',
+  'reason',
+  'changed_by',
+  'changed_at',
+];
+const RECEIVABLES_MIGRATION_ID = '010_receivables';
+const RECEIVABLES_MIGRATION_CHECKSUM =
+  'id|charged_student_id|source_sale_id|due_date|status|created_by|created_at|id|receivable_id|kind|amount_cents|reason_code|note|created_by|created_at|reversal_id|receivable_id|old_due_date|new_due_date|reason|changed_by|changed_at';
 const PIX_COPY_TEXT_KEY = 'pix_copy_text';
 const DEFAULT_PIX_COPY_TEXT = 'Chave PIX de teste: cantina-e2e@example.test';
 const SALE_STATUS_PAID = 'paid';
@@ -258,7 +292,21 @@ const SALE_ITEM_AD_HOC = 'ad_hoc';
 const SETTLEMENT_PIX = 'pix';
 const SETTLEMENT_CASH = 'cash';
 const SETTLEMENT_CHANGE = 'change';
+const SETTLEMENT_FIADO = 'fiado';
 const PAYMENT_MIXED = 'mixed';
+const PAYMENT_FIADO = 'fiado';
+const RECEIVABLE_STATUS_OPEN = 'open';
+const RECEIVABLE_CHARGE_PRINCIPAL = 'principal';
+const RECEIVABLE_REASON_SALE = 'sale';
+const WEEKDAY_LABELS = [
+  'Domingo',
+  'Segunda-feira',
+  'Terça-feira',
+  'Quarta-feira',
+  'Quinta-feira',
+  'Sexta-feira',
+  'Sábado',
+];
 const DISCOUNT_NONE = 'none';
 const DISCOUNT_AMOUNT = 'amount';
 const DISCOUNT_PERCENT = 'percent';
@@ -292,6 +340,7 @@ const ACTION_ROLES = {
   'inventory.adjust': ['owner'],
   'sales.read': ['owner', 'staff'],
   'sales.write': ['owner', 'staff'],
+  'receivables.read': ['owner', 'staff'],
 };
 const BACKUP_FILE_PREFIX = 'cantina-backup';
 const BACKUP_FOLDER_NAME = 'Cantina V2 AppScript E2E backups';
@@ -687,6 +736,9 @@ function resetE2EUnlocked() {
     SALES_SHEET,
     SALE_ITEMS_SHEET,
     SALE_SETTLEMENTS_SHEET,
+    RECEIVABLES_SHEET,
+    RECEIVABLE_CHARGES_SHEET,
+    RECEIVABLE_DUE_DATE_HISTORY_SHEET,
   ].forEach(function (name) {
     const sheet = spreadsheet.getSheetByName(name);
     if (sheet) {
@@ -751,6 +803,7 @@ function assertKnownMigrations(applied) {
     PRODUCTS_MIGRATION_ID,
     INVENTORY_MIGRATION_ID,
     SALES_MIGRATION_ID,
+    RECEIVABLES_MIGRATION_ID,
   ];
   applied.forEach(function (id) {
     if (catalog.indexOf(id) === -1) {
@@ -781,7 +834,8 @@ function setupSchema() {
     applied.indexOf(GUARDIANS_MIGRATION_ID) === -1 ||
     applied.indexOf(PRODUCTS_MIGRATION_ID) === -1 ||
     applied.indexOf(INVENTORY_MIGRATION_ID) === -1 ||
-    applied.indexOf(SALES_MIGRATION_ID) === -1;
+    applied.indexOf(SALES_MIGRATION_ID) === -1 ||
+    applied.indexOf(RECEIVABLES_MIGRATION_ID) === -1;
   let pendingCopy = null;
   if (pending) {
     try {
@@ -945,13 +999,34 @@ function setupSchema() {
       PIX_COPY_TEXT_KEY,
       DEFAULT_PIX_COPY_TEXT,
     ]);
-    meta.appendRow(['schema_version', String(CURRENT_SCHEMA_VERSION)]);
+    meta.appendRow(['schema_version', '9']);
     migrations.appendRow([
       SALES_MIGRATION_ID,
       createdAt,
       CANTINA_APP_VERSION,
       SALES_MIGRATION_CHECKSUM,
       'Cria vendas, itens com snapshot e settlements PIX',
+    ]);
+  }
+  if (applied.indexOf(RECEIVABLES_MIGRATION_ID) === -1) {
+    getOrCreateSheet(spreadsheet, RECEIVABLES_SHEET, RECEIVABLES_HEADERS);
+    getOrCreateSheet(
+      spreadsheet,
+      RECEIVABLE_CHARGES_SHEET,
+      RECEIVABLE_CHARGES_HEADERS,
+    );
+    getOrCreateSheet(
+      spreadsheet,
+      RECEIVABLE_DUE_DATE_HISTORY_SHEET,
+      RECEIVABLE_DUE_DATE_HISTORY_HEADERS,
+    );
+    meta.appendRow(['schema_version', String(CURRENT_SCHEMA_VERSION)]);
+    migrations.appendRow([
+      RECEIVABLES_MIGRATION_ID,
+      createdAt,
+      CANTINA_APP_VERSION,
+      RECEIVABLES_MIGRATION_CHECKSUM,
+      'Cria recebíveis, charges e histórico de vencimento',
     ]);
   }
   if (pendingCopy) {
@@ -1300,7 +1375,7 @@ function prepareRestore(sessionToken, backupId, confirmed) {
 }
 
 function todayCivil() {
-  return new Date().toISOString().slice(0, 10);
+  return Utilities.formatDate(new Date(), 'America/Sao_Paulo', 'yyyy-MM-dd');
 }
 
 function isCivilDate(value) {
@@ -1316,6 +1391,133 @@ function isCivilDate(value) {
     utc.getUTCMonth() === month - 1 &&
     utc.getUTCDate() === day
   );
+}
+
+function utcFromCivilGs(civilDate) {
+  return new Date(
+    Date.UTC(
+      Number(civilDate.slice(0, 4)),
+      Number(civilDate.slice(5, 7)) - 1,
+      Number(civilDate.slice(8, 10)),
+    ),
+  );
+}
+
+function addCivilDaysGs(civilDate, days) {
+  const utc = utcFromCivilGs(civilDate);
+  utc.setUTCDate(utc.getUTCDate() + days);
+  return utc.toISOString().slice(0, 10);
+}
+
+function nextFridayGs(civilDate) {
+  const weekday = utcFromCivilGs(civilDate).getUTCDay();
+  const delta = weekday === 5 ? 7 : (5 - weekday + 7) % 7;
+  return addCivilDaysGs(civilDate, delta);
+}
+
+function formatCivilDisplayGs(civilDate) {
+  if (!isCivilDate(civilDate)) {
+    return civilDate;
+  }
+  const weekday = WEEKDAY_LABELS[utcFromCivilGs(civilDate).getUTCDay()];
+  return (
+    weekday +
+    ' • ' +
+    civilDate.slice(8, 10) +
+    '/' +
+    civilDate.slice(5, 7) +
+    '/' +
+    civilDate.slice(2, 4)
+  );
+}
+
+function agendaBucketGs(dueDate, today) {
+  if (dueDate < today) {
+    return 'overdue';
+  }
+  if (dueDate === today) {
+    return 'today';
+  }
+  return 'upcoming';
+}
+
+function dueDateShortcutsGs(today) {
+  return {
+    today: today,
+    tomorrow: addCivilDaysGs(today, 1),
+    nextFriday: nextFridayGs(today),
+    plus7: addCivilDaysGs(today, 7),
+  };
+}
+
+function parseCivilDateGs(value) {
+  if (!isCivilDate(value)) {
+    throw new Error(
+      'INVALID_CIVIL_DATE: Use uma data civil no formato AAAA-MM-DD.',
+    );
+  }
+  return value;
+}
+
+function dueDateLabelForDatesGs(dueDates) {
+  if (!dueDates.length) {
+    return null;
+  }
+  if (dueDates.length === 1) {
+    return formatCivilDisplayGs(dueDates[0]);
+  }
+  return dueDates.length + ' vencimentos';
+}
+
+function receivableSummaryLabelGs(studentLabel, amountLabel, dueDateLabel) {
+  return studentLabel + ' • ' + amountLabel + ' • ' + dueDateLabel;
+}
+
+function planFiadoInstallmentsGs(netTotalCents, installments) {
+  const rows = installments || [];
+  if (!rows.length) {
+    throw new Error(
+      'FIADO_INSTALLMENTS_REQUIRED: Informe o vencimento do fiado.',
+    );
+  }
+  const planned = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    const installment = rows[index] || {};
+    const dueDate = parseCivilDateGs(installment.dueDate);
+    if (rows.length === 1 && installment.amountCents == null) {
+      planned.push({
+        due_date: dueDate,
+        amount_cents: String(netTotalCents),
+      });
+      continue;
+    }
+    var amount;
+    try {
+      amount = parseCentsGs(installment.amountCents);
+    } catch (error) {
+      throw new Error(
+        'FIADO_AMOUNT_MISMATCH: A soma dos vencimentos precisa ser igual ao fiado.',
+      );
+    }
+    if (amount <= 0) {
+      throw new Error(
+        'FIADO_AMOUNT_MISMATCH: A soma dos vencimentos precisa ser igual ao fiado.',
+      );
+    }
+    planned.push({
+      due_date: dueDate,
+      amount_cents: String(amount),
+    });
+  }
+  const total = planned.reduce(function (sum, item) {
+    return sum + Number(item.amount_cents);
+  }, 0);
+  if (total !== netTotalCents) {
+    throw new Error(
+      'FIADO_AMOUNT_MISMATCH: A soma dos vencimentos precisa ser igual ao fiado.',
+    );
+  }
+  return planned;
 }
 
 function latestRecordsById(records) {
@@ -3451,6 +3653,20 @@ function listSettlementRecords() {
   );
 }
 
+function listReceivableRecords() {
+  return listSheetRecords(
+    openNamedSheet(RECEIVABLES_SHEET, RECEIVABLES_HEADERS),
+    RECEIVABLES_HEADERS,
+  );
+}
+
+function listReceivableChargeRecords() {
+  return listSheetRecords(
+    openNamedSheet(RECEIVABLE_CHARGES_SHEET, RECEIVABLE_CHARGES_HEADERS),
+    RECEIVABLE_CHARGES_HEADERS,
+  );
+}
+
 function saleConsumerLabelGs(consumerStudentId) {
   if (!consumerStudentId) {
     return ANONYMOUS_SALE_LABEL;
@@ -3463,12 +3679,13 @@ function parsePaymentKindGs(value) {
   if (
     value === SETTLEMENT_PIX ||
     value === SETTLEMENT_CASH ||
-    value === PAYMENT_MIXED
+    value === PAYMENT_MIXED ||
+    value === PAYMENT_FIADO
   ) {
     return value;
   }
   throw new Error(
-    'PAYMENT_KIND_UNSUPPORTED: Use PIX, dinheiro ou PIX + dinheiro.',
+    'PAYMENT_KIND_UNSUPPORTED: Use PIX, dinheiro, PIX + dinheiro ou fiado.',
   );
 }
 
@@ -3488,6 +3705,14 @@ function planSettlementsGs(
     return {
       paymentKind: SETTLEMENT_PIX,
       rows: [{ kind: SETTLEMENT_PIX, amount_cents: String(net) }],
+      cashTenderedCents: 0,
+      changeCents: 0,
+    };
+  }
+  if (kind === PAYMENT_FIADO) {
+    return {
+      paymentKind: PAYMENT_FIADO,
+      rows: [{ kind: SETTLEMENT_FIADO, amount_cents: String(net) }],
       cashTenderedCents: 0,
       changeCents: 0,
     };
@@ -3567,6 +3792,12 @@ function paymentKindFromSettlementsGs(rows) {
   const hasCash = rows.some(function (row) {
     return row.kind === SETTLEMENT_CASH;
   });
+  const hasFiado = rows.some(function (row) {
+    return row.kind === SETTLEMENT_FIADO;
+  });
+  if (hasFiado) {
+    return PAYMENT_FIADO;
+  }
   if (hasPix && hasCash) {
     return PAYMENT_MIXED;
   }
@@ -3582,6 +3813,7 @@ function saleSummaryLabelGs(
   netLabel,
   paymentKind,
   changeLabel,
+  dueDateLabel,
 ) {
   const base =
     consumerLabel + ' • ' + descriptions.join(', ') + ' • ' + netLabel;
@@ -3592,8 +3824,14 @@ function saleSummaryLabelGs(
   if (paymentKind === PAYMENT_MIXED) {
     extras.push('PIX + dinheiro');
   }
+  if (paymentKind === PAYMENT_FIADO) {
+    extras.push('Fiado');
+  }
   if (changeLabel) {
     extras.push('Troco ' + changeLabel);
+  }
+  if (dueDateLabel) {
+    extras.push(dueDateLabel);
   }
   return extras.length ? base + ' • ' + extras.join(' • ') : base;
 }
@@ -3640,6 +3878,14 @@ function toSaleViewGs(sale) {
   const descriptions = items.map(function (item) {
     return item.description;
   });
+  const dueDates = listReceivableRecords()
+    .filter(function (item) {
+      return item.source_sale_id === sale.id;
+    })
+    .map(function (item) {
+      return item.due_date;
+    });
+  const dueDateLabel = dueDateLabelForDatesGs(dueDates);
   return {
     id: sale.id,
     consumerStudentId: sale.consumer_student_id || null,
@@ -3653,6 +3899,7 @@ function toSaleViewGs(sale) {
     cashTenderedCents: cashTenderedCents,
     changeCents: changeCents,
     changeLabel: changeLabel,
+    dueDateLabel: dueDateLabel,
     settlements: settlementRows.map(function (item) {
       return {
         kind: item.kind,
@@ -3666,6 +3913,7 @@ function toSaleViewGs(sale) {
       netLabel,
       paymentKind,
       changeLabel,
+      dueDateLabel,
     ),
     createdAt: sale.created_at,
   };
@@ -3750,6 +3998,18 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
     payload && payload.pixAmountCents,
     payload && payload.cashTenderedCents,
   );
+  let installments = [];
+  if (plannedSettlements.paymentKind === PAYMENT_FIADO) {
+    if (!consumerId) {
+      throw new Error(
+        'FIADO_STUDENT_REQUIRED: Fiado precisa de um aluno na conta.',
+      );
+    }
+    installments = planFiadoInstallmentsGs(
+      Number(totals.net_total_cents),
+      payload && payload.installments,
+    );
+  }
   const now = new Date().toISOString();
   const saleId = Utilities.getUuid();
   openNamedSheet(SALES_SHEET, SALES_HEADERS).appendRow([
@@ -3793,6 +4053,37 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
       row.amount_cents,
       '',
       now,
+    ]);
+  });
+  const receivablesSheet = openNamedSheet(
+    RECEIVABLES_SHEET,
+    RECEIVABLES_HEADERS,
+  );
+  const chargesSheet = openNamedSheet(
+    RECEIVABLE_CHARGES_SHEET,
+    RECEIVABLE_CHARGES_HEADERS,
+  );
+  installments.forEach(function (installment) {
+    const receivableId = Utilities.getUuid();
+    receivablesSheet.appendRow([
+      receivableId,
+      consumerId,
+      saleId,
+      installment.due_date,
+      RECEIVABLE_STATUS_OPEN,
+      userId,
+      now,
+    ]);
+    chargesSheet.appendRow([
+      Utilities.getUuid(),
+      receivableId,
+      RECEIVABLE_CHARGE_PRINCIPAL,
+      installment.amount_cents,
+      RECEIVABLE_REASON_SALE,
+      '',
+      userId,
+      now,
+      '',
     ]);
   });
   const day = Object.keys(needed).length
@@ -3856,4 +4147,79 @@ function listSales(sessionToken) {
 function getPixCopyText(sessionToken) {
   requireAction(sessionToken, 'sales.read');
   return readPixCopyTextUnlocked();
+}
+
+function getDueDateShortcuts(sessionToken) {
+  requireAction(sessionToken, 'receivables.read');
+  return dueDateShortcutsGs(todayCivil());
+}
+
+function toReceivableViewGs(receivable, today) {
+  const amountCents = listReceivableChargeRecords()
+    .filter(function (item) {
+      return item.receivable_id === receivable.id;
+    })
+    .reduce(function (total, item) {
+      return total + Number(item.amount_cents);
+    }, 0);
+  const studentLabel = saleConsumerLabelGs(receivable.charged_student_id);
+  const dueDateLabel = formatCivilDisplayGs(receivable.due_date);
+  const amountLabel = formatBrlGs(amountCents);
+  return {
+    id: receivable.id,
+    chargedStudentId: receivable.charged_student_id,
+    studentLabel: studentLabel,
+    sourceSaleId: receivable.source_sale_id,
+    dueDate: receivable.due_date,
+    dueDateLabel: dueDateLabel,
+    amountCents: amountCents,
+    amountLabel: amountLabel,
+    status: RECEIVABLE_STATUS_OPEN,
+    bucket: agendaBucketGs(receivable.due_date, today),
+    summaryLabel: receivableSummaryLabelGs(
+      studentLabel,
+      amountLabel,
+      dueDateLabel,
+    ),
+  };
+}
+
+function listReceivables(sessionToken) {
+  requireAction(sessionToken, 'receivables.read');
+  const today = todayCivil();
+  const overdue = [];
+  const dueToday = [];
+  const upcoming = [];
+  listReceivableRecords().forEach(function (receivable) {
+    const view = toReceivableViewGs(receivable, today);
+    if (view.bucket === 'overdue') {
+      overdue.push(view);
+    } else if (view.bucket === 'today') {
+      dueToday.push(view);
+    } else {
+      upcoming.push(view);
+    }
+  });
+  overdue.sort(function (left, right) {
+    return left.dueDate < right.dueDate
+      ? -1
+      : left.dueDate > right.dueDate
+        ? 1
+        : 0;
+  });
+  dueToday.sort(function (left, right) {
+    return left.dueDate < right.dueDate
+      ? -1
+      : left.dueDate > right.dueDate
+        ? 1
+        : 0;
+  });
+  upcoming.sort(function (left, right) {
+    return left.dueDate < right.dueDate
+      ? -1
+      : left.dueDate > right.dueDate
+        ? 1
+        : 0;
+  });
+  return { overdue: overdue, today: dueToday, upcoming: upcoming };
 }

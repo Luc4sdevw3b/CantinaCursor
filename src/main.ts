@@ -4,6 +4,7 @@ import { roleLabel, type UserRole } from './domain/auth';
 import { parseReaisToCents } from './domain/money';
 import type {
   AppSession,
+  DueDateShortcuts,
   InventoryBalanceItem,
   Product,
   StudentSummary,
@@ -65,10 +66,10 @@ app.innerHTML = `
     <section class="next-step" aria-labelledby="next-step-title">
       <p class="step-number">01</p>
       <div>
-        <h2 id="next-step-title">Dinheiro e settlements</h2>
-        <p>PIX, dinheiro com troco e PIX + dinheiro, com baixa atômica no estoque.</p>
+        <h2 id="next-step-title">Recebíveis e calendário</h2>
+        <p>Fiado com vencimento, atalhos de data e agenda atrasado/hoje/próximo.</p>
       </div>
-      <span class="phase-badge">Fase 13</span>
+      <span class="phase-badge">Fase 14</span>
     </section>
 
     <section class="students-panel" id="students-panel" hidden>
@@ -248,6 +249,7 @@ app.innerHTML = `
             <option value="pix">PIX</option>
             <option value="cash">Dinheiro</option>
             <option value="mixed">PIX + dinheiro</option>
+            <option value="fiado">Fiado</option>
           </select>
         </label>
         <label id="sale-pix-amount-label" hidden>
@@ -258,10 +260,32 @@ app.innerHTML = `
           Recebido (R$)
           <input id="sale-cash-amount" inputmode="decimal" placeholder="10,00" />
         </label>
+        <div id="sale-fiado-fields" hidden>
+          <label>
+            Vencimento
+            <input id="sale-due-date" type="date" />
+          </label>
+          <div>
+            <button type="button" id="sale-due-tomorrow">Amanhã</button>
+            <button type="button" id="sale-due-friday">Próxima sexta</button>
+            <button type="button" id="sale-due-plus7">+7 dias</button>
+          </div>
+        </div>
         <p id="sale-change-preview"></p>
         <button type="submit">Confirmar venda</button>
       </form>
       <ul id="sales-list"></ul>
+    </section>
+
+    <section class="students-panel" id="agenda-panel" hidden>
+      <h2>Agenda</h2>
+      <p id="agenda-status">Entre para ver os vencimentos.</p>
+      <h3>Atrasados</h3>
+      <ul id="agenda-overdue"></ul>
+      <h3>Hoje</h3>
+      <ul id="agenda-today"></ul>
+      <h3>Próximos</h3>
+      <ul id="agenda-upcoming"></ul>
     </section>
 
     <footer>
@@ -341,6 +365,7 @@ async function showAuthenticated(session: AppSession | null): Promise<void> {
   await renderProducts(session);
   await renderInventory(session);
   await renderSales(session);
+  await renderAgenda(session);
 }
 
 document.querySelector('#login-owner')?.addEventListener('click', () => {
@@ -684,11 +709,20 @@ interface CartLine {
 }
 
 const cart: CartLine[] = [];
+let dueDateShortcuts: DueDateShortcuts | null = null;
+
+function applyDueDateShortcut(civilDate: string): void {
+  const dueDate = document.querySelector('#sale-due-date');
+  if (dueDate instanceof HTMLInputElement) {
+    dueDate.value = civilDate;
+  }
+}
 
 function syncPaymentFields(): void {
   const kind = document.querySelector('#sale-payment-kind');
   const pixLabel = document.querySelector('#sale-pix-amount-label');
   const cashLabel = document.querySelector('#sale-cash-amount-label');
+  const fiadoFields = document.querySelector('#sale-fiado-fields');
   const preview = document.querySelector('#sale-change-preview');
   const value = kind instanceof HTMLSelectElement ? kind.value : 'pix';
   if (pixLabel instanceof HTMLElement) {
@@ -697,9 +731,14 @@ function syncPaymentFields(): void {
   if (cashLabel instanceof HTMLElement) {
     cashLabel.hidden = value !== 'cash' && value !== 'mixed';
   }
+  if (fiadoFields instanceof HTMLElement) {
+    fiadoFields.hidden = value !== 'fiado';
+  }
   if (preview) {
     preview.textContent =
-      value === 'pix' ? '' : 'O troco é calculado na confirmação.';
+      value === 'cash' || value === 'mixed'
+        ? 'O troco é calculado na confirmação.'
+        : '';
   }
 }
 
@@ -740,12 +779,14 @@ async function renderSales(session: AppSession | null): Promise<void> {
   }
 
   try {
-    const [products, students, sales, pix] = await Promise.all([
+    const [products, students, sales, pix, shortcuts] = await Promise.all([
       api.listProducts(),
       api.listStudents(),
       api.listSales(),
       api.getPixCopyText(),
+      api.getDueDateShortcuts(),
     ]);
+    dueDateShortcuts = shortcuts;
     if (pixCopyText) {
       pixCopyText.textContent = pix.text;
     }
@@ -790,9 +831,77 @@ async function renderSales(session: AppSession | null): Promise<void> {
   }
 }
 
+async function renderAgenda(session: AppSession | null): Promise<void> {
+  const panel = document.querySelector('#agenda-panel');
+  const status = document.querySelector('#agenda-status');
+  const overdueList = document.querySelector('#agenda-overdue');
+  const todayList = document.querySelector('#agenda-today');
+  const upcomingList = document.querySelector('#agenda-upcoming');
+  if (
+    !(panel instanceof HTMLElement) ||
+    !status ||
+    !(overdueList instanceof HTMLElement) ||
+    !(todayList instanceof HTMLElement) ||
+    !(upcomingList instanceof HTMLElement)
+  ) {
+    return;
+  }
+  panel.hidden = !session;
+  overdueList.replaceChildren();
+  todayList.replaceChildren();
+  upcomingList.replaceChildren();
+  if (!session) {
+    status.textContent = 'Entre para ver os vencimentos.';
+    return;
+  }
+  try {
+    const agenda = await api.listReceivables();
+    const total =
+      agenda.overdue.length + agenda.today.length + agenda.upcoming.length;
+    status.textContent =
+      total === 0 ? 'Nenhum recebível.' : `${total} recebível(is).`;
+    for (const item of agenda.overdue) {
+      const row = document.createElement('li');
+      row.textContent = item.summaryLabel;
+      overdueList.append(row);
+    }
+    for (const item of agenda.today) {
+      const row = document.createElement('li');
+      row.textContent = item.summaryLabel;
+      todayList.append(row);
+    }
+    for (const item of agenda.upcoming) {
+      const row = document.createElement('li');
+      row.textContent = item.summaryLabel;
+      upcomingList.append(row);
+    }
+  } catch (error: unknown) {
+    status.textContent =
+      error instanceof Error
+        ? error.message.replace(/^[A-Z_]+:\s*/, '')
+        : 'Não foi possível carregar a agenda.';
+  }
+}
+
 document
   .querySelector('#sale-payment-kind')
   ?.addEventListener('change', syncPaymentFields);
+
+document.querySelector('#sale-due-tomorrow')?.addEventListener('click', () => {
+  if (dueDateShortcuts) {
+    applyDueDateShortcut(dueDateShortcuts.tomorrow);
+  }
+});
+document.querySelector('#sale-due-friday')?.addEventListener('click', () => {
+  if (dueDateShortcuts) {
+    applyDueDateShortcut(dueDateShortcuts.nextFriday);
+  }
+});
+document.querySelector('#sale-due-plus7')?.addEventListener('click', () => {
+  if (dueDateShortcuts) {
+    applyDueDateShortcut(dueDateShortcuts.plus7);
+  }
+});
 
 document
   .querySelector('#sale-cart-form')
@@ -862,12 +971,14 @@ document
     if (
       paymentKind !== 'pix' &&
       paymentKind !== 'cash' &&
-      paymentKind !== 'mixed'
+      paymentKind !== 'mixed' &&
+      paymentKind !== 'fiado'
     ) {
       return;
     }
     let pixAmountCents: number | undefined;
     let cashTenderedCents: number | undefined;
+    let installments: Array<{ dueDate: string }> | undefined;
     if (paymentKind === 'mixed' && pixAmountInput instanceof HTMLInputElement) {
       const pix = parseReaisToCents(pixAmountInput.value);
       if (!pix.ok) {
@@ -891,6 +1002,18 @@ document
       }
       cashTenderedCents = cash.data;
     }
+    if (paymentKind === 'fiado') {
+      const dueDate = document.querySelector('#sale-due-date');
+      const dueDateValue =
+        dueDate instanceof HTMLInputElement ? dueDate.value : '';
+      if (!dueDateValue) {
+        if (salesStatus) {
+          salesStatus.textContent = 'Informe o vencimento do fiado.';
+        }
+        return;
+      }
+      installments = [{ dueDate: dueDateValue }];
+    }
     void api
       .createSale({
         consumerStudentId,
@@ -903,6 +1026,7 @@ document
         paymentKind,
         pixAmountCents,
         cashTenderedCents,
+        installments,
       })
       .then(() => {
         cart.length = 0;
@@ -915,7 +1039,11 @@ document
         return api.getSession();
       })
       .then((session) =>
-        Promise.all([renderSales(session), renderInventory(session)]),
+        Promise.all([
+          renderSales(session),
+          renderInventory(session),
+          renderAgenda(session),
+        ]),
       )
       .catch((error: unknown) => {
         if (salesStatus) {
@@ -1189,6 +1317,7 @@ void api
     await renderProducts(session);
     await renderInventory(session);
     await renderSales(session);
+    await renderAgenda(session);
   })
   .catch(() => {
     const status = document.querySelector('#health-status');

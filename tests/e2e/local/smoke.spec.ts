@@ -263,4 +263,36 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     ).toBeVisible();
     await expect(page.getByText('Coxinha • 9')).toBeVisible();
   });
+
+  test('records a student fiado sale with tomorrow shortcut after login', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Vendas', exact: true }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click();
+    await page
+      .locator('#sale-student')
+      .selectOption({ label: 'Ana Souza • ~8' });
+    await page.locator('#sale-payment-kind').selectOption('fiado');
+    await page.getByRole('button', { name: 'Amanhã' }).click();
+    await page.getByRole('button', { name: 'Confirmar venda' }).click();
+    await expect(
+      page.getByText(
+        'Ana Souza • ~8 • Coxinha • R$ 5,50 • Fiado • Sexta-feira • 14/08/26',
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Próximos', exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Ana Souza • ~8 • R$ 5,50 • Sexta-feira • 14/08/26', {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(page.getByText('Coxinha • 9')).toBeVisible();
+  });
 });

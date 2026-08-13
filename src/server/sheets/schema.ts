@@ -57,8 +57,9 @@ export const GUARDIANS_MIGRATION_ID = '006_guardians';
 export const PRODUCTS_MIGRATION_ID = '007_products';
 export const INVENTORY_MIGRATION_ID = '008_inventory';
 export const SALES_MIGRATION_ID = '009_sales';
+export const RECEIVABLES_MIGRATION_ID = '010_receivables';
 export const FOUNDATION_SCHEMA_VERSION = 1;
-export const CURRENT_SCHEMA_VERSION = 9;
+export const CURRENT_SCHEMA_VERSION = 10;
 
 export const USERS_SHEET: SheetSchema = {
   name: '_users',
@@ -266,5 +267,45 @@ export const SALE_SETTLEMENTS_SHEET: SheetSchema = {
     'amount_cents',
     'related_entity_id',
     'created_at',
+  ],
+};
+
+export const RECEIVABLES_SHEET: SheetSchema = {
+  name: '_receivables',
+  headers: [
+    'id',
+    'charged_student_id',
+    'source_sale_id',
+    'due_date',
+    'status',
+    'created_by',
+    'created_at',
+  ],
+};
+
+export const RECEIVABLE_CHARGES_SHEET: SheetSchema = {
+  name: '_receivable_charges',
+  headers: [
+    'id',
+    'receivable_id',
+    'kind',
+    'amount_cents',
+    'reason_code',
+    'note',
+    'created_by',
+    'created_at',
+    'reversal_id',
+  ],
+};
+
+export const RECEIVABLE_DUE_DATE_HISTORY_SHEET: SheetSchema = {
+  name: '_receivable_due_date_history',
+  headers: [
+    'receivable_id',
+    'old_due_date',
+    'new_due_date',
+    'reason',
+    'changed_by',
+    'changed_at',
   ],
 };

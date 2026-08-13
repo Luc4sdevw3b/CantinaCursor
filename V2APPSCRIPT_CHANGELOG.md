@@ -9,6 +9,48 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-13 14:45 — Implementada a Fase 14: recebíveis e calendário
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 14
+
+### Pedido / objetivo
+
+- Rodar a Fase 14: cobrança (fiado), vencimentos, múltiplos vencimentos opcionais, picker/atalhos e agenda atrasado/hoje/próximo.
+
+### Tentativa / implementação
+
+- Migration `010_receivables` cria `_receivables`, `_receivable_charges` e `_receivable_due_date_history` (schema version 10). A 009 continua gravando a versão 9.
+- Fiado entra em `createSale` (`paymentKind=fiado`), exige aluno, grava settlement `fiado` igual ao líquido e um recebível `open` por vencimento, com charge `principal`/`sale`. Um vencimento sem valor usa o total; vários precisam somar o líquido.
+- Atalhos Amanhã / Próxima sexta / +7 dias usam data civil em `America/Sao_Paulo`. Display `Sexta-feira • 14/08/26`. Agenda agrupa atrasados, hoje e próximos. Dona e funcionário vendem fiado e leem a agenda.
+- Preview local: `Ana Souza • ~8 • Coxinha • R$ 5,50 • Fiado • Sexta-feira • 14/08/26` e o mesmo vencimento em **Próximos**. PIX/dinheiro e o health smoke permanecem iguais. Pagamento parcial não foi aberto (Fase 15).
+- O `build:apps-script` agora insere o JS com função de `replace`, para `$&&` minificado não virar `</body>&` e quebrar o Web App remoto.
+
+### Resultado
+
+- Fase 14 concluída sobre o ambiente E2E isolado e o preview local.
+- Parcial, juros, crédito, caixa, reservas reais e WhatsApp permanecem na Fase 15 em diante.
+- Nenhum ID Google, token, telefone real ou dado de planilha foi versionado.
+
+### Diferenças do pedido
+
+- Fiado nesta fase é conta integral (sem misturar PIX+fiado). Cobrança de irmão e histórico de vencimento ficam para fases seguintes.
+
+### Impacto técnico
+
+- `receivables.read` para dona e funcionário. `listReceivables` e `getDueDateShortcuts` entram no `AppApi`. Confirmar continua **Confirmar venda**.
+
+### Testes
+
+- Unit, integração, typecheck, lint, format, build, version:check, validate:skill e E2E local passaram.
+- E2E remoto: smoke de health no deployment novo após `clasp push` + `clasp deploy`.
+
+### Pendências / próxima versão
+
+- Não iniciar a Fase 15 (pagamento parcial) sem pedido explícito.
+
 ## 2026-08-13 14:22 — Implementada a Fase 13: dinheiro e settlements
 
 **Origem:** Pedido do usuário

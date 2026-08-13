@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
+import { formatCivilDisplay } from '../../src/domain/civil-date';
 
 const source = await readFile(
   new URL('../../apps-script/src/Code.gs', import.meta.url),
@@ -260,6 +261,17 @@ interface ServerContext {
   };
   listSales(sessionToken: string): Array<{ summaryLabel: string }>;
   getPixCopyText(sessionToken: string): { text: string };
+  getDueDateShortcuts(sessionToken: string): {
+    today: string;
+    tomorrow: string;
+    nextFriday: string;
+    plus7: string;
+  };
+  listReceivables(sessionToken: string): {
+    overdue: Array<{ summaryLabel: string }>;
+    today: Array<{ summaryLabel: string }>;
+    upcoming: Array<{ summaryLabel: string }>;
+  };
 }
 
 interface DriveMockFile {
@@ -449,6 +461,21 @@ function loadServer(
         uuidCount += 1;
         return `aaaaaaaa-bbbb-4ccc-8ddd-${String(uuidCount).padStart(12, '0')}`;
       },
+      formatDate: (date: Date, timeZone: string, format: string) => {
+        if (format !== 'yyyy-MM-dd') {
+          return String(date);
+        }
+        const parts = new Intl.DateTimeFormat('en-US', {
+          timeZone: timeZone || 'America/Sao_Paulo',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).formatToParts(date);
+        const year = parts.find((part) => part.type === 'year')?.value;
+        const month = parts.find((part) => part.type === 'month')?.value;
+        const day = parts.find((part) => part.type === 'day')?.value;
+        return `${year}-${month}-${day}`;
+      },
     },
     DriveApp: {
       createFolder: (name: string) => {
@@ -567,7 +594,7 @@ describe('Apps Script E2E server', () => {
     expect(health.status).toBe('ready');
     expect(health.adapter).toBe('google-script');
     expect(health.spreadsheetConfigured).toBe(true);
-    expect(health.schemaVersion).toBe(9);
+    expect(health.schemaVersion).toBe(10);
     expect(health.backupConfigured).toBe(true);
     expect(health.lastBackupAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(JSON.stringify(health)).not.toContain('private-e2e-sheet-id');
@@ -650,7 +677,7 @@ describe('Apps Script E2E server', () => {
     const second = server.setupSchema();
 
     expect(first).toEqual(second);
-    expect(first.schemaVersion).toBe(9);
+    expect(first.schemaVersion).toBe(10);
     expect(first.appliedMigrations).toEqual([
       '001_foundation',
       '002_operation_requests',
@@ -661,6 +688,7 @@ describe('Apps Script E2E server', () => {
       '007_products',
       '008_inventory',
       '009_sales',
+      '010_receivables',
     ]);
     expect(sheets.get('_meta')?.rows[0]).toEqual(['key', 'value']);
     expect(sheets.get('_schema_migrations')?.rows[0]).toEqual([
@@ -760,6 +788,39 @@ describe('Apps Script E2E server', () => {
       sheets
         .get('_schema_migrations')
         ?.rows.filter((row) => row[0] === '009_sales'),
+    ).toHaveLength(1);
+    expect(sheets.get('_receivables')?.rows[0]).toEqual([
+      'id',
+      'charged_student_id',
+      'source_sale_id',
+      'due_date',
+      'status',
+      'created_by',
+      'created_at',
+    ]);
+    expect(sheets.get('_receivable_charges')?.rows[0]).toEqual([
+      'id',
+      'receivable_id',
+      'kind',
+      'amount_cents',
+      'reason_code',
+      'note',
+      'created_by',
+      'created_at',
+      'reversal_id',
+    ]);
+    expect(sheets.get('_receivable_due_date_history')?.rows[0]).toEqual([
+      'receivable_id',
+      'old_due_date',
+      'new_due_date',
+      'reason',
+      'changed_by',
+      'changed_at',
+    ]);
+    expect(
+      sheets
+        .get('_schema_migrations')
+        ?.rows.filter((row) => row[0] === '010_receivables'),
     ).toHaveLength(1);
   });
 
@@ -902,7 +963,7 @@ describe('Apps Script E2E server', () => {
     const backup = server.runBackup(token, 'manual');
 
     expect(backup.reason).toBe('manual');
-    expect(backup.schemaVersion).toBe(9);
+    expect(backup.schemaVersion).toBe(10);
     expect(JSON.stringify(backup)).not.toContain('e2e-sheet-id');
     expect(JSON.stringify(backup)).not.toContain('e2e-backup-folder');
     expect(projectTriggers).toEqual(['runScheduledBackup']);
@@ -1472,5 +1533,70 @@ describe('Apps Script E2E server', () => {
       'Anônima • Coxinha • R$ 5,50 • PIX + dinheiro • Troco R$ 0,50',
     );
     expect(mixed.paymentKind).toBe('mixed');
+  });
+
+  it('records student fiado with due date and refuses anonymous fiado', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const coxinha = server
+      .listProducts(owner)
+      .find((item) => item.name === 'Coxinha');
+    const ana = server
+      .listStudents(owner)
+      .find(
+        (student) =>
+          student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+      );
+    if (!coxinha || !ana) {
+      throw new Error('venda E2E incompleta');
+    }
+    const shortcuts = server.getDueDateShortcuts(owner);
+    expect(() =>
+      server.createSale(owner, {
+        items: [{ productId: coxinha.id, quantity: 1 }],
+        paymentKind: 'fiado',
+        installments: [{ dueDate: shortcuts.tomorrow }],
+      }),
+    ).toThrow('FIADO_STUDENT_REQUIRED');
+
+    const dueLabel = formatCivilDisplay(shortcuts.tomorrow);
+    const sale = server.createSale(owner, {
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: shortcuts.tomorrow }],
+    });
+    expect(sale.summaryLabel).toBe(
+      `Ana Souza • ~8 • Coxinha • R$ 5,50 • Fiado • ${dueLabel}`,
+    );
+    expect(sale.paymentKind).toBe('fiado');
+    expect(sale.settlements.some((item) => item.kind === 'fiado')).toBe(true);
+    expect(server.listReceivables(owner).upcoming[0]?.summaryLabel).toBe(
+      `Ana Souza • ~8 • R$ 5,50 • ${dueLabel}`,
+    );
+    expect(
+      server
+        .listInventoryBalances(owner)
+        .items.find((item) => item.productName === 'Coxinha')?.physicalQuantity,
+    ).toBe(9);
+
+    const split = server.createSale(owner, {
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [
+        { dueDate: shortcuts.tomorrow, amountCents: 300 },
+        { dueDate: shortcuts.plus7, amountCents: 250 },
+      ],
+    });
+    expect(split.summaryLabel).toBe(
+      'Ana Souza • ~8 • Coxinha • R$ 5,50 • Fiado • 2 vencimentos',
+    );
+    expect(server.listReceivables(owner).upcoming).toHaveLength(3);
   });
 });

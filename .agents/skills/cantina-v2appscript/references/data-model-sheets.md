@@ -113,7 +113,7 @@ Turmas pertencem a um ano letivo. Histórico de matrícula fica em `_student_enr
 
 `_sale_settlements`: id, sale_id, kind, amount_cents, related_entity_id, created_at.
 
-Invariante: soma settlements = net_total. Kinds desta fase: `pix`, `cash` (valor recebido) e `change` (troco negativo). `consumer_student_id` vazio é venda anônima; `charged_student_id` = consumidor quando há aluno. Caixa físico ainda não consome esses settlements.
+Invariante: soma settlements = net_total. Kinds desta fase: `pix`, `cash` (valor recebido), `change` (troco negativo) e `fiado` (valor líquido da conta). `consumer_student_id` vazio é venda anônima; `charged_student_id` = consumidor quando há aluno. Fiado exige aluno. Caixa físico ainda não consome esses settlements.
 
 ## Recebíveis
 
@@ -123,7 +123,7 @@ Invariante: soma settlements = net_total. Kinds desta fase: `pix`, `cash` (valor
 
 `_receivable_due_date_history`: receivable_id, old_due_date, new_due_date, reason, changed_by, changed_at.
 
-Saldo é derivado de charges, pagamentos e reversões; não de um campo editável.
+Saldo é derivado de charges, pagamentos e reversões; não de um campo editável. Na Fase 14 a venda fiado cria recebível `open` com charge `principal`/`sale`. O histórico de vencimento fica vazio até a Fase 16. Schema version 10 (`010_receivables`).
 
 ## Pagamentos
 

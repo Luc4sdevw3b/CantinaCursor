@@ -12,6 +12,7 @@ import type {
   CreateSchoolYearInput,
   CreateSaleInput,
   CreateStudentInput,
+  DueDateShortcuts,
   Guardian,
   GuardianProfileFields,
   GuardianSettings,
@@ -26,6 +27,7 @@ import type {
   ProductFields,
   ProductPriceHistory,
   ReactivateStudentInput,
+  ReceivableAgenda,
   Sale,
   SchoolYear,
   SiblingAuthorization,
@@ -93,6 +95,8 @@ export interface GoogleScriptRunner {
   createSale(token: string, payload: unknown): void;
   listSales(token: string): void;
   getPixCopyText(token: string): void;
+  listReceivables(token: string): void;
+  getDueDateShortcuts(token: string): void;
 }
 
 export type SessionTokenStorage = Pick<
@@ -534,6 +538,16 @@ export class GoogleScriptAppApi implements AppApi {
 
   getPixCopyText(): Promise<{ text: string }> {
     return this.callWithToken((runner, token) => runner.getPixCopyText(token));
+  }
+
+  listReceivables(): Promise<ReceivableAgenda> {
+    return this.callWithToken((runner, token) => runner.listReceivables(token));
+  }
+
+  getDueDateShortcuts(): Promise<DueDateShortcuts> {
+    return this.callWithToken((runner, token) =>
+      runner.getDueDateShortcuts(token),
+    );
   }
 
   private callWithToken<T>(
