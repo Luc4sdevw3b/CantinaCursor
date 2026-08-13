@@ -154,7 +154,9 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
   }) => {
     await openLocalApp(page);
     await page.getByRole('button', { name: 'Entrar como dona' }).click();
-    await expect(page.getByRole('heading', { name: 'Alunos', exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Alunos', exact: true }),
+    ).toBeVisible();
     await expect(page.getByText('Ana Souza • ~8 • 3º A')).toBeVisible();
     await expect(page.getByText('Ana Souza • 10 • 2º B')).toBeVisible();
 
@@ -168,6 +170,24 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await bruno.getByRole('button', { name: 'Reativar' }).click();
     await expect(
       bruno.getByRole('button', { name: 'Desativar' }),
+    ).toBeVisible();
+  });
+
+  test('shows guardians, WhatsApp flag and sibling authorization after login', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Responsáveis', exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText('Maria Souza • mãe • WhatsApp')).toBeVisible();
+    await expect(page.getByText('Paulo Nunes • pai')).toBeVisible();
+    await expect(
+      page.getByText('Ana Souza • ~8 • 3º A • Resp.: Maria Souza'),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Bruno Lima pode lançar na conta de Ana Souza • ~8'),
     ).toBeVisible();
   });
 });

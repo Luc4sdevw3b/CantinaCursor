@@ -1,11 +1,35 @@
-import { studentAgeLabel } from '../../domain/age';
+import {
+  needsGuardian,
+  studentAgeLabel,
+  studentAgeYears,
+} from '../../domain/age';
 import { civilDateFromTimestamp, isCivilDate } from '../../domain/civil-date';
 import { type EnrollmentRecord, planEnrollment } from '../../domain/enrollment';
+import {
+  type GuardianLinkRecord,
+  planGuardianLink,
+  planGuardianUnlink,
+  primaryGuardianId,
+  siblingStudentIds,
+} from '../../domain/guardian-link';
+import { validateGuardianProfile } from '../../domain/guardian-profile';
+import {
+  parseRequireGuardianBelowAge,
+  REQUIRE_GUARDIAN_BELOW_AGE_KEY,
+  requireGuardianBelowAgeOrDefault,
+} from '../../domain/guardian-setting';
 import { isImmutableId, isSheetRowNumber } from '../../domain/ids';
 import { markHomonyms } from '../../domain/person-name';
 import { canDeactivate, canReactivate } from '../../domain/reactivate-student';
 import { err, ok, type AppError, type Result } from '../../domain/result';
+import {
+  type SiblingAuthorizationRecord,
+  planSiblingAuthorization,
+  planSiblingRevocation,
+} from '../../domain/sibling-authorization';
 import { validateStudentProfile } from '../../domain/student-profile';
+
+const LOCAL_ACTOR_ID = 'aaaaaaaa-bbbb-4ccc-8ddd-000000000099';
 
 export interface SchoolYearView {
   id: string;
@@ -30,6 +54,8 @@ export interface StudentSummaryView {
   classroomName: string | null;
   schoolYearLabel: string | null;
   isHomonym: boolean;
+  primaryGuardianName: string | null;
+  needsGuardian: boolean;
 }
 
 export interface StudentDetailView extends StudentSummaryView {
@@ -51,6 +77,54 @@ export interface StudentProfileFields {
   birthDate?: string | null;
   approximateAge?: number | null;
   approximateAgeReferenceYear?: number | null;
+}
+
+export interface GuardianView {
+  id: string;
+  fullName: string;
+  phone: string;
+  whatsappEnabled: boolean;
+  relationLabel: string;
+  active: boolean;
+}
+
+export interface StudentGuardianLinkView {
+  id: string;
+  studentId: string;
+  guardianId: string;
+  guardianName: string;
+  isPrimary: boolean;
+  canUseGuardianCredit: boolean;
+  autoSettleDebtFromGuardianCredit: boolean;
+  active: boolean;
+  startedAt: string;
+  endedAt: string | null;
+  note: string;
+}
+
+export interface SiblingAuthorizationView {
+  id: string;
+  consumerStudentId: string;
+  accountStudentId: string;
+  consumerName: string;
+  accountName: string;
+  canChargeAccount: boolean;
+  canUseAccountCredit: boolean;
+  active: boolean;
+  authorizedAt: string;
+  revokedAt: string | null;
+  note: string;
+}
+
+export interface GuardianSettingsView {
+  requireGuardianBelowAge: number;
+}
+
+export interface GuardianProfileFields {
+  fullName: string;
+  phone?: string | null;
+  whatsappEnabled?: boolean;
+  relationLabel?: string | null;
 }
 
 interface SchoolYearRecord {
@@ -79,6 +153,22 @@ interface StudentRecord {
   active: string;
   created_at: string;
   updated_at: string;
+}
+
+interface GuardianRecord {
+  id: string;
+  full_name: string;
+  phone: string;
+  whatsapp_enabled: string;
+  relation_label: string;
+  active: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface SettingRecord {
+  key: string;
+  value: string;
 }
 
 function fail(error: AppError): never {
@@ -116,6 +206,15 @@ export class MemoryRoster {
   private classrooms: ClassroomRecord[] = [];
   private students: StudentRecord[] = [];
   private enrollments: EnrollmentRecord[] = [];
+  private guardians: GuardianRecord[] = [];
+  private guardianLinks: GuardianLinkRecord[] = [];
+  private siblingAuthorizations: SiblingAuthorizationRecord[] = [];
+  private settings: SettingRecord[] = [
+    {
+      key: REQUIRE_GUARDIAN_BELOW_AGE_KEY,
+      value: '18',
+    },
+  ];
   private seeded = false;
 
   constructor(
@@ -137,7 +236,7 @@ export class MemoryRoster {
     const second = unwrap(
       this.createClassroom({ schoolYearId: year.id, name: '2º B' }),
     );
-    unwrap(
+    const anaApprox = unwrap(
       this.createStudent({
         fullName: 'Ana Souza',
         approximateAge: 8,
@@ -146,7 +245,7 @@ export class MemoryRoster {
         startedOn: '2026-02-01',
       }),
     );
-    unwrap(
+    const anaBirth = unwrap(
       this.createStudent({
         fullName: 'Ana Souza',
         birthDate: '2016-03-10',
@@ -154,12 +253,39 @@ export class MemoryRoster {
         startedOn: '2026-02-01',
       }),
     );
-    unwrap(
+    const bruno = unwrap(
       this.createStudent({
         fullName: 'Bruno Lima',
         birthDate: '2015-06-01',
         classroomId: third.id,
         startedOn: '2026-02-01',
+      }),
+    );
+    const maria = unwrap(
+      this.createGuardian({
+        fullName: 'Maria Souza',
+        phone: '11999990001',
+        whatsappEnabled: true,
+        relationLabel: 'mãe',
+      }),
+    );
+    const paulo = unwrap(
+      this.createGuardian({
+        fullName: 'Paulo Nunes',
+        phone: '11999990002',
+        whatsappEnabled: false,
+        relationLabel: 'pai',
+      }),
+    );
+    unwrap(this.linkGuardian(anaApprox.id, maria.id, { isPrimary: true }));
+    unwrap(this.linkGuardian(bruno.id, maria.id, { isPrimary: true }));
+    unwrap(this.linkGuardian(anaBirth.id, paulo.id, { isPrimary: true }));
+    unwrap(
+      this.authorizeSibling({
+        consumerStudentId: bruno.id,
+        accountStudentId: anaApprox.id,
+        canChargeAccount: true,
+        canUseAccountCredit: false,
       }),
     );
   }
@@ -474,6 +600,229 @@ export class MemoryRoster {
     return this.getStudent(id);
   }
 
+  listGuardians(query?: { includeInactive?: boolean }): Result<GuardianView[]> {
+    const includeInactive = query?.includeInactive !== false;
+    return ok(
+      latestById(this.guardians)
+        .filter((guardian) => includeInactive || guardian.active === 'true')
+        .map((guardian) => this.toGuardian(guardian)),
+    );
+  }
+
+  createGuardian(input: GuardianProfileFields): Result<GuardianView> {
+    const profile = validateGuardianProfile(input);
+    if (!profile.ok) {
+      return err(profile.error);
+    }
+    const now = this.nowIso();
+    const record: GuardianRecord = {
+      id: this.createId(),
+      ...profile.data,
+      active: 'true',
+      created_at: now,
+      updated_at: now,
+    };
+    this.guardians.push(record);
+    return ok(this.toGuardian(record));
+  }
+
+  updateGuardian(
+    id: string,
+    input: GuardianProfileFields,
+  ): Result<GuardianView> {
+    const validId = parseId(id);
+    if (!validId.ok) {
+      return err(validId.error);
+    }
+    const previous = latestById(this.guardians).find((item) => item.id === id);
+    if (!previous) {
+      return err({
+        code: 'GUARDIAN_NOT_FOUND',
+        message: 'Responsável não encontrado.',
+        retryable: false,
+      });
+    }
+    const profile = validateGuardianProfile(input);
+    if (!profile.ok) {
+      return err(profile.error);
+    }
+    const record: GuardianRecord = {
+      ...previous,
+      ...profile.data,
+      updated_at: this.nowIso(),
+    };
+    this.guardians.push(record);
+    return ok(this.toGuardian(record));
+  }
+
+  getStudentGuardians(studentId: string): Result<StudentGuardianLinkView[]> {
+    const student = this.getStudent(studentId);
+    if (!student.ok) {
+      return err(student.error);
+    }
+    return ok(this.latestLinksForStudent(studentId));
+  }
+
+  linkGuardian(
+    studentId: string,
+    guardianId: string,
+    input?: {
+      isPrimary?: boolean;
+      canUseGuardianCredit?: boolean;
+      autoSettle?: boolean;
+      note?: string;
+    },
+  ): Result<StudentGuardianLinkView[]> {
+    const student = this.getStudent(studentId);
+    if (!student.ok) {
+      return err(student.error);
+    }
+    const guardian = this.findGuardian(guardianId);
+    if (!guardian.ok) {
+      return err(guardian.error);
+    }
+    const planned = planGuardianLink({
+      studentId,
+      guardianId,
+      isPrimary: input?.isPrimary === true,
+      canUseGuardianCredit: input?.canUseGuardianCredit,
+      autoSettle: input?.autoSettle,
+      note: input?.note,
+      createdAt: this.nowIso(),
+      createId: this.createId,
+      existing: this.guardianLinks,
+    });
+    if (!planned.ok) {
+      return err(planned.error);
+    }
+    if (planned.data.demote) {
+      this.guardianLinks.push(planned.data.demote);
+    }
+    this.guardianLinks.push(planned.data.link);
+    return this.getStudentGuardians(studentId);
+  }
+
+  setPrimaryGuardian(
+    studentId: string,
+    guardianId: string,
+  ): Result<StudentGuardianLinkView[]> {
+    return this.linkGuardian(studentId, guardianId, { isPrimary: true });
+  }
+
+  unlinkGuardian(
+    studentId: string,
+    guardianId: string,
+  ): Result<StudentGuardianLinkView[]> {
+    const planned = planGuardianUnlink({
+      studentId,
+      guardianId,
+      endedAt: this.nowIso(),
+      existing: this.guardianLinks,
+    });
+    if (!planned.ok) {
+      return err(planned.error);
+    }
+    this.guardianLinks.push(planned.data);
+    return this.getStudentGuardians(studentId);
+  }
+
+  listSiblings(studentId: string): Result<StudentSummaryView[]> {
+    const student = this.getStudent(studentId);
+    if (!student.ok) {
+      return err(student.error);
+    }
+    const siblingIds = siblingStudentIds(this.guardianLinks, studentId);
+    const summaries = latestById(this.students)
+      .filter((item) => siblingIds.includes(item.id))
+      .map((item) => this.toSummary(item));
+    return ok(markHomonyms(summaries));
+  }
+
+  authorizeSibling(input: {
+    consumerStudentId: string;
+    accountStudentId: string;
+    canChargeAccount?: boolean;
+    canUseAccountCredit?: boolean;
+    note?: string;
+  }): Result<SiblingAuthorizationView> {
+    const consumer = this.getStudent(input.consumerStudentId);
+    if (!consumer.ok) {
+      return err(consumer.error);
+    }
+    const account = this.getStudent(input.accountStudentId);
+    if (!account.ok) {
+      return err(account.error);
+    }
+    const planned = planSiblingAuthorization({
+      consumerStudentId: input.consumerStudentId,
+      accountStudentId: input.accountStudentId,
+      canChargeAccount: input.canChargeAccount === true,
+      canUseAccountCredit: input.canUseAccountCredit === true,
+      createdBy: LOCAL_ACTOR_ID,
+      authorizedAt: this.nowIso(),
+      note: input.note,
+      createId: this.createId,
+      links: this.guardianLinks,
+    });
+    if (!planned.ok) {
+      return err(planned.error);
+    }
+    this.siblingAuthorizations.push(planned.data);
+    return ok(this.toAuthorization(planned.data));
+  }
+
+  revokeSiblingAuthorization(id: string): Result<SiblingAuthorizationView> {
+    const planned = planSiblingRevocation({
+      id,
+      revokedAt: this.nowIso(),
+      existing: this.siblingAuthorizations,
+    });
+    if (!planned.ok) {
+      return err(planned.error);
+    }
+    this.siblingAuthorizations.push(planned.data);
+    return ok(this.toAuthorization(planned.data));
+  }
+
+  listSiblingAuthorizations(
+    studentId?: string,
+  ): Result<SiblingAuthorizationView[]> {
+    if (studentId) {
+      const student = this.getStudent(studentId);
+      if (!student.ok) {
+        return err(student.error);
+      }
+    }
+    return ok(
+      latestById(this.siblingAuthorizations)
+        .filter(
+          (record) =>
+            !studentId ||
+            record.consumer_student_id === studentId ||
+            record.account_student_id === studentId,
+        )
+        .map((record) => this.toAuthorization(record)),
+    );
+  }
+
+  getGuardianSettings(): Result<GuardianSettingsView> {
+    return ok({
+      requireGuardianBelowAge: this.requireGuardianBelowAge(),
+    });
+  }
+
+  setRequireGuardianBelowAge(age: number): Result<GuardianSettingsView> {
+    const parsed = parseRequireGuardianBelowAge(age);
+    if (!parsed.ok) {
+      return err(parsed.error);
+    }
+    this.settings.push({
+      key: REQUIRE_GUARDIAN_BELOW_AGE_KEY,
+      value: String(parsed.data),
+    });
+    return this.getGuardianSettings();
+  }
+
   private appendActive(id: string, active: boolean): Result<StudentDetailView> {
     const previous = latestById(this.students).find((item) => item.id === id);
     if (!previous) {
@@ -513,6 +862,16 @@ export class MemoryRoster {
           (item) => item.id === classroom.school_year_id,
         )
       : undefined;
+    const primaryId = primaryGuardianId(this.guardianLinks, student.id);
+    const primary = primaryId
+      ? latestById(this.guardians).find((item) => item.id === primaryId)
+      : undefined;
+    const ageYears = studentAgeYears({
+      birthDate: student.birth_date,
+      approximateAge: student.approximate_age,
+      approximateAgeReferenceYear: student.approximate_age_reference_year,
+      todayCivil: civilDateFromTimestamp(this.nowIso()),
+    });
     return {
       id: student.id,
       fullName: student.full_name,
@@ -521,7 +880,100 @@ export class MemoryRoster {
       classroomName: classroom?.name ?? null,
       schoolYearLabel: year?.label ?? null,
       isHomonym: false,
+      primaryGuardianName: primary?.full_name ?? null,
+      needsGuardian:
+        ageYears.ok &&
+        needsGuardian(
+          ageYears.data,
+          this.requireGuardianBelowAge(),
+          Boolean(primaryId),
+        ),
     };
+  }
+
+  private findGuardian(id: string): Result<GuardianRecord> {
+    const validId = parseId(id);
+    if (!validId.ok) {
+      return err(validId.error);
+    }
+    const guardian = latestById(this.guardians).find((item) => item.id === id);
+    if (!guardian) {
+      return err({
+        code: 'GUARDIAN_NOT_FOUND',
+        message: 'Responsável não encontrado.',
+        retryable: false,
+      });
+    }
+    return ok(guardian);
+  }
+
+  private latestLinksForStudent(studentId: string): StudentGuardianLinkView[] {
+    return latestById(this.guardianLinks)
+      .filter((link) => link.student_id === studentId)
+      .map((link) => this.toLink(link));
+  }
+
+  private toGuardian(guardian: GuardianRecord): GuardianView {
+    return {
+      id: guardian.id,
+      fullName: guardian.full_name,
+      phone: guardian.phone,
+      whatsappEnabled: guardian.whatsapp_enabled === 'true',
+      relationLabel: guardian.relation_label,
+      active: guardian.active === 'true',
+    };
+  }
+
+  private toLink(link: GuardianLinkRecord): StudentGuardianLinkView {
+    const guardian = latestById(this.guardians).find(
+      (item) => item.id === link.guardian_id,
+    );
+    return {
+      id: link.id,
+      studentId: link.student_id,
+      guardianId: link.guardian_id,
+      guardianName: guardian?.full_name ?? '',
+      isPrimary: link.is_primary === 'true',
+      canUseGuardianCredit: link.can_use_guardian_credit === 'true',
+      autoSettleDebtFromGuardianCredit:
+        link.auto_settle_debt_from_guardian_credit === 'true',
+      active: link.active === 'true',
+      startedAt: link.started_at,
+      endedAt: link.ended_at || null,
+      note: link.note,
+    };
+  }
+
+  private toAuthorization(
+    record: SiblingAuthorizationRecord,
+  ): SiblingAuthorizationView {
+    const students = latestById(this.students);
+    const consumer = students.find(
+      (item) => item.id === record.consumer_student_id,
+    );
+    const account = students.find(
+      (item) => item.id === record.account_student_id,
+    );
+    return {
+      id: record.id,
+      consumerStudentId: record.consumer_student_id,
+      accountStudentId: record.account_student_id,
+      consumerName: consumer?.full_name ?? '',
+      accountName: account?.full_name ?? '',
+      canChargeAccount: record.can_charge_account === 'true',
+      canUseAccountCredit: record.can_use_account_credit === 'true',
+      active: record.active === 'true',
+      authorizedAt: record.authorized_at,
+      revokedAt: record.revoked_at || null,
+      note: record.note,
+    };
+  }
+
+  private requireGuardianBelowAge(): number {
+    const latest = [...this.settings]
+      .reverse()
+      .find((item) => item.key === REQUIRE_GUARDIAN_BELOW_AGE_KEY);
+    return requireGuardianBelowAgeOrDefault(latest?.value);
   }
 
   private toDetail(student: StudentRecord): StudentDetailView {

@@ -1,4 +1,6 @@
+import { DEFAULT_REQUIRE_GUARDIAN_BELOW_AGE } from '../../domain/age';
 import { RESET_PROD_FORBIDDEN_ERROR } from '../../domain/e2e-lifecycle';
+import { REQUIRE_GUARDIAN_BELOW_AGE_KEY } from '../../domain/guardian-setting';
 import { err, ok, type Result } from '../../domain/result';
 import { pendingMigrations } from './migrations';
 import {
@@ -8,15 +10,20 @@ import {
   CURRENT_SCHEMA_VERSION,
   FOUNDATION_MIGRATION_ID,
   FOUNDATION_SCHEMA_VERSION,
+  GUARDIANS_MIGRATION_ID,
+  GUARDIANS_SHEET,
   META_SHEET,
   OPERATION_REQUESTS_MIGRATION_ID,
   OPERATION_REQUESTS_SHEET,
   SCHEMA_MIGRATIONS_SHEET,
   SCHOOL_YEARS_SHEET,
   SESSIONS_SHEET,
+  SETTINGS_SHEET,
   STUDENTS_MIGRATION_ID,
   STUDENTS_SHEET,
+  STUDENT_ACCOUNT_AUTHORIZATIONS_SHEET,
   STUDENT_ENROLLMENTS_SHEET,
+  STUDENT_GUARDIANS_SHEET,
   USERS_MIGRATION_ID,
   USERS_SHEET,
 } from './schema';
@@ -168,6 +175,40 @@ export function setupSchema(
       if (!enrollments.ok) {
         return err(enrollments.error);
       }
+      meta.data.appendRow(
+        serializeRecord(META_SHEET.headers, {
+          key: 'schema_version',
+          value: '5',
+        }),
+      );
+    }
+
+    if (migration.id === GUARDIANS_MIGRATION_ID) {
+      const guardians = ensureSheet(input.spreadsheet, GUARDIANS_SHEET);
+      if (!guardians.ok) {
+        return err(guardians.error);
+      }
+      const links = ensureSheet(input.spreadsheet, STUDENT_GUARDIANS_SHEET);
+      if (!links.ok) {
+        return err(links.error);
+      }
+      const authorizations = ensureSheet(
+        input.spreadsheet,
+        STUDENT_ACCOUNT_AUTHORIZATIONS_SHEET,
+      );
+      if (!authorizations.ok) {
+        return err(authorizations.error);
+      }
+      const settings = ensureSheet(input.spreadsheet, SETTINGS_SHEET);
+      if (!settings.ok) {
+        return err(settings.error);
+      }
+      settings.data.appendRow(
+        serializeRecord(SETTINGS_SHEET.headers, {
+          key: REQUIRE_GUARDIAN_BELOW_AGE_KEY,
+          value: String(DEFAULT_REQUIRE_GUARDIAN_BELOW_AGE),
+        }),
+      );
       meta.data.appendRow(
         serializeRecord(META_SHEET.headers, {
           key: 'schema_version',

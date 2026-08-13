@@ -81,7 +81,7 @@ scripts/
 
 Definir `AppApi` com funções específicas do domínio, nunca ranges/SQL/Sheets genéricos.
 
-Até a Fase 8 o contrato `AppApi` inclui sessão e cadastro de alunos (ano letivo, turmas, matrícula, idade e reativação). Homônimos permanecem cadastros distintos. Não antecipar responsáveis, produtos, vendas, estoque, fiado, crédito, caixa, reservas ou WhatsApp.
+Até a Fase 9 o contrato `AppApi` inclui sessão, cadastro de alunos e responsáveis (vários por aluno, um principal, irmãos e autorização direcional). WhatsApp é só uma flag; não há envio. Não antecipar produtos, vendas, estoque, fiado, crédito como movimento, caixa ou reservas.
 
 O adapter `google.script.run` é usado no Web App Apps Script (ambiente E2E isolado nesta fase). **E2E local usa somente `FakeAppApi`.** Isso permite Playwright desde o início sem Google.
 

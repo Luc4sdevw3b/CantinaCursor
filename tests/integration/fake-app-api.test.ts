@@ -71,4 +71,74 @@ describe('FakeAppApi', () => {
       ).active,
     ).toBe(true);
   });
+
+  it('links siblings through a shared guardian and refuses non-siblings', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const students = await api.listStudents();
+    const anaApprox = students.find(
+      (student) =>
+        student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+    );
+    const anaBirth = students.find(
+      (student) =>
+        student.fullName === 'Ana Souza' && student.ageLabel === '10',
+    );
+    const bruno = students.find((student) => student.fullName === 'Bruno Lima');
+    const guardians = await api.listGuardians();
+    const maria = guardians.find((item) => item.fullName === 'Maria Souza');
+    const paulo = guardians.find((item) => item.fullName === 'Paulo Nunes');
+
+    if (!anaApprox || !anaBirth || !bruno || !maria || !paulo) {
+      throw new Error('cadastro local da família incompleto');
+    }
+
+    expect(anaApprox.primaryGuardianName).toBe('Maria Souza');
+    expect(anaBirth.primaryGuardianName).toBe('Paulo Nunes');
+    expect(bruno.primaryGuardianName).toBe('Maria Souza');
+    expect(maria.whatsappEnabled).toBe(true);
+    expect(paulo.whatsappEnabled).toBe(false);
+    expect(
+      (await api.listSiblings(anaApprox.id)).map((item) => item.id),
+    ).toEqual([bruno.id]);
+
+    const authorizations = await api.listSiblingAuthorizations(bruno.id);
+    expect(
+      authorizations.some(
+        (item) =>
+          item.consumerStudentId === bruno.id &&
+          item.accountStudentId === anaApprox.id &&
+          item.canChargeAccount &&
+          !item.canUseAccountCredit,
+      ),
+    ).toBe(true);
+
+    await expect(
+      api.authorizeSibling({
+        consumerStudentId: anaBirth.id,
+        accountStudentId: anaApprox.id,
+        canChargeAccount: true,
+      }),
+    ).rejects.toThrow('NOT_SIBLINGS');
+  });
+
+  it('lets staff link a guardian and keeps the age setting to the owner', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('staff');
+    const created = await api.createGuardian({
+      fullName: 'Carla Mendes',
+      phone: '11999990003',
+      whatsappEnabled: false,
+      relationLabel: 'tia',
+    });
+    expect(created.fullName).toBe('Carla Mendes');
+    await expect(api.setRequireGuardianBelowAge(16)).rejects.toThrow(
+      'FORBIDDEN',
+    );
+
+    await api.loginE2E('owner');
+    expect(await api.setRequireGuardianBelowAge(16)).toEqual({
+      requireGuardianBelowAge: 16,
+    });
+  });
 });

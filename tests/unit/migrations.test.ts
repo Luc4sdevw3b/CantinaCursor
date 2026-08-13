@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BACKUPS_MIGRATION,
   FOUNDATION_MIGRATION,
+  GUARDIANS_MIGRATION,
   OPERATION_REQUESTS_MIGRATION,
   STUDENTS_MIGRATION,
   USERS_MIGRATION,
@@ -18,6 +19,7 @@ describe('migration runner', () => {
         BACKUPS_MIGRATION,
         USERS_MIGRATION,
         STUDENTS_MIGRATION,
+        GUARDIANS_MIGRATION,
       ],
     });
     expect(pendingMigrations(['001_foundation'])).toEqual({
@@ -27,6 +29,7 @@ describe('migration runner', () => {
         BACKUPS_MIGRATION,
         USERS_MIGRATION,
         STUDENTS_MIGRATION,
+        GUARDIANS_MIGRATION,
       ],
     });
   });
@@ -39,6 +42,7 @@ describe('migration runner', () => {
         '003_backups',
         '004_users',
         '005_students',
+        '006_guardians',
       ]),
     ).toEqual({
       ok: true,

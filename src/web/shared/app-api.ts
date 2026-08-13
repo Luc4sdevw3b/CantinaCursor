@@ -53,6 +53,8 @@ export interface StudentSummary {
   classroomName: string | null;
   schoolYearLabel: string | null;
   isHomonym: boolean;
+  primaryGuardianName: string | null;
+  needsGuardian: boolean;
 }
 
 export interface StudentDetail extends StudentSummary {
@@ -91,9 +93,72 @@ export interface ReactivateStudentInput extends StudentProfileFields {
   startedOn?: string | null;
 }
 
+export interface Guardian {
+  id: string;
+  fullName: string;
+  phone: string;
+  whatsappEnabled: boolean;
+  relationLabel: string;
+  active: boolean;
+}
+
+export interface StudentGuardianLink {
+  id: string;
+  studentId: string;
+  guardianId: string;
+  guardianName: string;
+  isPrimary: boolean;
+  canUseGuardianCredit: boolean;
+  autoSettleDebtFromGuardianCredit: boolean;
+  active: boolean;
+  startedAt: string;
+  endedAt: string | null;
+  note: string;
+}
+
+export interface SiblingAuthorization {
+  id: string;
+  consumerStudentId: string;
+  accountStudentId: string;
+  consumerName: string;
+  accountName: string;
+  canChargeAccount: boolean;
+  canUseAccountCredit: boolean;
+  active: boolean;
+  authorizedAt: string;
+  revokedAt: string | null;
+  note: string;
+}
+
+export interface GuardianSettings {
+  requireGuardianBelowAge: number;
+}
+
+export interface GuardianProfileFields {
+  fullName: string;
+  phone?: string | null;
+  whatsappEnabled?: boolean;
+  relationLabel?: string | null;
+}
+
+export interface LinkGuardianInput {
+  isPrimary?: boolean;
+  canUseGuardianCredit?: boolean;
+  autoSettle?: boolean;
+  note?: string;
+}
+
+export interface AuthorizeSiblingInput {
+  consumerStudentId: string;
+  accountStudentId: string;
+  canChargeAccount?: boolean;
+  canUseAccountCredit?: boolean;
+  note?: string;
+}
+
 /**
- * Contrato técnico da Fase 8.
- * Sem responsáveis, produtos, vendas, estoque, fiado, crédito, caixa, reservas ou WhatsApp.
+ * Contrato técnico da Fase 9.
+ * Sem produtos, vendas, estoque, fiado, crédito como movimento, caixa, reservas ou envio de WhatsApp.
  */
 export interface AppApi {
   getHealth(): Promise<AppHealth>;
@@ -122,4 +187,29 @@ export interface AppApi {
     id: string,
     input: { classroomId: string; startedOn: string },
   ): Promise<StudentDetail>;
+  listGuardians(query?: { includeInactive?: boolean }): Promise<Guardian[]>;
+  createGuardian(input: GuardianProfileFields): Promise<Guardian>;
+  updateGuardian(id: string, input: GuardianProfileFields): Promise<Guardian>;
+  getStudentGuardians(studentId: string): Promise<StudentGuardianLink[]>;
+  linkGuardian(
+    studentId: string,
+    guardianId: string,
+    input?: LinkGuardianInput,
+  ): Promise<StudentGuardianLink[]>;
+  setPrimaryGuardian(
+    studentId: string,
+    guardianId: string,
+  ): Promise<StudentGuardianLink[]>;
+  unlinkGuardian(
+    studentId: string,
+    guardianId: string,
+  ): Promise<StudentGuardianLink[]>;
+  listSiblings(studentId: string): Promise<StudentSummary[]>;
+  authorizeSibling(input: AuthorizeSiblingInput): Promise<SiblingAuthorization>;
+  revokeSiblingAuthorization(id: string): Promise<SiblingAuthorization>;
+  listSiblingAuthorizations(
+    studentId?: string,
+  ): Promise<SiblingAuthorization[]>;
+  getGuardianSettings(): Promise<GuardianSettings>;
+  setRequireGuardianBelowAge(age: number): Promise<GuardianSettings>;
 }

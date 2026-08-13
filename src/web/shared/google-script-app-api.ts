@@ -5,13 +5,20 @@ import type {
   AppApi,
   AppHealth,
   AppSession,
+  AuthorizeSiblingInput,
   Classroom,
   CreateClassroomInput,
   CreateSchoolYearInput,
   CreateStudentInput,
+  Guardian,
+  GuardianProfileFields,
+  GuardianSettings,
+  LinkGuardianInput,
   ReactivateStudentInput,
   SchoolYear,
+  SiblingAuthorization,
   StudentDetail,
+  StudentGuardianLink,
   StudentProfileFields,
   StudentSummary,
 } from './app-api';
@@ -36,6 +43,28 @@ export interface GoogleScriptRunner {
   deactivateStudent(token: string, id: string): void;
   reactivateStudent(token: string, id: string, payload: unknown): void;
   enrollStudent(token: string, id: string, payload: unknown): void;
+  listGuardians(token: string, query?: unknown): void;
+  createGuardian(token: string, payload: unknown): void;
+  updateGuardian(token: string, id: string, payload: unknown): void;
+  getStudentGuardians(token: string, studentId: string): void;
+  linkGuardian(
+    token: string,
+    studentId: string,
+    guardianId: string,
+    payload?: unknown,
+  ): void;
+  setPrimaryGuardian(
+    token: string,
+    studentId: string,
+    guardianId: string,
+  ): void;
+  unlinkGuardian(token: string, studentId: string, guardianId: string): void;
+  listSiblings(token: string, studentId: string): void;
+  authorizeSibling(token: string, payload: unknown): void;
+  revokeSiblingAuthorization(token: string, id: string): void;
+  listSiblingAuthorizations(token: string, studentId?: string): void;
+  getGuardianSettings(token: string): void;
+  setRequireGuardianBelowAge(token: string, age: number): void;
 }
 
 export type SessionTokenStorage = Pick<
@@ -261,6 +290,110 @@ export class GoogleScriptAppApi implements AppApi {
         ...input,
         requestId: crypto.randomUUID(),
       }),
+    );
+  }
+
+  listGuardians(query?: { includeInactive?: boolean }): Promise<Guardian[]> {
+    return this.callWithToken((runner, token) =>
+      runner.listGuardians(token, query),
+    );
+  }
+
+  createGuardian(input: GuardianProfileFields): Promise<Guardian> {
+    return this.callWithToken((runner, token) =>
+      runner.createGuardian(token, {
+        ...input,
+        requestId: crypto.randomUUID(),
+      }),
+    );
+  }
+
+  updateGuardian(id: string, input: GuardianProfileFields): Promise<Guardian> {
+    return this.callWithToken((runner, token) =>
+      runner.updateGuardian(token, id, {
+        ...input,
+        requestId: crypto.randomUUID(),
+      }),
+    );
+  }
+
+  getStudentGuardians(studentId: string): Promise<StudentGuardianLink[]> {
+    return this.callWithToken((runner, token) =>
+      runner.getStudentGuardians(token, studentId),
+    );
+  }
+
+  linkGuardian(
+    studentId: string,
+    guardianId: string,
+    input?: LinkGuardianInput,
+  ): Promise<StudentGuardianLink[]> {
+    return this.callWithToken((runner, token) =>
+      runner.linkGuardian(token, studentId, guardianId, {
+        ...input,
+        requestId: crypto.randomUUID(),
+      }),
+    );
+  }
+
+  setPrimaryGuardian(
+    studentId: string,
+    guardianId: string,
+  ): Promise<StudentGuardianLink[]> {
+    return this.callWithToken((runner, token) =>
+      runner.setPrimaryGuardian(token, studentId, guardianId),
+    );
+  }
+
+  unlinkGuardian(
+    studentId: string,
+    guardianId: string,
+  ): Promise<StudentGuardianLink[]> {
+    return this.callWithToken((runner, token) =>
+      runner.unlinkGuardian(token, studentId, guardianId),
+    );
+  }
+
+  listSiblings(studentId: string): Promise<StudentSummary[]> {
+    return this.callWithToken((runner, token) =>
+      runner.listSiblings(token, studentId),
+    );
+  }
+
+  authorizeSibling(
+    input: AuthorizeSiblingInput,
+  ): Promise<SiblingAuthorization> {
+    return this.callWithToken((runner, token) =>
+      runner.authorizeSibling(token, {
+        ...input,
+        requestId: crypto.randomUUID(),
+      }),
+    );
+  }
+
+  revokeSiblingAuthorization(id: string): Promise<SiblingAuthorization> {
+    return this.callWithToken((runner, token) =>
+      runner.revokeSiblingAuthorization(token, id),
+    );
+  }
+
+  listSiblingAuthorizations(
+    studentId?: string,
+  ): Promise<SiblingAuthorization[]> {
+    return this.callWithToken((runner, token) =>
+      runner.listSiblingAuthorizations(token, studentId),
+    );
+  }
+
+  getGuardianSettings(): Promise<GuardianSettings> {
+    return this.callWithToken((runner, token) =>
+      runner.getGuardianSettings(token),
+    );
+  }
+
+  setRequireGuardianBelowAge(age: number): Promise<GuardianSettings> {
+    return this.callWithToken((runner, token) =>
+      runner.setRequireGuardianBelowAge(token, age),
     );
   }
 

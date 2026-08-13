@@ -9,6 +9,54 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-13 13:26 — Implementada a Fase 9: responsáveis e irmãos
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 9
+
+### Pedido / objetivo
+
+- Ir para a Fase 9: vários responsáveis, um principal, flag WhatsApp, irmãos, histórico de vínculo e idade operacional para pedir responsável.
+
+### Tentativa / implementação
+
+- Migration `006_guardians` cria `_guardians`, `_student_guardians`, `_student_account_authorizations` e `_settings` (schema version 6). A 005 continua gravando a versão 5; IDs continuam UUID; atualizações são append.
+- Nome do responsável é obrigatório. Telefone é opcional (só dígitos, 10–13). WhatsApp é só uma flag; não há envio.
+- O primeiro vínculo vira principal se ainda não houver um. Trocar o principal rebaixa o anterior. Desvincular fecha o histórico (`active=false`, `ended_at`).
+- Aluno menor que a idade configurada (padrão 18) e sem principal aparece como “precisa de responsável”; o cadastro do aluno não é bloqueado.
+- Irmãos compartilham pelo menos um responsável ativo. Autorização é direcional, recusa a própria conta e recusa quem não é irmão. Flags de crédito no vínculo ficam gravadas; o ledger de crédito permanece para fase posterior.
+- Dona e funcionário leem/escrevem responsáveis. Só a dona altera `require_guardian_below_age`. `getHealth` segue público.
+
+### Resultado
+
+- Fase 9 concluída sobre o ambiente E2E isolado e o preview local.
+- Nenhum ID Google, token, telefone real ou dado de planilha foi versionado.
+
+### Diferenças do pedido
+
+- Produtos, vendas e envio de WhatsApp permanecem na Fase 10 em diante. O seed E2E e o preview local usam nomes fictícios (Maria Souza, Paulo Nunes) e telefones de teste.
+
+### Impacto técnico
+
+- domínio de telefone, perfil de responsável, vínculo, irmãos e setting de idade
+- `MemoryRoster` + `AppApi` de responsáveis/irmãos; `Code.gs` com as mesmas regras
+- UI após o login: lista de responsáveis, flag WhatsApp, autorização entre irmãos e idade operacional; textos de health do smoke inalterados
+- README, Implementation Plan e referências
+
+### Testes
+
+- `npm run format:check` / `lint` / `typecheck` / `version:check` / `validate:skill`: passou.
+- `npm test`: 114 testes passaram.
+- `npm run build`: passou.
+- `npm run test:e2e:local`: 12 testes Chromium passaram.
+- `npm run test:e2e:remote`: 1 teste Chromium passou (health público, sem login).
+
+### Pendências / próxima versão
+
+- Não iniciar a Fase 10 (produtos/categorias) sem pedido explícito.
+
 ## 2026-08-13 13:12 — Implementada a Fase 8: ano letivo, turmas e alunos
 
 **Origem:** Pedido do usuário

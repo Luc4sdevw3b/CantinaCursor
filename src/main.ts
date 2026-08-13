@@ -59,10 +59,10 @@ app.innerHTML = `
     <section class="next-step" aria-labelledby="next-step-title">
       <p class="step-number">01</p>
       <div>
-        <h2 id="next-step-title">Cadastro de alunos</h2>
-        <p>Ano letivo, turmas, idade e homônimos — com reativação revisada.</p>
+        <h2 id="next-step-title">Responsáveis e irmãos</h2>
+        <p>Vários responsáveis, um principal, irmãos e idade para pedir responsável.</p>
       </div>
-      <span class="phase-badge">Fase 8</span>
+      <span class="phase-badge">Fase 9</span>
     </section>
 
     <section class="students-panel" id="students-panel" hidden>
@@ -92,6 +92,40 @@ app.innerHTML = `
           <select id="student-classroom"></select>
         </label>
         <button type="submit">Cadastrar aluno</button>
+      </form>
+    </section>
+
+    <section class="students-panel" id="family-panel" hidden>
+      <h2>Responsáveis</h2>
+      <p id="family-status">Entre para ver os responsáveis.</p>
+      <ul id="guardians-list"></ul>
+      <form id="guardian-form">
+        <label>
+          Nome completo
+          <input id="guardian-name" name="fullName" required autocomplete="name" />
+        </label>
+        <label>
+          Telefone
+          <input id="guardian-phone" inputmode="tel" autocomplete="tel" />
+        </label>
+        <label>
+          Relação
+          <input id="guardian-relation" />
+        </label>
+        <label class="checkbox-label">
+          <input id="guardian-whatsapp" type="checkbox" />
+          WhatsApp
+        </label>
+        <button type="submit">Cadastrar responsável</button>
+      </form>
+      <h2>Irmãos autorizados</h2>
+      <ul id="authorizations-list"></ul>
+      <form id="age-setting-form">
+        <label>
+          Pedir responsável abaixo de
+          <input id="guardian-age-setting" type="number" min="1" max="21" />
+        </label>
+        <button type="submit" id="save-age-setting">Salvar idade</button>
       </form>
     </section>
 
@@ -168,6 +202,7 @@ async function loginAs(role: UserRole): Promise<void> {
 async function showAuthenticated(session: AppSession | null): Promise<void> {
   renderSession(session, true);
   await renderStudents(Boolean(session));
+  await renderFamily(session);
 }
 
 document.querySelector('#login-owner')?.addEventListener('click', () => {
@@ -188,7 +223,12 @@ const classroomSelect = document.querySelector('#student-classroom');
 function studentLine(student: StudentSummary): string {
   const classroom = student.classroomName || 'Sem turma';
   const inactive = student.active ? '' : ' • Inativo';
-  return `${student.fullName} • ${student.ageLabel} • ${classroom}${inactive}`;
+  const guardian = student.primaryGuardianName
+    ? ` • Resp.: ${student.primaryGuardianName}`
+    : student.needsGuardian
+      ? ' • Precisa de responsável'
+      : '';
+  return `${student.fullName} • ${student.ageLabel} • ${classroom}${guardian}${inactive}`;
 }
 
 async function renderStudents(authenticated: boolean): Promise<void> {
@@ -270,6 +310,77 @@ async function renderStudents(authenticated: boolean): Promise<void> {
   }
 }
 
+const familyPanel = document.querySelector('#family-panel');
+const familyStatus = document.querySelector('#family-status');
+const guardiansList = document.querySelector('#guardians-list');
+const authorizationsList = document.querySelector('#authorizations-list');
+const ageSettingInput = document.querySelector('#guardian-age-setting');
+const saveAgeSetting = document.querySelector('#save-age-setting');
+
+function guardianLine(guardian: {
+  fullName: string;
+  relationLabel: string;
+  whatsappEnabled: boolean;
+}): string {
+  const relation = guardian.relationLabel ? ` • ${guardian.relationLabel}` : '';
+  const whatsapp = guardian.whatsappEnabled ? ' • WhatsApp' : '';
+  return `${guardian.fullName}${relation}${whatsapp}`;
+}
+
+async function renderFamily(session: AppSession | null): Promise<void> {
+  if (
+    !(familyPanel instanceof HTMLElement) ||
+    !familyStatus ||
+    !(guardiansList instanceof HTMLElement) ||
+    !(authorizationsList instanceof HTMLElement)
+  ) {
+    return;
+  }
+  familyPanel.hidden = !session;
+  guardiansList.replaceChildren();
+  authorizationsList.replaceChildren();
+  if (!session) {
+    familyStatus.textContent = 'Entre para ver os responsáveis.';
+    return;
+  }
+
+  const [guardians, students, authorizations, settings] = await Promise.all([
+    api.listGuardians({ includeInactive: true }),
+    api.listStudents({ includeInactive: true }),
+    api.listSiblingAuthorizations(),
+    api.getGuardianSettings(),
+  ]);
+  familyStatus.textContent =
+    guardians.length === 0
+      ? 'Nenhum responsável cadastrado ainda.'
+      : `${guardians.length} responsável(is) no cadastro.`;
+
+  for (const guardian of guardians) {
+    const item = document.createElement('li');
+    item.textContent = guardianLine(guardian);
+    guardiansList.append(item);
+  }
+
+  const studentById = new Map(students.map((student) => [student.id, student]));
+  for (const authorization of authorizations.filter((item) => item.active)) {
+    const account = studentById.get(authorization.accountStudentId);
+    const item = document.createElement('li');
+    const age = account ? ` • ${account.ageLabel}` : '';
+    const credit = authorization.canUseAccountCredit ? ' e usar crédito' : '';
+    item.textContent = authorization.canChargeAccount
+      ? `${authorization.consumerName} pode lançar na conta de ${authorization.accountName}${age}${credit}`
+      : `${authorization.consumerName} pode usar crédito de ${authorization.accountName}${age}`;
+    authorizationsList.append(item);
+  }
+
+  if (ageSettingInput instanceof HTMLInputElement) {
+    ageSettingInput.value = String(settings.requireGuardianBelowAge);
+  }
+  if (saveAgeSetting instanceof HTMLButtonElement) {
+    saveAgeSetting.hidden = session.role !== 'owner';
+  }
+}
+
 document.querySelector('#student-form')?.addEventListener('submit', (event) => {
   event.preventDefault();
   const name = document.querySelector('#student-name');
@@ -306,6 +417,7 @@ document.querySelector('#student-form')?.addEventListener('submit', (event) => {
       approxYear.value = '';
       return renderStudents(true);
     })
+    .then(() => api.getSession().then(renderFamily))
     .catch((error: unknown) => {
       if (studentsStatus) {
         studentsStatus.textContent =
@@ -315,6 +427,71 @@ document.querySelector('#student-form')?.addEventListener('submit', (event) => {
       }
     });
 });
+
+document
+  .querySelector('#guardian-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const name = document.querySelector('#guardian-name');
+    const phone = document.querySelector('#guardian-phone');
+    const relation = document.querySelector('#guardian-relation');
+    const whatsapp = document.querySelector('#guardian-whatsapp');
+    if (
+      !(name instanceof HTMLInputElement) ||
+      !(phone instanceof HTMLInputElement) ||
+      !(relation instanceof HTMLInputElement) ||
+      !(whatsapp instanceof HTMLInputElement)
+    ) {
+      return;
+    }
+    void api
+      .createGuardian({
+        fullName: name.value,
+        phone: phone.value || null,
+        relationLabel: relation.value || null,
+        whatsappEnabled: whatsapp.checked,
+      })
+      .then(() => {
+        name.value = '';
+        phone.value = '';
+        relation.value = '';
+        whatsapp.checked = false;
+        return api.getSession().then(renderFamily);
+      })
+      .catch((error: unknown) => {
+        if (familyStatus) {
+          familyStatus.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível cadastrar o responsável.';
+        }
+      });
+  });
+
+document
+  .querySelector('#age-setting-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!(ageSettingInput instanceof HTMLInputElement)) {
+      return;
+    }
+    void api
+      .setRequireGuardianBelowAge(Number(ageSettingInput.value))
+      .then(() =>
+        Promise.all([
+          renderStudents(true),
+          api.getSession().then(renderFamily),
+        ]),
+      )
+      .catch((error: unknown) => {
+        if (familyStatus) {
+          familyStatus.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível salvar a idade.';
+        }
+      });
+  });
 
 void api
   .getHealth()
@@ -340,6 +517,7 @@ void api
     const session = canLogin ? await api.getSession() : null;
     renderSession(session, canLogin);
     await renderStudents(Boolean(session));
+    await renderFamily(session);
   })
   .catch(() => {
     const status = document.querySelector('#health-status');

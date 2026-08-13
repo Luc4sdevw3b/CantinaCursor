@@ -78,3 +78,26 @@ export function studentAgeLabel(input: {
     ),
   );
 }
+
+export function studentAgeYears(input: {
+  birthDate: string;
+  approximateAge: string;
+  approximateAgeReferenceYear: string;
+  todayCivil: string;
+}): Result<number> {
+  const label = studentAgeLabel(input);
+  if (!label.ok) {
+    return err(label.error);
+  }
+  return ok(Number(label.data.replace('~', '')));
+}
+
+export const DEFAULT_REQUIRE_GUARDIAN_BELOW_AGE = 18;
+
+export function needsGuardian(
+  ageYears: number,
+  requireBelowAge: number,
+  hasPrimaryGuardian: boolean,
+): boolean {
+  return ageYears < requireBelowAge && !hasPrimaryGuardian;
+}

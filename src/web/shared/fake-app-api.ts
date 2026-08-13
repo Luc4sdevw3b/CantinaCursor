@@ -1,18 +1,26 @@
 import { APP_NAME, APP_VERSION } from '../../app-version';
-import { isUserRole, type UserRole } from '../../domain/auth';
+import { isUserRole, type AuthAction, type UserRole } from '../../domain/auth';
+import { authorize } from '../../domain/authorize';
 import type { AppError } from '../../domain/result';
 import { MemoryRoster } from '../../server/students/memory-roster';
 import type {
   AppApi,
   AppHealth,
   AppSession,
+  AuthorizeSiblingInput,
   Classroom,
   CreateClassroomInput,
   CreateSchoolYearInput,
   CreateStudentInput,
+  Guardian,
+  GuardianProfileFields,
+  GuardianSettings,
+  LinkGuardianInput,
   ReactivateStudentInput,
   SchoolYear,
+  SiblingAuthorization,
   StudentDetail,
+  StudentGuardianLink,
   StudentProfileFields,
   StudentSummary,
 } from './app-api';
@@ -125,13 +133,105 @@ export class FakeAppApi implements AppApi {
     id: string,
     input: { classroomId: string; startedOn: string },
   ): Promise<StudentDetail> {
-    this.assertSession();
+    this.assertAction('students.write');
     return throwResult(this.roster.enrollStudent(id, input));
+  }
+
+  async listGuardians(query?: {
+    includeInactive?: boolean;
+  }): Promise<Guardian[]> {
+    this.assertAction('guardians.read');
+    return throwResult(this.roster.listGuardians(query));
+  }
+
+  async createGuardian(input: GuardianProfileFields): Promise<Guardian> {
+    this.assertAction('guardians.write');
+    return throwResult(this.roster.createGuardian(input));
+  }
+
+  async updateGuardian(
+    id: string,
+    input: GuardianProfileFields,
+  ): Promise<Guardian> {
+    this.assertAction('guardians.write');
+    return throwResult(this.roster.updateGuardian(id, input));
+  }
+
+  async getStudentGuardians(studentId: string): Promise<StudentGuardianLink[]> {
+    this.assertAction('guardians.read');
+    return throwResult(this.roster.getStudentGuardians(studentId));
+  }
+
+  async linkGuardian(
+    studentId: string,
+    guardianId: string,
+    input?: LinkGuardianInput,
+  ): Promise<StudentGuardianLink[]> {
+    this.assertAction('guardians.write');
+    return throwResult(this.roster.linkGuardian(studentId, guardianId, input));
+  }
+
+  async setPrimaryGuardian(
+    studentId: string,
+    guardianId: string,
+  ): Promise<StudentGuardianLink[]> {
+    this.assertAction('guardians.write');
+    return throwResult(this.roster.setPrimaryGuardian(studentId, guardianId));
+  }
+
+  async unlinkGuardian(
+    studentId: string,
+    guardianId: string,
+  ): Promise<StudentGuardianLink[]> {
+    this.assertAction('guardians.write');
+    return throwResult(this.roster.unlinkGuardian(studentId, guardianId));
+  }
+
+  async listSiblings(studentId: string): Promise<StudentSummary[]> {
+    this.assertAction('guardians.read');
+    return throwResult(this.roster.listSiblings(studentId));
+  }
+
+  async authorizeSibling(
+    input: AuthorizeSiblingInput,
+  ): Promise<SiblingAuthorization> {
+    this.assertAction('guardians.write');
+    return throwResult(this.roster.authorizeSibling(input));
+  }
+
+  async revokeSiblingAuthorization(id: string): Promise<SiblingAuthorization> {
+    this.assertAction('guardians.write');
+    return throwResult(this.roster.revokeSiblingAuthorization(id));
+  }
+
+  async listSiblingAuthorizations(
+    studentId?: string,
+  ): Promise<SiblingAuthorization[]> {
+    this.assertAction('guardians.read');
+    return throwResult(this.roster.listSiblingAuthorizations(studentId));
+  }
+
+  async getGuardianSettings(): Promise<GuardianSettings> {
+    this.assertAction('guardians.read');
+    return throwResult(this.roster.getGuardianSettings());
+  }
+
+  async setRequireGuardianBelowAge(age: number): Promise<GuardianSettings> {
+    this.assertAction('settings.manage');
+    return throwResult(this.roster.setRequireGuardianBelowAge(age));
   }
 
   private assertSession(): void {
     if (!this.session) {
       throw new Error('UNAUTHENTICATED: Entre para continuar.');
+    }
+  }
+
+  private assertAction(action: AuthAction): void {
+    this.assertSession();
+    const allowed = authorize(this.session?.role, action);
+    if (!allowed.ok) {
+      throw new Error(`${allowed.error.code}: ${allowed.error.message}`);
     }
   }
 }

@@ -26,7 +26,7 @@ const FOUNDATION_MIGRATION_CHECKSUM = 'meta|schema_migrations';
 const OPERATION_REQUESTS_MIGRATION_ID = '002_operation_requests';
 const OPERATION_REQUESTS_MIGRATION_CHECKSUM =
   'request_id|operation_type|result_entity_id|status|created_at';
-const CURRENT_SCHEMA_VERSION = 5;
+const CURRENT_SCHEMA_VERSION = 6;
 const BACKUPS_SHEET = '_backups';
 const BACKUPS_HEADERS = [
   'id',
@@ -95,6 +95,51 @@ const STUDENT_ENROLLMENTS_HEADERS = [
 const STUDENTS_MIGRATION_ID = '005_students';
 const STUDENTS_MIGRATION_CHECKSUM =
   'id|label|started_on|ended_on|active|created_at|id|school_year_id|name|active|created_at|id|full_name|birth_date|approximate_age|approximate_age_reference_year|active|created_at|updated_at|id|student_id|classroom_id|started_on|ended_on|created_by|created_at';
+const GUARDIANS_SHEET = '_guardians';
+const GUARDIANS_HEADERS = [
+  'id',
+  'full_name',
+  'phone',
+  'whatsapp_enabled',
+  'relation_label',
+  'active',
+  'created_at',
+  'updated_at',
+];
+const STUDENT_GUARDIANS_SHEET = '_student_guardians';
+const STUDENT_GUARDIANS_HEADERS = [
+  'id',
+  'student_id',
+  'guardian_id',
+  'is_primary',
+  'can_use_guardian_credit',
+  'auto_settle_debt_from_guardian_credit',
+  'active',
+  'started_at',
+  'ended_at',
+  'note',
+  'created_at',
+];
+const STUDENT_ACCOUNT_AUTHORIZATIONS_SHEET = '_student_account_authorizations';
+const STUDENT_ACCOUNT_AUTHORIZATIONS_HEADERS = [
+  'id',
+  'consumer_student_id',
+  'account_student_id',
+  'can_charge_account',
+  'can_use_account_credit',
+  'active',
+  'authorized_at',
+  'revoked_at',
+  'created_by',
+  'note',
+];
+const SETTINGS_SHEET = '_settings';
+const SETTINGS_HEADERS = ['key', 'value'];
+const GUARDIANS_MIGRATION_ID = '006_guardians';
+const GUARDIANS_MIGRATION_CHECKSUM =
+  'id|full_name|phone|whatsapp_enabled|relation_label|active|created_at|updated_at|id|student_id|guardian_id|is_primary|can_use_guardian_credit|auto_settle_debt_from_guardian_credit|active|started_at|ended_at|note|created_at|id|consumer_student_id|account_student_id|can_charge_account|can_use_account_credit|active|authorized_at|revoked_at|created_by|note|key|value';
+const REQUIRE_GUARDIAN_BELOW_AGE_KEY = 'require_guardian_below_age';
+const DEFAULT_REQUIRE_GUARDIAN_BELOW_AGE = 18;
 const E2E_OWNER_SUBJECT = 'e2e-owner';
 const E2E_STAFF_SUBJECT = 'e2e-staff';
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
@@ -109,6 +154,9 @@ const ACTION_ROLES = {
   'students.write': ['owner', 'staff'],
   'school_years.manage': ['owner', 'staff'],
   'classrooms.manage': ['owner', 'staff'],
+  'guardians.read': ['owner', 'staff'],
+  'guardians.write': ['owner', 'staff'],
+  'settings.manage': ['owner'],
 };
 const BACKUP_FILE_PREFIX = 'cantina-backup';
 const BACKUP_FOLDER_NAME = 'Cantina V2 AppScript E2E backups';
@@ -490,6 +538,10 @@ function resetE2EUnlocked() {
     CLASSROOMS_SHEET,
     STUDENTS_SHEET,
     STUDENT_ENROLLMENTS_SHEET,
+    GUARDIANS_SHEET,
+    STUDENT_GUARDIANS_SHEET,
+    STUDENT_ACCOUNT_AUTHORIZATIONS_SHEET,
+    SETTINGS_SHEET,
   ].forEach(function (name) {
     const sheet = spreadsheet.getSheetByName(name);
     if (sheet) {
@@ -517,6 +569,7 @@ function seedE2E(sessionToken) {
     sheet.appendRow(['marker', E2E_SEED_MARKER]);
     sheet.appendRow(['seeded', 'true']);
     seedE2EStudentsUnlocked();
+    seedE2EGuardiansUnlocked();
     return {
       marker: E2E_SEED_MARKER,
       seeded: true,
@@ -546,6 +599,7 @@ function assertKnownMigrations(applied) {
     BACKUPS_MIGRATION_ID,
     USERS_MIGRATION_ID,
     STUDENTS_MIGRATION_ID,
+    GUARDIANS_MIGRATION_ID,
   ];
   applied.forEach(function (id) {
     if (catalog.indexOf(id) === -1) {
@@ -572,7 +626,8 @@ function setupSchema() {
     applied.indexOf(OPERATION_REQUESTS_MIGRATION_ID) === -1 ||
     applied.indexOf(BACKUPS_MIGRATION_ID) === -1 ||
     applied.indexOf(USERS_MIGRATION_ID) === -1 ||
-    applied.indexOf(STUDENTS_MIGRATION_ID) === -1;
+    applied.indexOf(STUDENTS_MIGRATION_ID) === -1 ||
+    applied.indexOf(GUARDIANS_MIGRATION_ID) === -1;
   let pendingCopy = null;
   if (pending) {
     try {
@@ -642,13 +697,43 @@ function setupSchema() {
       STUDENT_ENROLLMENTS_SHEET,
       STUDENT_ENROLLMENTS_HEADERS,
     );
-    meta.appendRow(['schema_version', String(CURRENT_SCHEMA_VERSION)]);
+    meta.appendRow(['schema_version', '5']);
     migrations.appendRow([
       STUDENTS_MIGRATION_ID,
       createdAt,
       CANTINA_APP_VERSION,
       STUDENTS_MIGRATION_CHECKSUM,
       'Cria anos letivos, turmas, alunos e matrículas',
+    ]);
+  }
+  if (applied.indexOf(GUARDIANS_MIGRATION_ID) === -1) {
+    getOrCreateSheet(spreadsheet, GUARDIANS_SHEET, GUARDIANS_HEADERS);
+    getOrCreateSheet(
+      spreadsheet,
+      STUDENT_GUARDIANS_SHEET,
+      STUDENT_GUARDIANS_HEADERS,
+    );
+    getOrCreateSheet(
+      spreadsheet,
+      STUDENT_ACCOUNT_AUTHORIZATIONS_SHEET,
+      STUDENT_ACCOUNT_AUTHORIZATIONS_HEADERS,
+    );
+    const settings = getOrCreateSheet(
+      spreadsheet,
+      SETTINGS_SHEET,
+      SETTINGS_HEADERS,
+    );
+    settings.appendRow([
+      REQUIRE_GUARDIAN_BELOW_AGE_KEY,
+      String(DEFAULT_REQUIRE_GUARDIAN_BELOW_AGE),
+    ]);
+    meta.appendRow(['schema_version', String(CURRENT_SCHEMA_VERSION)]);
+    migrations.appendRow([
+      GUARDIANS_MIGRATION_ID,
+      createdAt,
+      CANTINA_APP_VERSION,
+      GUARDIANS_MIGRATION_CHECKSUM,
+      'Cria responsáveis, vínculos, autorizações de irmãos e settings',
     ]);
   }
   if (pendingCopy) {
@@ -1161,6 +1246,9 @@ function toStudentSummaryGs(student) {
   const enrollment = currentEnrollmentGs(student.id);
   const classroom = enrollment ? classroomById(enrollment.classroom_id) : null;
   const year = classroom ? schoolYearById(classroom.school_year_id) : null;
+  const primaryId = primaryGuardianIdGs(student.id);
+  const primary = primaryId ? latestGuardianById(primaryId, false) : null;
+  const ageYears = studentAgeYearsGs(student);
   return {
     id: student.id,
     fullName: student.full_name,
@@ -1169,6 +1257,8 @@ function toStudentSummaryGs(student) {
     classroomName: classroom ? classroom.name : null,
     schoolYearLabel: year ? year.label : null,
     isHomonym: false,
+    primaryGuardianName: primary ? primary.full_name : null,
+    needsGuardian: needsGuardianGs(ageYears, Boolean(primaryId)),
   };
 }
 
@@ -1361,6 +1451,102 @@ function seedE2EStudentsUnlocked() {
   enrollStudentUnlocked(anaApprox, classA, '2026-02-01', 'e2e-seed');
   enrollStudentUnlocked(anaBirth, classB, '2026-02-01', 'e2e-seed');
   enrollStudentUnlocked(bruno, classA, '2026-02-01', 'e2e-seed');
+  return {
+    anaApprox: anaApprox,
+    anaBirth: anaBirth,
+    bruno: bruno,
+  };
+}
+
+function seedE2EGuardiansUnlocked() {
+  setupSchema();
+  const now = new Date().toISOString();
+  const students = latestRecordsById(
+    listSheetRecords(
+      openNamedSheet(STUDENTS_SHEET, STUDENTS_HEADERS),
+      STUDENTS_HEADERS,
+    ),
+  );
+  let anaApprox = null;
+  let anaBirth = null;
+  let bruno = null;
+  students.forEach(function (student) {
+    if (student.full_name === 'Ana Souza' && student.approximate_age === '8') {
+      anaApprox = student;
+    }
+    if (
+      student.full_name === 'Ana Souza' &&
+      student.birth_date === '2016-03-10'
+    ) {
+      anaBirth = student;
+    }
+    if (student.full_name === 'Bruno Lima') {
+      bruno = student;
+    }
+  });
+  if (!anaApprox || !anaBirth || !bruno) {
+    return;
+  }
+  const settings = openNamedSheet(SETTINGS_SHEET, SETTINGS_HEADERS);
+  settings.appendRow([
+    REQUIRE_GUARDIAN_BELOW_AGE_KEY,
+    String(DEFAULT_REQUIRE_GUARDIAN_BELOW_AGE),
+  ]);
+  const mariaId = Utilities.getUuid();
+  const pauloId = Utilities.getUuid();
+  appendGuardianRecord({
+    id: mariaId,
+    full_name: 'Maria Souza',
+    phone: '11999990001',
+    whatsapp_enabled: 'true',
+    relation_label: 'mãe',
+    active: 'true',
+    created_at: now,
+    updated_at: now,
+  });
+  appendGuardianRecord({
+    id: pauloId,
+    full_name: 'Paulo Nunes',
+    phone: '11999990002',
+    whatsapp_enabled: 'false',
+    relation_label: 'pai',
+    active: 'true',
+    created_at: now,
+    updated_at: now,
+  });
+  appendGuardianLinkGs({
+    studentId: anaApprox.id,
+    guardianId: mariaId,
+    isPrimary: true,
+    createdAt: now,
+  });
+  appendGuardianLinkGs({
+    studentId: bruno.id,
+    guardianId: mariaId,
+    isPrimary: true,
+    createdAt: now,
+  });
+  appendGuardianLinkGs({
+    studentId: anaBirth.id,
+    guardianId: pauloId,
+    isPrimary: true,
+    createdAt: now,
+  });
+  openNamedSheet(
+    STUDENT_ACCOUNT_AUTHORIZATIONS_SHEET,
+    STUDENT_ACCOUNT_AUTHORIZATIONS_HEADERS,
+  ).appendRow([
+    Utilities.getUuid(),
+    bruno.id,
+    anaApprox.id,
+    'true',
+    'false',
+    'true',
+    now,
+    '',
+    Utilities.getUuid(),
+    '',
+  ]);
 }
 
 function listSchoolYears(sessionToken) {
@@ -1609,5 +1795,547 @@ function enrollStudent(sessionToken, id, payload) {
       session.user_id,
     );
     return toStudentDetailGs(latestStudentById(id));
+  });
+}
+
+function normalizePhoneGs(value) {
+  if (value === null || value === undefined || String(value).trim() === '') {
+    return '';
+  }
+  const digits = String(value).replace(/\D/g, '');
+  if (digits.length < 10 || digits.length > 13) {
+    throw new Error('INVALID_PHONE: Informe um telefone com DDD, só números.');
+  }
+  return digits;
+}
+
+function validateGuardianProfileGs(payload) {
+  const fullName = normalizePersonName(
+    payload && payload.fullName ? String(payload.fullName) : '',
+  );
+  if (fullName.length < 2) {
+    throw new Error(
+      'GUARDIAN_NAME_REQUIRED: Informe o nome completo do responsável.',
+    );
+  }
+  const relation = normalizePersonName(
+    payload && payload.relationLabel ? String(payload.relationLabel) : '',
+  );
+  return {
+    full_name: fullName,
+    phone: normalizePhoneGs(payload && payload.phone),
+    whatsapp_enabled:
+      payload && payload.whatsappEnabled === true ? 'true' : 'false',
+    relation_label: relation,
+  };
+}
+
+function listGuardianRecords() {
+  return listSheetRecords(
+    openNamedSheet(GUARDIANS_SHEET, GUARDIANS_HEADERS),
+    GUARDIANS_HEADERS,
+  );
+}
+
+function listGuardianLinkRecords() {
+  return listSheetRecords(
+    openNamedSheet(STUDENT_GUARDIANS_SHEET, STUDENT_GUARDIANS_HEADERS),
+    STUDENT_GUARDIANS_HEADERS,
+  );
+}
+
+function listAuthorizationRecords() {
+  return listSheetRecords(
+    openNamedSheet(
+      STUDENT_ACCOUNT_AUTHORIZATIONS_SHEET,
+      STUDENT_ACCOUNT_AUTHORIZATIONS_HEADERS,
+    ),
+    STUDENT_ACCOUNT_AUTHORIZATIONS_HEADERS,
+  );
+}
+
+function latestActiveLinksGs() {
+  return latestRecordsById(listGuardianLinkRecords()).filter(function (record) {
+    return record.active === 'true' && record.ended_at === '';
+  });
+}
+
+function primaryGuardianIdGs(studentId) {
+  const primary = latestActiveLinksGs().filter(function (record) {
+    return record.student_id === studentId && record.is_primary === 'true';
+  })[0];
+  return primary ? primary.guardian_id : null;
+}
+
+function siblingStudentIdsGs(studentId) {
+  const active = latestActiveLinksGs();
+  const guardianIds = {};
+  active.forEach(function (record) {
+    if (record.student_id === studentId) {
+      guardianIds[record.guardian_id] = true;
+    }
+  });
+  const siblings = {};
+  active.forEach(function (record) {
+    if (guardianIds[record.guardian_id] && record.student_id !== studentId) {
+      siblings[record.student_id] = true;
+    }
+  });
+  return Object.keys(siblings);
+}
+
+function studentAgeYearsGs(student) {
+  return Number(String(studentAgeLabelGs(student)).replace('~', ''));
+}
+
+function requireGuardianBelowAgeGs() {
+  const records = listSheetRecords(
+    openNamedSheet(SETTINGS_SHEET, SETTINGS_HEADERS),
+    SETTINGS_HEADERS,
+  );
+  let value = '';
+  records.forEach(function (record) {
+    if (record.key === REQUIRE_GUARDIAN_BELOW_AGE_KEY) {
+      value = record.value;
+    }
+  });
+  const age = Number(value);
+  if (!Number.isInteger(age) || age < 1 || age > 21) {
+    return DEFAULT_REQUIRE_GUARDIAN_BELOW_AGE;
+  }
+  return age;
+}
+
+function needsGuardianGs(ageYears, hasPrimary) {
+  return ageYears < requireGuardianBelowAgeGs() && !hasPrimary;
+}
+
+function latestGuardianById(id, required) {
+  if (!REQUEST_ID_PATTERN.test(id)) {
+    throw new Error(
+      'INVALID_ID: ID deve ser UUID imutável, nunca número da linha.',
+    );
+  }
+  const guardian = latestRecordsById(listGuardianRecords()).filter(
+    function (item) {
+      return item.id === id;
+    },
+  )[0];
+  if (!guardian && required) {
+    throw new Error('GUARDIAN_NOT_FOUND: Responsável não encontrado.');
+  }
+  return guardian || null;
+}
+
+function appendGuardianRecord(record) {
+  openNamedSheet(GUARDIANS_SHEET, GUARDIANS_HEADERS).appendRow([
+    record.id,
+    record.full_name,
+    record.phone,
+    record.whatsapp_enabled,
+    record.relation_label,
+    record.active,
+    record.created_at,
+    record.updated_at,
+  ]);
+}
+
+function appendGuardianLinkRecord(record) {
+  openNamedSheet(STUDENT_GUARDIANS_SHEET, STUDENT_GUARDIANS_HEADERS).appendRow([
+    record.id,
+    record.student_id,
+    record.guardian_id,
+    record.is_primary,
+    record.can_use_guardian_credit,
+    record.auto_settle_debt_from_guardian_credit,
+    record.active,
+    record.started_at,
+    record.ended_at,
+    record.note,
+    record.created_at,
+  ]);
+}
+
+function appendGuardianLinkGs(input) {
+  const existing = listGuardianLinkRecords();
+  const latest = {};
+  existing.forEach(function (record) {
+    latest[record.id] = record;
+  });
+  const activeLatest = Object.keys(latest)
+    .map(function (id) {
+      return latest[id];
+    })
+    .filter(function (record) {
+      return record.active === 'true' && record.ended_at === '';
+    });
+  const current = activeLatest.filter(function (record) {
+    return (
+      record.student_id === input.studentId &&
+      record.guardian_id === input.guardianId
+    );
+  })[0];
+  const previousPrimary = activeLatest.filter(function (record) {
+    return (
+      record.student_id === input.studentId &&
+      record.is_primary === 'true' &&
+      record.guardian_id !== input.guardianId
+    );
+  })[0];
+  const hasPrimary = activeLatest.some(function (record) {
+    return (
+      record.student_id === input.studentId && record.is_primary === 'true'
+    );
+  });
+  const makePrimary = input.isPrimary || (!current && !hasPrimary);
+  if (makePrimary && previousPrimary) {
+    appendGuardianLinkRecord(
+      Object.assign({}, previousPrimary, { is_primary: 'false' }),
+    );
+  }
+  appendGuardianLinkRecord({
+    id: current ? current.id : Utilities.getUuid(),
+    student_id: input.studentId,
+    guardian_id: input.guardianId,
+    is_primary: makePrimary ? 'true' : 'false',
+    can_use_guardian_credit: input.canUseGuardianCredit ? 'true' : 'false',
+    auto_settle_debt_from_guardian_credit: input.autoSettle ? 'true' : 'false',
+    active: 'true',
+    started_at: current ? current.started_at : input.createdAt,
+    ended_at: '',
+    note: input.note ? String(input.note).trim() : current ? current.note : '',
+    created_at: current ? current.created_at : input.createdAt,
+  });
+}
+
+function toGuardianGs(record) {
+  return {
+    id: record.id,
+    fullName: record.full_name,
+    phone: record.phone,
+    whatsappEnabled: record.whatsapp_enabled === 'true',
+    relationLabel: record.relation_label,
+    active: record.active === 'true',
+  };
+}
+
+function toGuardianLinkGs(record) {
+  const guardian = latestGuardianById(record.guardian_id, false);
+  return {
+    id: record.id,
+    studentId: record.student_id,
+    guardianId: record.guardian_id,
+    guardianName: guardian ? guardian.full_name : '',
+    isPrimary: record.is_primary === 'true',
+    canUseGuardianCredit: record.can_use_guardian_credit === 'true',
+    autoSettleDebtFromGuardianCredit:
+      record.auto_settle_debt_from_guardian_credit === 'true',
+    active: record.active === 'true',
+    startedAt: record.started_at,
+    endedAt: record.ended_at || null,
+    note: record.note,
+  };
+}
+
+function studentNameByIdGs(id) {
+  const student = latestRecordsById(
+    listSheetRecords(
+      openNamedSheet(STUDENTS_SHEET, STUDENTS_HEADERS),
+      STUDENTS_HEADERS,
+    ),
+  ).filter(function (item) {
+    return item.id === id;
+  })[0];
+  return student ? student.full_name : '';
+}
+
+function toAuthorizationGs(record) {
+  return {
+    id: record.id,
+    consumerStudentId: record.consumer_student_id,
+    accountStudentId: record.account_student_id,
+    consumerName: studentNameByIdGs(record.consumer_student_id),
+    accountName: studentNameByIdGs(record.account_student_id),
+    canChargeAccount: record.can_charge_account === 'true',
+    canUseAccountCredit: record.can_use_account_credit === 'true',
+    active: record.active === 'true',
+    authorizedAt: record.authorized_at,
+    revokedAt: record.revoked_at || null,
+    note: record.note,
+  };
+}
+
+function listStudentGuardianLinksUnlocked(studentId) {
+  return latestRecordsById(listGuardianLinkRecords())
+    .filter(function (record) {
+      return record.student_id === studentId;
+    })
+    .map(toGuardianLinkGs);
+}
+
+function listGuardians(sessionToken, query) {
+  requireAction(sessionToken, 'guardians.read');
+  const includeInactive = !query || query.includeInactive !== false;
+  return latestRecordsById(listGuardianRecords())
+    .filter(function (record) {
+      return includeInactive || record.active === 'true';
+    })
+    .map(toGuardianGs);
+}
+
+function createGuardian(sessionToken, payload) {
+  requireAction(sessionToken, 'guardians.write');
+  return withScriptLock(function () {
+    setupSchema();
+    const profile = validateGuardianProfileGs(payload || {});
+    const now = new Date().toISOString();
+    const record = Object.assign(
+      {
+        id: Utilities.getUuid(),
+        active: 'true',
+        created_at: now,
+        updated_at: now,
+      },
+      profile,
+    );
+    appendGuardianRecord(record);
+    return toGuardianGs(record);
+  });
+}
+
+function updateGuardian(sessionToken, id, payload) {
+  requireAction(sessionToken, 'guardians.write');
+  return withScriptLock(function () {
+    setupSchema();
+    const previous = latestGuardianById(id, true);
+    const profile = validateGuardianProfileGs(payload || {});
+    const record = Object.assign({}, previous, profile, {
+      updated_at: new Date().toISOString(),
+    });
+    appendGuardianRecord(record);
+    return toGuardianGs(record);
+  });
+}
+
+function getStudentGuardians(sessionToken, studentId) {
+  requireAction(sessionToken, 'guardians.read');
+  latestStudentById(studentId);
+  return listStudentGuardianLinksUnlocked(studentId);
+}
+
+function linkGuardian(sessionToken, studentId, guardianId, payload) {
+  requireAction(sessionToken, 'guardians.write');
+  return withScriptLock(function () {
+    setupSchema();
+    latestStudentById(studentId);
+    latestGuardianById(guardianId, true);
+    appendGuardianLinkGs({
+      studentId: studentId,
+      guardianId: guardianId,
+      isPrimary: payload && payload.isPrimary === true,
+      canUseGuardianCredit: payload && payload.canUseGuardianCredit === true,
+      autoSettle: payload && payload.autoSettle === true,
+      note: payload && payload.note,
+      createdAt: new Date().toISOString(),
+    });
+    return listStudentGuardianLinksUnlocked(studentId);
+  });
+}
+
+function setPrimaryGuardian(sessionToken, studentId, guardianId) {
+  return linkGuardian(sessionToken, studentId, guardianId, { isPrimary: true });
+}
+
+function unlinkGuardian(sessionToken, studentId, guardianId) {
+  requireAction(sessionToken, 'guardians.write');
+  return withScriptLock(function () {
+    setupSchema();
+    if (
+      !REQUEST_ID_PATTERN.test(studentId) ||
+      !REQUEST_ID_PATTERN.test(guardianId)
+    ) {
+      throw new Error(
+        'INVALID_ID: ID deve ser UUID imutável, nunca número da linha.',
+      );
+    }
+    const current = latestActiveLinksGs().filter(function (record) {
+      return (
+        record.student_id === studentId && record.guardian_id === guardianId
+      );
+    })[0];
+    if (!current) {
+      throw new Error(
+        'GUARDIAN_LINK_NOT_FOUND: Este responsável não está vinculado ao aluno.',
+      );
+    }
+    appendGuardianLinkRecord(
+      Object.assign({}, current, {
+        active: 'false',
+        ended_at: new Date().toISOString(),
+      }),
+    );
+    return listStudentGuardianLinksUnlocked(studentId);
+  });
+}
+
+function listSiblings(sessionToken, studentId) {
+  requireAction(sessionToken, 'guardians.read');
+  latestStudentById(studentId);
+  const siblingIds = siblingStudentIdsGs(studentId);
+  const summaries = latestRecordsById(
+    listSheetRecords(
+      openNamedSheet(STUDENTS_SHEET, STUDENTS_HEADERS),
+      STUDENTS_HEADERS,
+    ),
+  )
+    .filter(function (student) {
+      return siblingIds.indexOf(student.id) !== -1;
+    })
+    .map(toStudentSummaryGs);
+  return markHomonymsGs(summaries);
+}
+
+function authorizeSibling(sessionToken, payload) {
+  const session = requireAction(sessionToken, 'guardians.write');
+  return withScriptLock(function () {
+    setupSchema();
+    const consumerId = payload && payload.consumerStudentId;
+    const accountId = payload && payload.accountStudentId;
+    latestStudentById(consumerId);
+    latestStudentById(accountId);
+    if (consumerId === accountId) {
+      throw new Error(
+        'SELF_AUTHORIZATION: Um aluno não autoriza a própria conta.',
+      );
+    }
+    if (siblingStudentIdsGs(consumerId).indexOf(accountId) === -1) {
+      throw new Error(
+        'NOT_SIBLINGS: Só irmãos que compartilham responsável podem se autorizar.',
+      );
+    }
+    if (
+      !(payload && payload.canChargeAccount) &&
+      !(payload && payload.canUseAccountCredit)
+    ) {
+      throw new Error(
+        'AUTHORIZATION_REQUIRED: Escolha lançar na conta ou usar o crédito do irmão.',
+      );
+    }
+    const record = {
+      id: Utilities.getUuid(),
+      consumer_student_id: consumerId,
+      account_student_id: accountId,
+      can_charge_account: payload.canChargeAccount === true ? 'true' : 'false',
+      can_use_account_credit:
+        payload.canUseAccountCredit === true ? 'true' : 'false',
+      active: 'true',
+      authorized_at: new Date().toISOString(),
+      revoked_at: '',
+      created_by: session.user_id,
+      note: payload.note ? String(payload.note).trim() : '',
+    };
+    openNamedSheet(
+      STUDENT_ACCOUNT_AUTHORIZATIONS_SHEET,
+      STUDENT_ACCOUNT_AUTHORIZATIONS_HEADERS,
+    ).appendRow([
+      record.id,
+      record.consumer_student_id,
+      record.account_student_id,
+      record.can_charge_account,
+      record.can_use_account_credit,
+      record.active,
+      record.authorized_at,
+      record.revoked_at,
+      record.created_by,
+      record.note,
+    ]);
+    return toAuthorizationGs(record);
+  });
+}
+
+function revokeSiblingAuthorization(sessionToken, id) {
+  requireAction(sessionToken, 'guardians.write');
+  return withScriptLock(function () {
+    setupSchema();
+    if (!REQUEST_ID_PATTERN.test(id)) {
+      throw new Error(
+        'INVALID_ID: ID deve ser UUID imutável, nunca número da linha.',
+      );
+    }
+    const current = latestRecordsById(listAuthorizationRecords()).filter(
+      function (record) {
+        return (
+          record.id === id &&
+          record.active === 'true' &&
+          record.revoked_at === ''
+        );
+      },
+    )[0];
+    if (!current) {
+      throw new Error(
+        'AUTHORIZATION_NOT_FOUND: Autorização de irmão não encontrada.',
+      );
+    }
+    const record = Object.assign({}, current, {
+      active: 'false',
+      revoked_at: new Date().toISOString(),
+    });
+    openNamedSheet(
+      STUDENT_ACCOUNT_AUTHORIZATIONS_SHEET,
+      STUDENT_ACCOUNT_AUTHORIZATIONS_HEADERS,
+    ).appendRow([
+      record.id,
+      record.consumer_student_id,
+      record.account_student_id,
+      record.can_charge_account,
+      record.can_use_account_credit,
+      record.active,
+      record.authorized_at,
+      record.revoked_at,
+      record.created_by,
+      record.note,
+    ]);
+    return toAuthorizationGs(record);
+  });
+}
+
+function listSiblingAuthorizations(sessionToken, studentId) {
+  requireAction(sessionToken, 'guardians.read');
+  if (studentId) {
+    latestStudentById(studentId);
+  }
+  return latestRecordsById(listAuthorizationRecords())
+    .filter(function (record) {
+      return (
+        !studentId ||
+        record.consumer_student_id === studentId ||
+        record.account_student_id === studentId
+      );
+    })
+    .map(toAuthorizationGs);
+}
+
+function getGuardianSettings(sessionToken) {
+  requireAction(sessionToken, 'guardians.read');
+  return {
+    requireGuardianBelowAge: requireGuardianBelowAgeGs(),
+  };
+}
+
+function setRequireGuardianBelowAge(sessionToken, age) {
+  requireAction(sessionToken, 'settings.manage');
+  return withScriptLock(function () {
+    setupSchema();
+    const parsed = Number(age);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 21) {
+      throw new Error(
+        'INVALID_GUARDIAN_AGE_SETTING: A idade para pedir responsável deve ser um número entre 1 e 21.',
+      );
+    }
+    openNamedSheet(SETTINGS_SHEET, SETTINGS_HEADERS).appendRow([
+      REQUIRE_GUARDIAN_BELOW_AGE_KEY,
+      String(parsed),
+    ]);
+    return { requireGuardianBelowAge: parsed };
   });
 }

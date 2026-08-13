@@ -123,7 +123,7 @@ Testar retry e double submit.
 
 E2E login/role.
 
-`AppApi` agora inclui sessão (`getSession`, `loginE2E`, `logout`) além de `getHealth`. Cadastro de alunos é a Fase 8.
+`AppApi` agora inclui sessão (`getSession`, `loginE2E`, `logout`) e cadastro de alunos. Responsáveis e irmãos são a Fase 9.
 
 ## Fase 8 — Ano letivo, turmas e alunos
 
@@ -133,16 +133,18 @@ E2E login/role.
 - reativação com revisão;
 - homônimos.
 
-Responsáveis e irmãos são a Fase 9.
+Responsáveis e irmãos foram para a Fase 9.
 
 ## Fase 9 — Responsáveis e irmãos
 
 - múltiplos responsáveis;
 - um principal;
-- WhatsApp flag;
+- WhatsApp flag (sem envio);
 - irmãos;
-- histórico;
-- idade para solicitar responsável.
+- histórico de vínculo;
+- idade operacional para solicitar responsável.
+
+Produtos e categorias são a Fase 10.
 
 ## Fase 10 — Produtos/categorias
 

@@ -279,19 +279,23 @@ footer {
   font-size: 0.78rem;
 }
 
-.students-panel {
+.students-panel,
+.family-panel {
   padding: 1.5rem 0 2rem;
 }
 
-.students-panel[hidden] {
+.students-panel[hidden],
+.family-panel[hidden] {
   display: none;
 }
 
-.students-panel h2 {
+.students-panel h2,
+.family-panel h2 {
   margin: 0 0 0.5rem;
 }
 
-.students-panel ul {
+.students-panel ul,
+.family-panel ul {
   list-style: none;
   margin: 1rem 0;
   padding: 0;
@@ -299,7 +303,8 @@ footer {
   gap: 0.75rem;
 }
 
-.students-panel li {
+.students-panel li,
+.family-panel li {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
@@ -310,13 +315,15 @@ footer {
   background: var(--surface);
 }
 
-.students-panel form {
+.students-panel form,
+.family-panel form {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
   gap: 0.75rem;
 }
 
-.students-panel label {
+.students-panel label,
+.family-panel label {
   display: grid;
   gap: 0.35rem;
   color: var(--muted);
@@ -325,13 +332,22 @@ footer {
 
 .students-panel input,
 .students-panel select,
-.students-panel button {
+.students-panel button,
+.family-panel input,
+.family-panel select,
+.family-panel button {
   font: inherit;
   padding: 0.6rem 0.75rem;
   border: 1px solid var(--line);
   border-radius: 0.75rem;
   color: var(--text);
   background: var(--surface-strong);
+}
+
+.checkbox-label {
+  align-content: end;
+  grid-template-columns: auto 1fr;
+  align-items: center;
 }
 
 .form-or {

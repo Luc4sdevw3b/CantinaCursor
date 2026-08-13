@@ -100,6 +100,8 @@ interface ServerContext {
     classroomName: string | null;
     schoolYearLabel: string | null;
     isHomonym: boolean;
+    primaryGuardianName: string | null;
+    needsGuardian: boolean;
   }>;
   getStudent(
     sessionToken: string,
@@ -124,6 +126,47 @@ interface ServerContext {
     id: string,
     payload: Record<string, unknown>,
   ): { id: string; active: boolean };
+  listGuardians(sessionToken: string): Array<{
+    id: string;
+    fullName: string;
+    whatsappEnabled: boolean;
+    relationLabel: string;
+  }>;
+  createGuardian(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): { id: string; fullName: string };
+  linkGuardian(
+    sessionToken: string,
+    studentId: string,
+    guardianId: string,
+    payload?: Record<string, unknown>,
+  ): Array<{ guardianName: string; isPrimary: boolean }>;
+  listSiblings(
+    sessionToken: string,
+    studentId: string,
+  ): Array<{ id: string; fullName: string }>;
+  authorizeSibling(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): { id: string; canChargeAccount: boolean };
+  listSiblingAuthorizations(
+    sessionToken: string,
+    studentId?: string,
+  ): Array<{
+    consumerStudentId: string;
+    accountStudentId: string;
+    canChargeAccount: boolean;
+    canUseAccountCredit: boolean;
+    active: boolean;
+  }>;
+  getGuardianSettings(sessionToken: string): {
+    requireGuardianBelowAge: number;
+  };
+  setRequireGuardianBelowAge(
+    sessionToken: string,
+    age: number,
+  ): { requireGuardianBelowAge: number };
 }
 
 interface DriveMockFile {
@@ -431,7 +474,7 @@ describe('Apps Script E2E server', () => {
     expect(health.status).toBe('ready');
     expect(health.adapter).toBe('google-script');
     expect(health.spreadsheetConfigured).toBe(true);
-    expect(health.schemaVersion).toBe(5);
+    expect(health.schemaVersion).toBe(6);
     expect(health.backupConfigured).toBe(true);
     expect(health.lastBackupAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(JSON.stringify(health)).not.toContain('private-e2e-sheet-id');
@@ -514,13 +557,14 @@ describe('Apps Script E2E server', () => {
     const second = server.setupSchema();
 
     expect(first).toEqual(second);
-    expect(first.schemaVersion).toBe(5);
+    expect(first.schemaVersion).toBe(6);
     expect(first.appliedMigrations).toEqual([
       '001_foundation',
       '002_operation_requests',
       '003_backups',
       '004_users',
       '005_students',
+      '006_guardians',
     ]);
     expect(sheets.get('_meta')?.rows[0]).toEqual(['key', 'value']);
     expect(sheets.get('_schema_migrations')?.rows[0]).toEqual([
@@ -586,6 +630,13 @@ describe('Apps Script E2E server', () => {
       sheets
         .get('_schema_migrations')
         ?.rows.filter((row) => row[0] === '005_students'),
+    ).toHaveLength(1);
+    expect(sheets.get('_guardians')?.rows[0]?.[0]).toBe('id');
+    expect(sheets.get('_settings')?.rows[0]).toEqual(['key', 'value']);
+    expect(
+      sheets
+        .get('_schema_migrations')
+        ?.rows.filter((row) => row[0] === '006_guardians'),
     ).toHaveLength(1);
   });
 
@@ -728,7 +779,7 @@ describe('Apps Script E2E server', () => {
     const backup = server.runBackup(token, 'manual');
 
     expect(backup.reason).toBe('manual');
-    expect(backup.schemaVersion).toBe(5);
+    expect(backup.schemaVersion).toBe(6);
     expect(JSON.stringify(backup)).not.toContain('e2e-sheet-id');
     expect(JSON.stringify(backup)).not.toContain('e2e-backup-folder');
     expect(projectTriggers).toEqual(['runScheduledBackup']);
@@ -964,5 +1015,76 @@ describe('Apps Script E2E server', () => {
     expect(created.fullName).toBe('Carla Nunes');
     expect(created.ageLabel).toBe('~7');
     expect(() => server.listStudents('')).toThrow('UNAUTHENTICATED');
+  });
+
+  it('links siblings through a shared guardian and keeps the age setting to the owner', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const listed = server.listStudents(owner);
+    const anaApprox = listed.find(
+      (student) =>
+        student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+    );
+    const anaBirth = listed.find(
+      (student) =>
+        student.fullName === 'Ana Souza' && student.ageLabel === '10',
+    );
+    const bruno = listed.find((student) => student.fullName === 'Bruno Lima');
+    const guardians = server.listGuardians(owner);
+    const maria = guardians.find((item) => item.fullName === 'Maria Souza');
+    const paulo = guardians.find((item) => item.fullName === 'Paulo Nunes');
+
+    if (!anaApprox || !anaBirth || !bruno || !maria || !paulo) {
+      throw new Error('família E2E incompleta');
+    }
+
+    expect(anaApprox.primaryGuardianName).toBe('Maria Souza');
+    expect(anaBirth.primaryGuardianName).toBe('Paulo Nunes');
+    expect(bruno.primaryGuardianName).toBe('Maria Souza');
+    expect(maria.whatsappEnabled).toBe(true);
+    expect(paulo.whatsappEnabled).toBe(false);
+    expect(
+      server.listSiblings(owner, anaApprox.id).map((item) => item.id),
+    ).toEqual([bruno.id]);
+    expect(
+      server
+        .listSiblingAuthorizations(owner, bruno.id)
+        .some(
+          (item) =>
+            item.consumerStudentId === bruno.id &&
+            item.accountStudentId === anaApprox.id &&
+            item.canChargeAccount &&
+            !item.canUseAccountCredit,
+        ),
+    ).toBe(true);
+    expect(() =>
+      server.authorizeSibling(owner, {
+        consumerStudentId: anaBirth.id,
+        accountStudentId: anaApprox.id,
+        canChargeAccount: true,
+      }),
+    ).toThrow('NOT_SIBLINGS');
+
+    const staff = server.loginE2E('staff').token;
+    expect(
+      server.createGuardian(staff, {
+        fullName: 'Carla Mendes',
+        phone: '11999990003',
+        whatsappEnabled: false,
+        relationLabel: 'tia',
+      }).fullName,
+    ).toBe('Carla Mendes');
+    expect(() => server.setRequireGuardianBelowAge(staff, 16)).toThrow(
+      'FORBIDDEN',
+    );
+    expect(server.setRequireGuardianBelowAge(owner, 16)).toEqual({
+      requireGuardianBelowAge: 16,
+    });
+    expect(() => server.listGuardians('')).toThrow('UNAUTHENTICATED');
   });
 });

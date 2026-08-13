@@ -4,6 +4,7 @@ import { createMemorySpreadsheet } from '../../src/server/sheets/memory-spreadsh
 import {
   BACKUPS_MIGRATION_ID,
   FOUNDATION_MIGRATION_ID,
+  GUARDIANS_MIGRATION_ID,
   OPERATION_REQUESTS_MIGRATION_ID,
   USERS_MIGRATION_ID,
   STUDENTS_MIGRATION_ID,
@@ -25,18 +26,19 @@ describe('setupSchema', () => {
     expect(first).toEqual({
       ok: true,
       data: {
-        schemaVersion: 5,
+        schemaVersion: 6,
         appliedMigrations: [
           FOUNDATION_MIGRATION_ID,
           OPERATION_REQUESTS_MIGRATION_ID,
           BACKUPS_MIGRATION_ID,
           USERS_MIGRATION_ID,
           STUDENTS_MIGRATION_ID,
+          GUARDIANS_MIGRATION_ID,
         ],
       },
     });
     expect(second).toEqual(first);
-    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(5);
+    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(6);
     expect(sheets.get('_meta')?.getHeaders()).toEqual(['key', 'value']);
     expect(sheets.get('_operation_requests')?.getHeaders()).toEqual([
       'request_id',
@@ -78,6 +80,17 @@ describe('setupSchema', () => {
       'created_at',
     ]);
     expect(sheets.get('_students')?.getHeaders()[0]).toBe('id');
+    expect(sheets.get('_guardians')?.getHeaders()).toEqual([
+      'id',
+      'full_name',
+      'phone',
+      'whatsapp_enabled',
+      'relation_label',
+      'active',
+      'created_at',
+      'updated_at',
+    ]);
+    expect(sheets.get('_settings')?.getHeaders()).toEqual(['key', 'value']);
   });
 
   it('applies only the operation-requests migration when foundation already exists', () => {
@@ -115,9 +128,10 @@ describe('setupSchema', () => {
         BACKUPS_MIGRATION_ID,
         USERS_MIGRATION_ID,
         STUDENTS_MIGRATION_ID,
+        GUARDIANS_MIGRATION_ID,
       ]);
     }
-    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(5);
+    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(6);
   });
 
   it('refuses PROD', () => {

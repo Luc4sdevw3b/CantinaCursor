@@ -12,6 +12,9 @@ export const AUTH_ACTIONS = [
   'students.write',
   'school_years.manage',
   'classrooms.manage',
+  'guardians.read',
+  'guardians.write',
+  'settings.manage',
 ] as const;
 export type AuthAction = (typeof AUTH_ACTIONS)[number];
 
@@ -26,6 +29,9 @@ export const ACTION_ROLES: Record<AuthAction, readonly UserRole[]> = {
   'students.write': ['owner', 'staff'],
   'school_years.manage': ['owner', 'staff'],
   'classrooms.manage': ['owner', 'staff'],
+  'guardians.read': ['owner', 'staff'],
+  'guardians.write': ['owner', 'staff'],
+  'settings.manage': ['owner'],
 };
 
 export const E2E_OWNER_SUBJECT = 'e2e-owner';
