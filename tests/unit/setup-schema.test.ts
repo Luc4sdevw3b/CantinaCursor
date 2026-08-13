@@ -9,6 +9,7 @@ import {
   USERS_MIGRATION_ID,
   STUDENTS_MIGRATION_ID,
   PRODUCTS_MIGRATION_ID,
+  INVENTORY_MIGRATION_ID,
 } from '../../src/server/sheets/schema';
 
 describe('setupSchema', () => {
@@ -27,7 +28,7 @@ describe('setupSchema', () => {
     expect(first).toEqual({
       ok: true,
       data: {
-        schemaVersion: 7,
+        schemaVersion: 8,
         appliedMigrations: [
           FOUNDATION_MIGRATION_ID,
           OPERATION_REQUESTS_MIGRATION_ID,
@@ -36,11 +37,12 @@ describe('setupSchema', () => {
           STUDENTS_MIGRATION_ID,
           GUARDIANS_MIGRATION_ID,
           PRODUCTS_MIGRATION_ID,
+          INVENTORY_MIGRATION_ID,
         ],
       },
     });
     expect(second).toEqual(first);
-    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(7);
+    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(8);
     expect(sheets.get('_meta')?.getHeaders()).toEqual(['key', 'value']);
     expect(sheets.get('_operation_requests')?.getHeaders()).toEqual([
       'request_id',
@@ -119,6 +121,31 @@ describe('setupSchema', () => {
       'created_by',
       'created_at',
     ]);
+    expect(sheets.get('_inventory_days')?.getHeaders()).toEqual([
+      'id',
+      'business_date',
+      'status',
+      'opened_by',
+      'opened_at',
+    ]);
+    expect(sheets.get('_inventory_opening_items')?.getHeaders()).toEqual([
+      'id',
+      'inventory_day_id',
+      'product_id',
+      'opening_quantity',
+    ]);
+    expect(sheets.get('_inventory_movements')?.getHeaders()).toEqual([
+      'id',
+      'inventory_day_id',
+      'product_id',
+      'kind',
+      'quantity_delta',
+      'source_type',
+      'source_id',
+      'created_by',
+      'created_at',
+      'reason',
+    ]);
   });
 
   it('applies only the operation-requests migration when foundation already exists', () => {
@@ -158,9 +185,10 @@ describe('setupSchema', () => {
         STUDENTS_MIGRATION_ID,
         GUARDIANS_MIGRATION_ID,
         PRODUCTS_MIGRATION_ID,
+        INVENTORY_MIGRATION_ID,
       ]);
     }
-    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(7);
+    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(8);
   });
 
   it('refuses PROD', () => {

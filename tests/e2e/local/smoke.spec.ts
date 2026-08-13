@@ -207,4 +207,23 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await expect(page.getByText('Coxinha • Salgados • R$ 5,50')).toBeVisible();
     await expect(page.locator('#ad-hoc-block')).toBeHidden();
   });
+
+  test('shows daily stock after login and keeps adjustments to the owner', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Estoque do dia', exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText('Coxinha • 10')).toBeVisible();
+    await expect(page.getByText('Suco de uva • ACABOU')).toBeVisible();
+    await expect(page.locator('#inventory-adjust-form')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Sair' }).click();
+    await page.getByRole('button', { name: 'Entrar como funcionário' }).click();
+    await expect(page.getByText('Coxinha • 10')).toBeVisible();
+    await expect(page.getByText('Suco de uva • ACABOU')).toBeVisible();
+    await expect(page.locator('#inventory-adjust-form')).toBeHidden();
+  });
 });

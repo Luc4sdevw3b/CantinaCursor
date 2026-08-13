@@ -72,6 +72,11 @@ function runnerWith(
     listProductPriceHistory() {},
     createAdHocItem() {},
     listAdHocItems() {},
+    getInventoryDay() {},
+    openInventoryDay() {},
+    listInventoryBalances() {},
+    adjustInventory() {},
+    listInventoryMovements() {},
     ...extra,
   };
   return runner;

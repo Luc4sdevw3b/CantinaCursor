@@ -322,6 +322,11 @@ footer {
   gap: 0.75rem;
 }
 
+.students-panel form[hidden],
+.family-panel form[hidden] {
+  display: none;
+}
+
 .students-panel label,
 .family-panel label {
   display: grid;

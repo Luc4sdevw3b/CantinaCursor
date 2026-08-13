@@ -26,7 +26,7 @@ const FOUNDATION_MIGRATION_CHECKSUM = 'meta|schema_migrations';
 const OPERATION_REQUESTS_MIGRATION_ID = '002_operation_requests';
 const OPERATION_REQUESTS_MIGRATION_CHECKSUM =
   'request_id|operation_type|result_entity_id|status|created_at';
-const CURRENT_SCHEMA_VERSION = 7;
+const CURRENT_SCHEMA_VERSION = 8;
 const BACKUPS_SHEET = '_backups';
 const BACKUPS_HEADERS = [
   'id',
@@ -179,6 +179,39 @@ const AD_HOC_ITEMS_HEADERS = [
 const PRODUCTS_MIGRATION_ID = '007_products';
 const PRODUCTS_MIGRATION_CHECKSUM =
   'id|name|sort_order|active|created_at|id|category_id|name|price_cents|discount_allowed|stock_tracked|reservable|active|created_at|updated_at|id|product_id|price_cents|started_at|ended_at|created_by|id|name|price_cents|created_by|created_at';
+const INVENTORY_DAYS_SHEET = '_inventory_days';
+const INVENTORY_DAYS_HEADERS = [
+  'id',
+  'business_date',
+  'status',
+  'opened_by',
+  'opened_at',
+];
+const INVENTORY_OPENING_ITEMS_SHEET = '_inventory_opening_items';
+const INVENTORY_OPENING_ITEMS_HEADERS = [
+  'id',
+  'inventory_day_id',
+  'product_id',
+  'opening_quantity',
+];
+const INVENTORY_MOVEMENTS_SHEET = '_inventory_movements';
+const INVENTORY_MOVEMENTS_HEADERS = [
+  'id',
+  'inventory_day_id',
+  'product_id',
+  'kind',
+  'quantity_delta',
+  'source_type',
+  'source_id',
+  'created_by',
+  'created_at',
+  'reason',
+];
+const INVENTORY_MIGRATION_ID = '008_inventory';
+const INVENTORY_MIGRATION_CHECKSUM =
+  'id|business_date|status|opened_by|opened_at|id|inventory_day_id|product_id|opening_quantity|id|inventory_day_id|product_id|kind|quantity_delta|source_type|source_id|created_by|created_at|reason';
+const SOLD_OUT_LABEL = 'ACABOU';
+const INVENTORY_DAY_OPEN = 'open';
 const REQUIRE_GUARDIAN_BELOW_AGE_KEY = 'require_guardian_below_age';
 const DEFAULT_REQUIRE_GUARDIAN_BELOW_AGE = 18;
 const E2E_OWNER_SUBJECT = 'e2e-owner';
@@ -201,6 +234,9 @@ const ACTION_ROLES = {
   'products.read': ['owner', 'staff'],
   'products.write': ['owner', 'staff'],
   'ad_hoc.create': ['owner'],
+  'inventory.read': ['owner', 'staff'],
+  'inventory.open': ['owner'],
+  'inventory.adjust': ['owner'],
 };
 const BACKUP_FILE_PREFIX = 'cantina-backup';
 const BACKUP_FOLDER_NAME = 'Cantina V2 AppScript E2E backups';
@@ -590,6 +626,9 @@ function resetE2EUnlocked() {
     PRODUCTS_SHEET,
     PRODUCT_PRICE_HISTORY_SHEET,
     AD_HOC_ITEMS_SHEET,
+    INVENTORY_DAYS_SHEET,
+    INVENTORY_OPENING_ITEMS_SHEET,
+    INVENTORY_MOVEMENTS_SHEET,
   ].forEach(function (name) {
     const sheet = spreadsheet.getSheetByName(name);
     if (sheet) {
@@ -619,6 +658,7 @@ function seedE2E(sessionToken) {
     seedE2EStudentsUnlocked();
     seedE2EGuardiansUnlocked();
     seedE2EProductsUnlocked();
+    seedE2EInventoryUnlocked();
     return {
       marker: E2E_SEED_MARKER,
       seeded: true,
@@ -650,6 +690,7 @@ function assertKnownMigrations(applied) {
     STUDENTS_MIGRATION_ID,
     GUARDIANS_MIGRATION_ID,
     PRODUCTS_MIGRATION_ID,
+    INVENTORY_MIGRATION_ID,
   ];
   applied.forEach(function (id) {
     if (catalog.indexOf(id) === -1) {
@@ -678,7 +719,8 @@ function setupSchema() {
     applied.indexOf(USERS_MIGRATION_ID) === -1 ||
     applied.indexOf(STUDENTS_MIGRATION_ID) === -1 ||
     applied.indexOf(GUARDIANS_MIGRATION_ID) === -1 ||
-    applied.indexOf(PRODUCTS_MIGRATION_ID) === -1;
+    applied.indexOf(PRODUCTS_MIGRATION_ID) === -1 ||
+    applied.indexOf(INVENTORY_MIGRATION_ID) === -1;
   let pendingCopy = null;
   if (pending) {
     try {
@@ -800,13 +842,34 @@ function setupSchema() {
       PRODUCT_PRICE_HISTORY_HEADERS,
     );
     getOrCreateSheet(spreadsheet, AD_HOC_ITEMS_SHEET, AD_HOC_ITEMS_HEADERS);
-    meta.appendRow(['schema_version', String(CURRENT_SCHEMA_VERSION)]);
+    meta.appendRow(['schema_version', '7']);
     migrations.appendRow([
       PRODUCTS_MIGRATION_ID,
       createdAt,
       CANTINA_APP_VERSION,
       PRODUCTS_MIGRATION_CHECKSUM,
       'Cria categorias, produtos, histórico de preço e itens avulsos',
+    ]);
+  }
+  if (applied.indexOf(INVENTORY_MIGRATION_ID) === -1) {
+    getOrCreateSheet(spreadsheet, INVENTORY_DAYS_SHEET, INVENTORY_DAYS_HEADERS);
+    getOrCreateSheet(
+      spreadsheet,
+      INVENTORY_OPENING_ITEMS_SHEET,
+      INVENTORY_OPENING_ITEMS_HEADERS,
+    );
+    getOrCreateSheet(
+      spreadsheet,
+      INVENTORY_MOVEMENTS_SHEET,
+      INVENTORY_MOVEMENTS_HEADERS,
+    );
+    meta.appendRow(['schema_version', String(CURRENT_SCHEMA_VERSION)]);
+    migrations.appendRow([
+      INVENTORY_MIGRATION_ID,
+      createdAt,
+      CANTINA_APP_VERSION,
+      INVENTORY_MIGRATION_CHECKSUM,
+      'Cria estoque diário, abertura e movimentos',
     ]);
   }
   if (pendingCopy) {
@@ -2799,4 +2862,340 @@ function listAdHocItems(sessionToken) {
       createdAt: record.created_at,
     };
   });
+}
+
+function parseOpeningQuantityGs(value) {
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) {
+    return value;
+  }
+  if (typeof value === 'string' && /^\d+$/.test(String(value).trim())) {
+    return Number(String(value).trim());
+  }
+  throw new Error(
+    'INVALID_OPENING_QUANTITY: A quantidade inicial precisa ser um número inteiro, zero ou maior.',
+  );
+}
+
+function parseQuantityDeltaGs(value) {
+  var parsed = null;
+  if (typeof value === 'number' && Number.isInteger(value)) {
+    parsed = value;
+  } else if (
+    typeof value === 'string' &&
+    /^-?\d+$/.test(String(value).trim())
+  ) {
+    parsed = Number(String(value).trim());
+  }
+  if (parsed === null || parsed === 0) {
+    throw new Error(
+      'INVALID_QUANTITY_DELTA: O ajuste precisa ser um número inteiro diferente de zero.',
+    );
+  }
+  return parsed;
+}
+
+function listInventoryDayRecords() {
+  return listSheetRecords(
+    openNamedSheet(INVENTORY_DAYS_SHEET, INVENTORY_DAYS_HEADERS),
+    INVENTORY_DAYS_HEADERS,
+  );
+}
+
+function listOpeningRecords() {
+  return listSheetRecords(
+    openNamedSheet(
+      INVENTORY_OPENING_ITEMS_SHEET,
+      INVENTORY_OPENING_ITEMS_HEADERS,
+    ),
+    INVENTORY_OPENING_ITEMS_HEADERS,
+  );
+}
+
+function listMovementRecords() {
+  return listSheetRecords(
+    openNamedSheet(INVENTORY_MOVEMENTS_SHEET, INVENTORY_MOVEMENTS_HEADERS),
+    INVENTORY_MOVEMENTS_HEADERS,
+  );
+}
+
+function trackedProductRecordsGs() {
+  return latestRecordsById(listProductRecords()).filter(function (product) {
+    return product.active === 'true' && product.stock_tracked === 'true';
+  });
+}
+
+function resolveBusinessDateGs(value) {
+  if (!value) {
+    return todayCivil();
+  }
+  if (!isCivilDate(String(value))) {
+    throw new Error(
+      'INVALID_CIVIL_DATE: Use uma data civil no formato AAAA-MM-DD.',
+    );
+  }
+  return String(value);
+}
+
+function findInventoryDayGs(businessDate) {
+  const days = latestRecordsById(listInventoryDayRecords()).filter(
+    function (day) {
+      return day.business_date === businessDate;
+    },
+  );
+  return days.length ? days[days.length - 1] : null;
+}
+
+function requireInventoryDayGs(businessDate) {
+  const day = findInventoryDayGs(businessDate);
+  if (!day) {
+    throw new Error(
+      'INVENTORY_DAY_NOT_OPEN: Abra o estoque do dia antes de continuar.',
+    );
+  }
+  return day;
+}
+
+function physicalForGs(dayId, productId) {
+  const opening = listOpeningRecords().filter(function (item) {
+    return item.inventory_day_id === dayId && item.product_id === productId;
+  })[0];
+  let physical = opening ? Number(opening.opening_quantity) : 0;
+  listMovementRecords()
+    .filter(function (item) {
+      return item.inventory_day_id === dayId && item.product_id === productId;
+    })
+    .forEach(function (item) {
+      physical += Number(item.quantity_delta);
+    });
+  return physical;
+}
+
+function quantityLabelGs(physical) {
+  return physical === 0 ? SOLD_OUT_LABEL : String(physical);
+}
+
+function toBalanceGs(dayId, opening, products) {
+  const product = products.filter(function (item) {
+    return item.id === opening.product_id;
+  })[0];
+  const physical = physicalForGs(dayId, opening.product_id);
+  return {
+    productId: opening.product_id,
+    productName: product ? product.name : '',
+    openingQuantity: Number(opening.opening_quantity),
+    physicalQuantity: physical,
+    reservedQuantity: 0,
+    availableQuantity: physical,
+    soldOut: physical === 0,
+    quantityLabel: quantityLabelGs(physical),
+  };
+}
+
+function listBalancesUnlocked(businessDate) {
+  const day = requireInventoryDayGs(businessDate);
+  const products = latestRecordsById(listProductRecords());
+  return {
+    businessDate: day.business_date,
+    status: INVENTORY_DAY_OPEN,
+    items: listOpeningRecords()
+      .filter(function (item) {
+        return item.inventory_day_id === day.id;
+      })
+      .map(function (opening) {
+        return toBalanceGs(day.id, opening, products);
+      }),
+  };
+}
+
+function seedE2EInventoryUnlocked() {
+  setupSchema();
+  const products = latestRecordsById(listProductRecords());
+  const coxinha = products.filter(function (item) {
+    return item.name === 'Coxinha';
+  })[0];
+  const suco = products.filter(function (item) {
+    return item.name === 'Suco de uva';
+  })[0];
+  if (!coxinha || !suco) {
+    throw new Error('DEMO_STOCK: produtos controlados ausentes.');
+  }
+  openInventoryDayUnlocked(Utilities.getUuid(), {
+    businessDate: todayCivil(),
+    items: [
+      { productId: coxinha.id, openingQuantity: 10 },
+      { productId: suco.id, openingQuantity: 0 },
+    ],
+  });
+}
+
+function openInventoryDayUnlocked(userId, payload) {
+  const businessDate = resolveBusinessDateGs(
+    payload && payload.businessDate ? payload.businessDate : todayCivil(),
+  );
+  if (findInventoryDayGs(businessDate)) {
+    throw new Error(
+      'INVENTORY_DAY_ALREADY_OPEN: O estoque deste dia já foi aberto.',
+    );
+  }
+  const tracked = trackedProductRecordsGs();
+  if (!tracked.length) {
+    throw new Error(
+      'INVENTORY_ITEMS_REQUIRED: Informe a quantidade inicial de cada produto que controla estoque.',
+    );
+  }
+  const items = payload && payload.items ? payload.items : [];
+  const seen = {};
+  const validated = [];
+  items.forEach(function (item) {
+    const productId = item && item.productId ? String(item.productId) : '';
+    if (!REQUEST_ID_PATTERN.test(productId) || seen[productId]) {
+      throw new Error(
+        'PRODUCT_STOCK_NOT_TRACKED: Só produtos que controlam estoque entram no estoque do dia.',
+      );
+    }
+    const match = tracked.filter(function (product) {
+      return product.id === productId;
+    })[0];
+    if (!match) {
+      throw new Error(
+        'PRODUCT_STOCK_NOT_TRACKED: Só produtos que controlam estoque entram no estoque do dia.',
+      );
+    }
+    seen[productId] = true;
+    validated.push({
+      product_id: productId,
+      opening_quantity: String(
+        parseOpeningQuantityGs(item && item.openingQuantity),
+      ),
+    });
+  });
+  if (Object.keys(seen).length !== tracked.length) {
+    throw new Error(
+      'INVENTORY_ITEMS_REQUIRED: Informe a quantidade inicial de cada produto que controla estoque.',
+    );
+  }
+  const now = new Date().toISOString();
+  const dayId = Utilities.getUuid();
+  openNamedSheet(INVENTORY_DAYS_SHEET, INVENTORY_DAYS_HEADERS).appendRow([
+    dayId,
+    businessDate,
+    INVENTORY_DAY_OPEN,
+    userId,
+    now,
+  ]);
+  const openings = openNamedSheet(
+    INVENTORY_OPENING_ITEMS_SHEET,
+    INVENTORY_OPENING_ITEMS_HEADERS,
+  );
+  validated.forEach(function (item) {
+    openings.appendRow([
+      Utilities.getUuid(),
+      dayId,
+      item.product_id,
+      item.opening_quantity,
+    ]);
+  });
+  return listBalancesUnlocked(businessDate);
+}
+
+function getInventoryDay(sessionToken, businessDate) {
+  requireAction(sessionToken, 'inventory.read');
+  const day = findInventoryDayGs(resolveBusinessDateGs(businessDate));
+  if (!day) {
+    return null;
+  }
+  return {
+    id: day.id,
+    businessDate: day.business_date,
+    status: INVENTORY_DAY_OPEN,
+    openedAt: day.opened_at,
+  };
+}
+
+function openInventoryDay(sessionToken, payload) {
+  const session = requireAction(sessionToken, 'inventory.open');
+  return withScriptLock(function () {
+    setupSchema();
+    return openInventoryDayUnlocked(session.user_id, payload || {});
+  });
+}
+
+function listInventoryBalances(sessionToken, businessDate) {
+  requireAction(sessionToken, 'inventory.read');
+  return listBalancesUnlocked(resolveBusinessDateGs(businessDate));
+}
+
+function adjustInventory(sessionToken, payload) {
+  const session = requireAction(sessionToken, 'inventory.adjust');
+  return withScriptLock(function () {
+    setupSchema();
+    const businessDate = resolveBusinessDateGs(payload && payload.businessDate);
+    const day = requireInventoryDayGs(businessDate);
+    const productId =
+      payload && payload.productId ? String(payload.productId) : '';
+    if (!REQUEST_ID_PATTERN.test(productId)) {
+      throw new Error(
+        'INVALID_ID: ID deve ser UUID imutável, nunca número da linha.',
+      );
+    }
+    const product = latestProductById(productId);
+    const current = physicalForGs(day.id, productId);
+    const delta = parseQuantityDeltaGs(payload && payload.quantityDelta);
+    const reason = String((payload && payload.reason) || '').trim();
+    if (reason.length < 2) {
+      throw new Error(
+        'INVENTORY_REASON_REQUIRED: Informe o motivo do ajuste de estoque.',
+      );
+    }
+    if (product.stock_tracked !== 'true') {
+      throw new Error(
+        'PRODUCT_STOCK_NOT_TRACKED: Só produtos que controlam estoque entram no estoque do dia.',
+      );
+    }
+    if (current + delta < 0) {
+      throw new Error('INSUFFICIENT_STOCK: O estoque não pode ficar negativo.');
+    }
+    const movementId = Utilities.getUuid();
+    const now = new Date().toISOString();
+    openNamedSheet(
+      INVENTORY_MOVEMENTS_SHEET,
+      INVENTORY_MOVEMENTS_HEADERS,
+    ).appendRow([
+      movementId,
+      day.id,
+      productId,
+      'adjustment',
+      String(delta),
+      'manual',
+      movementId,
+      session.user_id,
+      now,
+      reason,
+    ]);
+    return listBalancesUnlocked(businessDate);
+  });
+}
+
+function listInventoryMovements(sessionToken, businessDate) {
+  requireAction(sessionToken, 'inventory.read');
+  const day = requireInventoryDayGs(resolveBusinessDateGs(businessDate));
+  const products = latestRecordsById(listProductRecords());
+  return listMovementRecords()
+    .filter(function (item) {
+      return item.inventory_day_id === day.id;
+    })
+    .map(function (item) {
+      const product = products.filter(function (entry) {
+        return entry.id === item.product_id;
+      })[0];
+      return {
+        id: item.id,
+        productId: item.product_id,
+        productName: product ? product.name : '',
+        kind: item.kind,
+        quantityDelta: Number(item.quantity_delta),
+        reason: item.reason,
+        createdAt: item.created_at,
+      };
+    });
 }

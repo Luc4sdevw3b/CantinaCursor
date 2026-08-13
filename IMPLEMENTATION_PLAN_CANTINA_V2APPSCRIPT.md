@@ -169,6 +169,8 @@ Estoque diário é a Fase 11.
 - atual;
 - `ACABOU`.
 
+Carrinho e PIX são a Fase 12.
+
 ## Fase 12 — Carrinho e PIX
 
 - múltiplos itens;

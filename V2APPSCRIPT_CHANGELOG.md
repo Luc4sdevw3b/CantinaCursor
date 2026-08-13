@@ -9,6 +9,53 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-13 14:05 — Implementada a Fase 11: estoque diário
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 11
+
+### Pedido / objetivo
+
+- Dar git push nos commits pendentes e rodar a Fase 11: abertura do dia, quantidade inicial, ledger, ajuste, quantidade atual e `ACABOU`.
+
+### Tentativa / implementação
+
+- Os 7 commits locais da Fase 10 e anteriores foram enviados para `origin/main`.
+- Migration `008_inventory` cria `_inventory_days`, `_inventory_opening_items` e `_inventory_movements` (schema version 8). A 007 continua gravando a versão 7. Abertura e movimentos têm UUID próprio; quantidade é inteira.
+- A dona abre o dia informando a quantidade inicial de cada produto `stock_tracked`. Físico = abertura + movimentos. Ajuste é só da dona, com motivo, e não deixa o estoque negativo. Zero aparece `ACABOU`. Reservado ainda é 0.
+- Dona e funcionário leem o estoque. `getHealth` segue público.
+
+### Resultado
+
+- Fase 11 concluída sobre o ambiente E2E isolado e o preview local.
+- Commits da Fase 10 e da Fase 11 foram enviados ao GitHub.
+- Nenhum ID Google, token, telefone real ou dado de planilha foi versionado.
+
+### Diferenças do pedido
+
+- Vendas (baixa atômica), reservas reais, fiado, crédito como movimento e caixa permanecem na Fase 12 em diante. O seed usa Coxinha 10 e Suco de uva 0 (`ACABOU`). Brigadeiro não controla estoque.
+
+### Impacto técnico
+
+- domínio de quantidade inteira, abertura e ajuste
+- `MemoryStock` + `AppApi` de estoque; `Code.gs` com as mesmas regras
+- UI após o login: lista do dia e formulário de ajuste só da dona; textos de health do smoke inalterados
+- README, Implementation Plan e referências
+
+### Testes
+
+- `npm run format:check` / `lint` / `typecheck` / `version:check` / `validate:skill`: passou.
+- `npm test`: 125 testes passaram.
+- `npm run build`: passou.
+- `npm run test:e2e:local`: 14 testes Chromium passaram.
+- `npm run test:e2e:remote`: 1 teste Chromium passou (health público, sem login). A primeira chamada no deploy novo estourou o timeout enquanto aplicava a migration 008; a repetição passou.
+
+### Pendências / próxima versão
+
+- Não iniciar a Fase 12 (carrinho e PIX) sem pedido explícito.
+
 ## 2026-08-13 13:56 — Implementada a Fase 10: produtos e categorias
 
 **Origem:** Pedido do usuário

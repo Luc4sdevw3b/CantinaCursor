@@ -2,7 +2,12 @@ import './styles.css';
 import { APP_VERSION } from './app-version';
 import { roleLabel, type UserRole } from './domain/auth';
 import { parseReaisToCents } from './domain/money';
-import type { AppSession, Product, StudentSummary } from './web/shared/app-api';
+import type {
+  AppSession,
+  InventoryBalanceItem,
+  Product,
+  StudentSummary,
+} from './web/shared/app-api';
 import { createAppApi } from './web/shared/create-app-api';
 import {
   applyTheme,
@@ -60,10 +65,10 @@ app.innerHTML = `
     <section class="next-step" aria-labelledby="next-step-title">
       <p class="step-number">01</p>
       <div>
-        <h2 id="next-step-title">Produtos e categorias</h2>
-        <p>Preço em centavos, desconto, estoque, reserva e item avulso só da dona.</p>
+        <h2 id="next-step-title">Estoque diário</h2>
+        <p>Abertura, quantidade atual, ajuste da dona e ACABOU quando zera.</p>
       </div>
-      <span class="phase-badge">Fase 10</span>
+      <span class="phase-badge">Fase 11</span>
     </section>
 
     <section class="students-panel" id="students-panel" hidden>
@@ -179,6 +184,27 @@ app.innerHTML = `
       </div>
     </section>
 
+    <section class="students-panel" id="inventory-panel" hidden>
+      <h2>Estoque do dia</h2>
+      <p id="inventory-status">Entre para ver o estoque.</p>
+      <ul id="inventory-list"></ul>
+      <form id="inventory-adjust-form">
+        <label>
+          Produto
+          <select id="inventory-adjust-product"></select>
+        </label>
+        <label>
+          Ajuste
+          <input id="inventory-adjust-delta" inputmode="numeric" placeholder="-1" required />
+        </label>
+        <label>
+          Motivo
+          <input id="inventory-adjust-reason" required />
+        </label>
+        <button type="submit">Ajustar estoque</button>
+      </form>
+    </section>
+
     <footer>
       <span>Versão ${APP_VERSION}</span>
       <span>Apps Script + Sheets + Drive</span>
@@ -254,6 +280,7 @@ async function showAuthenticated(session: AppSession | null): Promise<void> {
   await renderStudents(Boolean(session));
   await renderFamily(session);
   await renderProducts(session);
+  await renderInventory(session);
 }
 
 document.querySelector('#login-owner')?.addEventListener('click', () => {
@@ -519,6 +546,66 @@ async function renderProducts(session: AppSession | null): Promise<void> {
   }
 }
 
+const inventoryPanel = document.querySelector('#inventory-panel');
+const inventoryStatus = document.querySelector('#inventory-status');
+const inventoryList = document.querySelector('#inventory-list');
+const inventoryAdjustForm = document.querySelector('#inventory-adjust-form');
+const inventoryAdjustProduct = document.querySelector(
+  '#inventory-adjust-product',
+);
+
+function inventoryLine(item: InventoryBalanceItem): string {
+  return `${item.productName} • ${item.quantityLabel}`;
+}
+
+async function renderInventory(session: AppSession | null): Promise<void> {
+  if (
+    !(inventoryPanel instanceof HTMLElement) ||
+    !inventoryStatus ||
+    !(inventoryList instanceof HTMLElement)
+  ) {
+    return;
+  }
+  inventoryPanel.hidden = !session;
+  inventoryList.replaceChildren();
+  if (inventoryAdjustForm instanceof HTMLElement) {
+    inventoryAdjustForm.hidden = true;
+  }
+  if (!session) {
+    inventoryStatus.textContent = 'Entre para ver o estoque.';
+    return;
+  }
+
+  try {
+    const balances = await api.listInventoryBalances();
+    inventoryStatus.textContent = `Estoque de ${balances.businessDate}.`;
+    if (
+      session.role === 'owner' &&
+      inventoryAdjustProduct instanceof HTMLSelectElement &&
+      inventoryAdjustForm instanceof HTMLElement
+    ) {
+      inventoryAdjustForm.hidden = false;
+      inventoryAdjustProduct.replaceChildren();
+      for (const item of balances.items) {
+        const option = document.createElement('option');
+        option.value = item.productId;
+        option.textContent = item.productName;
+        inventoryAdjustProduct.append(option);
+      }
+    }
+    for (const item of balances.items) {
+      const row = document.createElement('li');
+      row.textContent = inventoryLine(item);
+      inventoryList.append(row);
+    }
+  } catch (error: unknown) {
+    inventoryStatus.textContent =
+      error instanceof Error
+        ? error.message.replace(/^[A-Z_]+:\s*/, '')
+        : 'Não foi possível carregar o estoque.';
+  }
+}
+
 document.querySelector('#student-form')?.addEventListener('submit', (event) => {
   event.preventDefault();
   const name = document.querySelector('#student-name');
@@ -719,6 +806,40 @@ document.querySelector('#ad-hoc-form')?.addEventListener('submit', (event) => {
     });
 });
 
+document
+  .querySelector('#inventory-adjust-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const delta = document.querySelector('#inventory-adjust-delta');
+    const reason = document.querySelector('#inventory-adjust-reason');
+    if (
+      !(delta instanceof HTMLInputElement) ||
+      !(reason instanceof HTMLInputElement) ||
+      !(inventoryAdjustProduct instanceof HTMLSelectElement)
+    ) {
+      return;
+    }
+    void api
+      .adjustInventory({
+        productId: inventoryAdjustProduct.value,
+        quantityDelta: Number(delta.value),
+        reason: reason.value,
+      })
+      .then(() => {
+        delta.value = '';
+        reason.value = '';
+        return api.getSession().then(renderInventory);
+      })
+      .catch((error: unknown) => {
+        if (inventoryStatus) {
+          inventoryStatus.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível ajustar o estoque.';
+        }
+      });
+  });
+
 void api
   .getHealth()
   .then(async (health) => {
@@ -745,6 +866,7 @@ void api
     await renderStudents(Boolean(session));
     await renderFamily(session);
     await renderProducts(session);
+    await renderInventory(session);
   })
   .catch(() => {
     const status = document.querySelector('#health-status');

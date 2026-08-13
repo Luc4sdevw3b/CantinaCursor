@@ -99,7 +99,7 @@ Turmas pertencem a um ano letivo. Histórico de matrícula fica em `_student_enr
 
 `_product_categories`: id, name, sort_order, active, created_at. Categorias iniciais: Salgados, Bebidas, Doces, Outros.
 
-`_products`: id, category_id, name, price_cents, discount_allowed, stock_tracked, reservable, active, created_at, updated_at. Preço em centavos inteiros. Inativo preserva histórico. Flags de estoque e reserva ainda não abrem estoque diário nem reservas.
+`_products`: id, category_id, name, price_cents, discount_allowed, stock_tracked, reservable, active, created_at, updated_at. Preço em centavos inteiros. Inativo preserva histórico. Só `stock_tracked=true` entra na abertura do dia.
 
 `_product_price_history`: id, product_id, price_cents, started_at, ended_at, created_by. Append-oriented; troca de preço fecha o período anterior e abre um id novo. Não reescreve venda antiga (vendas ainda não existem).
 
@@ -147,14 +147,11 @@ Saldo = soma dos movimentos.
 
 ## Estoque
 
-`_inventory_days`: id, business_date, status, opened_by, opened_at.
+`_inventory_days`: id, business_date, status, opened_by, opened_at. Um dia civil aberto por data. Status inicial: `open`.
 
-`_inventory_opening_items`: inventory_day_id, product_id, opening_quantity.
+`_inventory_opening_items`: id, inventory_day_id, product_id, opening_quantity. IDs UUID; quantidade inteira, zero ou maior. A dona informa a abertura de cada produto controlado.
 
-`_inventory_movements`: inventory_day_id, product_id, kind, quantity_delta, source_type, source_id, created_by, created_at, reason.
-
-Físico = abertura + movimentos.
-Disponível = físico - reservado ativo.
+`_inventory_movements`: id, inventory_day_id, product_id, kind, quantity_delta, source_type, source_id, created_by, created_at, reason. Ajuste (`kind=adjustment`) é só da dona, com motivo. Físico = abertura + movimentos. Zero aparece `ACABOU`. Disponível = físico - reservado ativo (reservado ainda é 0).
 
 ## Caixa
 

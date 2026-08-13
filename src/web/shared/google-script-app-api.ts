@@ -14,7 +14,12 @@ import type {
   Guardian,
   GuardianProfileFields,
   GuardianSettings,
+  InventoryBalances,
+  InventoryDay,
+  InventoryMovement,
   LinkGuardianInput,
+  OpenInventoryDayInput,
+  AdjustInventoryInput,
   Product,
   ProductCategory,
   ProductFields,
@@ -78,6 +83,11 @@ export interface GoogleScriptRunner {
   listProductPriceHistory(token: string, productId: string): void;
   createAdHocItem(token: string, payload: unknown): void;
   listAdHocItems(token: string): void;
+  getInventoryDay(token: string, businessDate?: string): void;
+  openInventoryDay(token: string, payload: unknown): void;
+  listInventoryBalances(token: string, businessDate?: string): void;
+  adjustInventory(token: string, payload: unknown): void;
+  listInventoryMovements(token: string, businessDate?: string): void;
 }
 
 export type SessionTokenStorage = Pick<
@@ -466,6 +476,42 @@ export class GoogleScriptAppApi implements AppApi {
 
   listAdHocItems(): Promise<AdHocItem[]> {
     return this.callWithToken((runner, token) => runner.listAdHocItems(token));
+  }
+
+  getInventoryDay(businessDate?: string): Promise<InventoryDay | null> {
+    return this.callWithToken((runner, token) =>
+      runner.getInventoryDay(token, businessDate),
+    );
+  }
+
+  openInventoryDay(input: OpenInventoryDayInput): Promise<InventoryBalances> {
+    return this.callWithToken((runner, token) =>
+      runner.openInventoryDay(token, {
+        ...input,
+        requestId: crypto.randomUUID(),
+      }),
+    );
+  }
+
+  listInventoryBalances(businessDate?: string): Promise<InventoryBalances> {
+    return this.callWithToken((runner, token) =>
+      runner.listInventoryBalances(token, businessDate),
+    );
+  }
+
+  adjustInventory(input: AdjustInventoryInput): Promise<InventoryBalances> {
+    return this.callWithToken((runner, token) =>
+      runner.adjustInventory(token, {
+        ...input,
+        requestId: crypto.randomUUID(),
+      }),
+    );
+  }
+
+  listInventoryMovements(businessDate?: string): Promise<InventoryMovement[]> {
+    return this.callWithToken((runner, token) =>
+      runner.listInventoryMovements(token, businessDate),
+    );
   }
 
   private callWithToken<T>(

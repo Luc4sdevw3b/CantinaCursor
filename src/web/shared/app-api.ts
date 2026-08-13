@@ -201,9 +201,55 @@ export interface AdHocItem {
   createdAt: string;
 }
 
+export interface InventoryDay {
+  id: string;
+  businessDate: string;
+  status: 'open';
+  openedAt: string;
+}
+
+export interface InventoryBalanceItem {
+  productId: string;
+  productName: string;
+  openingQuantity: number;
+  physicalQuantity: number;
+  reservedQuantity: number;
+  availableQuantity: number;
+  soldOut: boolean;
+  quantityLabel: string;
+}
+
+export interface InventoryBalances {
+  businessDate: string;
+  status: 'open';
+  items: InventoryBalanceItem[];
+}
+
+export interface OpenInventoryDayInput {
+  businessDate: string;
+  items: Array<{ productId: string; openingQuantity: number }>;
+}
+
+export interface AdjustInventoryInput {
+  productId: string;
+  quantityDelta: number;
+  reason: string;
+  businessDate?: string;
+}
+
+export interface InventoryMovement {
+  id: string;
+  productId: string;
+  productName: string;
+  kind: string;
+  quantityDelta: number;
+  reason: string;
+  createdAt: string;
+}
+
 /**
- * Contrato técnico da Fase 10.
- * Sem vendas, estoque diário, fiado, crédito como movimento, caixa, reservas ou envio de WhatsApp.
+ * Contrato técnico da Fase 11.
+ * Sem vendas, fiado, crédito como movimento, caixa, reservas reais ou envio de WhatsApp.
  */
 export interface AppApi {
   getHealth(): Promise<AppHealth>;
@@ -268,4 +314,9 @@ export interface AppApi {
     priceCents: number;
   }): Promise<AdHocItem>;
   listAdHocItems(): Promise<AdHocItem[]>;
+  getInventoryDay(businessDate?: string): Promise<InventoryDay | null>;
+  openInventoryDay(input: OpenInventoryDayInput): Promise<InventoryBalances>;
+  listInventoryBalances(businessDate?: string): Promise<InventoryBalances>;
+  adjustInventory(input: AdjustInventoryInput): Promise<InventoryBalances>;
+  listInventoryMovements(businessDate?: string): Promise<InventoryMovement[]>;
 }

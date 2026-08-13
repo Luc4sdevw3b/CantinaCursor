@@ -210,6 +210,45 @@ interface ServerContext {
     name: string;
     priceCents: number;
   }>;
+  getInventoryDay(
+    sessionToken: string,
+    businessDate?: string,
+  ): {
+    id: string;
+    businessDate: string;
+    status: string;
+  } | null;
+  listInventoryBalances(
+    sessionToken: string,
+    businessDate?: string,
+  ): {
+    businessDate: string;
+    items: Array<{
+      productName: string;
+      physicalQuantity: number;
+      quantityLabel: string;
+      soldOut: boolean;
+    }>;
+  };
+  adjustInventory(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): {
+    items: Array<{
+      productName: string;
+      physicalQuantity: number;
+      quantityLabel: string;
+    }>;
+  };
+  listInventoryMovements(
+    sessionToken: string,
+    businessDate?: string,
+  ): Array<{
+    productName: string;
+    quantityDelta: number;
+    reason: string;
+    kind: string;
+  }>;
 }
 
 interface DriveMockFile {
@@ -517,7 +556,7 @@ describe('Apps Script E2E server', () => {
     expect(health.status).toBe('ready');
     expect(health.adapter).toBe('google-script');
     expect(health.spreadsheetConfigured).toBe(true);
-    expect(health.schemaVersion).toBe(7);
+    expect(health.schemaVersion).toBe(8);
     expect(health.backupConfigured).toBe(true);
     expect(health.lastBackupAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(JSON.stringify(health)).not.toContain('private-e2e-sheet-id');
@@ -600,7 +639,7 @@ describe('Apps Script E2E server', () => {
     const second = server.setupSchema();
 
     expect(first).toEqual(second);
-    expect(first.schemaVersion).toBe(7);
+    expect(first.schemaVersion).toBe(8);
     expect(first.appliedMigrations).toEqual([
       '001_foundation',
       '002_operation_requests',
@@ -609,6 +648,7 @@ describe('Apps Script E2E server', () => {
       '005_students',
       '006_guardians',
       '007_products',
+      '008_inventory',
     ]);
     expect(sheets.get('_meta')?.rows[0]).toEqual(['key', 'value']);
     expect(sheets.get('_schema_migrations')?.rows[0]).toEqual([
@@ -823,7 +863,7 @@ describe('Apps Script E2E server', () => {
     const backup = server.runBackup(token, 'manual');
 
     expect(backup.reason).toBe('manual');
-    expect(backup.schemaVersion).toBe(7);
+    expect(backup.schemaVersion).toBe(8);
     expect(JSON.stringify(backup)).not.toContain('e2e-sheet-id');
     expect(JSON.stringify(backup)).not.toContain('e2e-backup-folder');
     expect(projectTriggers).toEqual(['runScheduledBackup']);
@@ -1193,5 +1233,70 @@ describe('Apps Script E2E server', () => {
       server.listProducts(owner).some((item) => item.name === 'Pastel da hora'),
     ).toBe(false);
     expect(() => server.listProducts('')).toThrow('UNAUTHENTICATED');
+  });
+
+  it('opens daily stock, shows ACABOU at zero and keeps adjustments to the owner', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const balances = server.listInventoryBalances(owner);
+    const coxinha = balances.items.find(
+      (item) => item.productName === 'Coxinha',
+    );
+    const suco = balances.items.find(
+      (item) => item.productName === 'Suco de uva',
+    );
+
+    if (!coxinha || !suco) {
+      throw new Error('estoque E2E incompleto');
+    }
+    expect(coxinha.physicalQuantity).toBe(10);
+    expect(coxinha.quantityLabel).toBe('10');
+    expect(suco.soldOut).toBe(true);
+    expect(suco.quantityLabel).toBe('ACABOU');
+    expect(
+      balances.items.some((item) => item.productName === 'Brigadeiro'),
+    ).toBe(false);
+
+    const staff = server.loginE2E('staff').token;
+    expect(server.listInventoryBalances(staff).items).toHaveLength(2);
+    expect(() =>
+      server.adjustInventory(staff, {
+        productId: server
+          .listProducts(staff)
+          .find((item) => item.name === 'Coxinha')?.id,
+        quantityDelta: -1,
+        reason: 'quebra',
+      }),
+    ).toThrow('FORBIDDEN');
+
+    const coxinhaId = server
+      .listProducts(owner)
+      .find((item) => item.name === 'Coxinha')?.id;
+    const adjusted = server.adjustInventory(owner, {
+      productId: coxinhaId,
+      quantityDelta: -3,
+      reason: 'quebra',
+    });
+    expect(
+      adjusted.items.find((item) => item.productName === 'Coxinha')
+        ?.physicalQuantity,
+    ).toBe(7);
+    expect(
+      server
+        .listInventoryMovements(owner)
+        .some(
+          (item) =>
+            item.productName === 'Coxinha' &&
+            item.quantityDelta === -3 &&
+            item.reason === 'quebra' &&
+            item.kind === 'adjustment',
+        ),
+    ).toBe(true);
+    expect(() => server.listInventoryBalances('')).toThrow('UNAUTHENTICATED');
   });
 });

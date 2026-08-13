@@ -2,7 +2,7 @@
 
 Aplicação web da cantina, planejada para Google Apps Script + Google Sheets + Google Drive.
 
-O projeto está na Fase 10 (`0.1.0-dev`): produtos e categorias, com preço em centavos, histórico de preço e item avulso só da dona. Responsáveis, irmãos, ano letivo, turmas e alunos já estão no cadastro.
+O projeto está na Fase 11 (`0.1.0-dev`): estoque diário com abertura, ledger, ajuste da dona e `ACABOU` quando zera. O cardápio, responsáveis e alunos já estão no cadastro.
 
 Consulte:
 
@@ -74,7 +74,7 @@ clasp deployments
 E2E_BASE_URL='https://script.google.com/macros/s/SEU_DEPLOYMENT_ID/exec' npm run test:e2e:remote
 ```
 
-O primeiro `getHealth` configura `ENVIRONMENT=E2E`, aplica o schema até produtos e tenta um backup pré-migration na pasta E2E do Drive. `getHealth` continua público. Cadastro de alunos, responsáveis e produtos exige sessão. Dona e funcionário leem/escrevem o cardápio; só a dona registra item avulso. Só a dona altera a idade para pedir responsável. `resetE2E` / `seedE2E` / backup / restore exigem sessão de dona, recusam qualquer ambiente que não seja E2E, inclusive PROD, e usam `LockService`. Restore não mescla automaticamente. `loginE2E` é fixture só do E2E, não é backdoor de PROD. WhatsApp nesta fase é só uma flag; não há envio. Estoque diário, vendas e reservas reais ficam para fases seguintes.
+O primeiro `getHealth` configura `ENVIRONMENT=E2E`, aplica o schema até estoque diário e tenta um backup pré-migration na pasta E2E do Drive. `getHealth` continua público. Cadastro de alunos, responsáveis, produtos e estoque exige sessão. Dona e funcionário leem o estoque; só a dona abre o dia e faz ajuste com motivo. Dona e funcionário leem/escrevem o cardápio; só a dona registra item avulso. Só a dona altera a idade para pedir responsável. `resetE2E` / `seedE2E` / backup / restore exigem sessão de dona, recusam qualquer ambiente que não seja E2E, inclusive PROD, e usam `LockService`. Restore não mescla automaticamente. `loginE2E` é fixture só do E2E, não é backdoor de PROD. WhatsApp nesta fase é só uma flag; não há envio. Vendas, reservas reais, fiado e caixa ficam para fases seguintes.
 
 Validação completa da fundação (sem Google):
 

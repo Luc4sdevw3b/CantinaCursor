@@ -31,6 +31,10 @@ import {
   PRODUCTS_SHEET,
   PRODUCT_PRICE_HISTORY_SHEET,
   AD_HOC_ITEMS_SHEET,
+  INVENTORY_MIGRATION_ID,
+  INVENTORY_DAYS_SHEET,
+  INVENTORY_OPENING_ITEMS_SHEET,
+  INVENTORY_MOVEMENTS_SHEET,
 } from './schema';
 import { deserializeRecord, serializeRecord } from './serialize';
 import { ensureSheet } from './ensure-sheet';
@@ -244,6 +248,33 @@ export function setupSchema(
       const adHoc = ensureSheet(input.spreadsheet, AD_HOC_ITEMS_SHEET);
       if (!adHoc.ok) {
         return err(adHoc.error);
+      }
+      meta.data.appendRow(
+        serializeRecord(META_SHEET.headers, {
+          key: 'schema_version',
+          value: '7',
+        }),
+      );
+    }
+
+    if (migration.id === INVENTORY_MIGRATION_ID) {
+      const days = ensureSheet(input.spreadsheet, INVENTORY_DAYS_SHEET);
+      if (!days.ok) {
+        return err(days.error);
+      }
+      const openings = ensureSheet(
+        input.spreadsheet,
+        INVENTORY_OPENING_ITEMS_SHEET,
+      );
+      if (!openings.ok) {
+        return err(openings.error);
+      }
+      const movements = ensureSheet(
+        input.spreadsheet,
+        INVENTORY_MOVEMENTS_SHEET,
+      );
+      if (!movements.ok) {
+        return err(movements.error);
       }
       meta.data.appendRow(
         serializeRecord(META_SHEET.headers, {

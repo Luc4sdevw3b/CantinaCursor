@@ -18,6 +18,9 @@ export const AUTH_ACTIONS = [
   'products.read',
   'products.write',
   'ad_hoc.create',
+  'inventory.read',
+  'inventory.open',
+  'inventory.adjust',
 ] as const;
 export type AuthAction = (typeof AUTH_ACTIONS)[number];
 
@@ -38,6 +41,9 @@ export const ACTION_ROLES: Record<AuthAction, readonly UserRole[]> = {
   'products.read': ['owner', 'staff'],
   'products.write': ['owner', 'staff'],
   'ad_hoc.create': ['owner'],
+  'inventory.read': ['owner', 'staff'],
+  'inventory.open': ['owner'],
+  'inventory.adjust': ['owner'],
 };
 
 export const E2E_OWNER_SUBJECT = 'e2e-owner';

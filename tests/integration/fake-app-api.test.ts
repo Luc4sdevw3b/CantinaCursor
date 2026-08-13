@@ -215,4 +215,56 @@ describe('FakeAppApi', () => {
       (await api.listProducts()).some((item) => item.name === 'Pastel da hora'),
     ).toBe(false);
   });
+
+  it('opens demo stock, labels zero as ACABOU and keeps adjustments to the owner', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const balances = await api.listInventoryBalances();
+    const coxinha = balances.items.find(
+      (item) => item.productName === 'Coxinha',
+    );
+    const suco = balances.items.find(
+      (item) => item.productName === 'Suco de uva',
+    );
+
+    if (!coxinha || !suco) {
+      throw new Error('estoque local incompleto');
+    }
+    expect(coxinha.physicalQuantity).toBe(10);
+    expect(coxinha.quantityLabel).toBe('10');
+    expect(suco.soldOut).toBe(true);
+    expect(suco.quantityLabel).toBe('ACABOU');
+    expect(
+      balances.items.some((item) => item.productName === 'Brigadeiro'),
+    ).toBe(false);
+
+    await api.loginE2E('staff');
+    expect((await api.listInventoryBalances()).items).toHaveLength(2);
+    await expect(
+      api.adjustInventory({
+        productId: coxinha.productId,
+        quantityDelta: -1,
+        reason: 'quebra',
+      }),
+    ).rejects.toThrow('FORBIDDEN');
+
+    await api.loginE2E('owner');
+    const adjusted = await api.adjustInventory({
+      productId: coxinha.productId,
+      quantityDelta: -3,
+      reason: 'quebra',
+    });
+    expect(
+      adjusted.items.find((item) => item.productName === 'Coxinha')
+        ?.physicalQuantity,
+    ).toBe(7);
+    expect(
+      (await api.listInventoryMovements()).some(
+        (item) =>
+          item.quantityDelta === -3 &&
+          item.reason === 'quebra' &&
+          item.kind === 'adjustment',
+      ),
+    ).toBe(true);
+  });
 });

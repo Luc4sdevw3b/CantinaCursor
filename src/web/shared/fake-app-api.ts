@@ -3,6 +3,7 @@ import { isUserRole, type AuthAction, type UserRole } from '../../domain/auth';
 import { authorize } from '../../domain/authorize';
 import type { AppError } from '../../domain/result';
 import { MemoryCatalog } from '../../server/products/memory-catalog';
+import { MemoryStock } from '../../server/inventory/memory-stock';
 import { MemoryRoster } from '../../server/students/memory-roster';
 import type {
   AdHocItem,
@@ -17,7 +18,12 @@ import type {
   Guardian,
   GuardianProfileFields,
   GuardianSettings,
+  InventoryBalances,
+  InventoryDay,
+  InventoryMovement,
   LinkGuardianInput,
+  OpenInventoryDayInput,
+  AdjustInventoryInput,
   Product,
   ProductCategory,
   ProductFields,
@@ -58,6 +64,10 @@ export class FakeAppApi implements AppApi {
   private readonly catalog = new MemoryCatalog(
     () => '2026-08-13T16:00:00.000Z',
   );
+  private readonly stock = new MemoryStock(
+    this.catalog,
+    () => '2026-08-13T16:00:00.000Z',
+  );
 
   async getHealth(): Promise<AppHealth> {
     return { ...LOCAL_HEALTH };
@@ -74,6 +84,7 @@ export class FakeAppApi implements AppApi {
     this.session = { role };
     this.roster.ensureDemoRoster();
     this.catalog.ensureDemoCatalog();
+    this.stock.ensureDemoStock();
     return { role };
   }
 
@@ -276,6 +287,39 @@ export class FakeAppApi implements AppApi {
   async listAdHocItems(): Promise<AdHocItem[]> {
     this.assertAction('ad_hoc.create');
     return throwResult(this.catalog.listAdHocItems());
+  }
+
+  async getInventoryDay(businessDate?: string): Promise<InventoryDay | null> {
+    this.assertAction('inventory.read');
+    return throwResult(this.stock.getDay(businessDate));
+  }
+
+  async openInventoryDay(
+    input: OpenInventoryDayInput,
+  ): Promise<InventoryBalances> {
+    this.assertAction('inventory.open');
+    return throwResult(this.stock.openDay(input));
+  }
+
+  async listInventoryBalances(
+    businessDate?: string,
+  ): Promise<InventoryBalances> {
+    this.assertAction('inventory.read');
+    return throwResult(this.stock.listBalances(businessDate));
+  }
+
+  async adjustInventory(
+    input: AdjustInventoryInput,
+  ): Promise<InventoryBalances> {
+    this.assertAction('inventory.adjust');
+    return throwResult(this.stock.adjust(input));
+  }
+
+  async listInventoryMovements(
+    businessDate?: string,
+  ): Promise<InventoryMovement[]> {
+    this.assertAction('inventory.read');
+    return throwResult(this.stock.listMovements(businessDate));
   }
 
   private assertSession(): void {

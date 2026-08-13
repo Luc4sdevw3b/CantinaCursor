@@ -14,6 +14,10 @@ import {
   PRODUCT_CATEGORIES_SHEET,
   PRODUCT_PRICE_HISTORY_SHEET,
   AD_HOC_ITEMS_SHEET,
+  INVENTORY_MIGRATION_ID,
+  INVENTORY_DAYS_SHEET,
+  INVENTORY_OPENING_ITEMS_SHEET,
+  INVENTORY_MOVEMENTS_SHEET,
   SCHOOL_YEARS_SHEET,
   SESSIONS_SHEET,
   SETTINGS_SHEET,
@@ -92,6 +96,16 @@ export const PRODUCTS_MIGRATION: Migration = {
   ]),
 };
 
+export const INVENTORY_MIGRATION: Migration = {
+  id: INVENTORY_MIGRATION_ID,
+  description: 'Cria estoque diário, abertura e movimentos',
+  checksum: checksumHeaders([
+    ...INVENTORY_DAYS_SHEET.headers,
+    ...INVENTORY_OPENING_ITEMS_SHEET.headers,
+    ...INVENTORY_MOVEMENTS_SHEET.headers,
+  ]),
+};
+
 export const MIGRATION_CATALOG: readonly Migration[] = [
   FOUNDATION_MIGRATION,
   OPERATION_REQUESTS_MIGRATION,
@@ -100,6 +114,7 @@ export const MIGRATION_CATALOG: readonly Migration[] = [
   STUDENTS_MIGRATION,
   GUARDIANS_MIGRATION,
   PRODUCTS_MIGRATION,
+  INVENTORY_MIGRATION,
 ];
 
 export function pendingMigrations(

@@ -55,8 +55,9 @@ export const USERS_MIGRATION_ID = '004_users';
 export const STUDENTS_MIGRATION_ID = '005_students';
 export const GUARDIANS_MIGRATION_ID = '006_guardians';
 export const PRODUCTS_MIGRATION_ID = '007_products';
+export const INVENTORY_MIGRATION_ID = '008_inventory';
 export const FOUNDATION_SCHEMA_VERSION = 1;
-export const CURRENT_SCHEMA_VERSION = 7;
+export const CURRENT_SCHEMA_VERSION = 8;
 
 export const USERS_SHEET: SheetSchema = {
   name: '_users',
@@ -193,4 +194,30 @@ export const PRODUCT_PRICE_HISTORY_SHEET: SheetSchema = {
 export const AD_HOC_ITEMS_SHEET: SheetSchema = {
   name: '_ad_hoc_items',
   headers: ['id', 'name', 'price_cents', 'created_by', 'created_at'],
+};
+
+export const INVENTORY_DAYS_SHEET: SheetSchema = {
+  name: '_inventory_days',
+  headers: ['id', 'business_date', 'status', 'opened_by', 'opened_at'],
+};
+
+export const INVENTORY_OPENING_ITEMS_SHEET: SheetSchema = {
+  name: '_inventory_opening_items',
+  headers: ['id', 'inventory_day_id', 'product_id', 'opening_quantity'],
+};
+
+export const INVENTORY_MOVEMENTS_SHEET: SheetSchema = {
+  name: '_inventory_movements',
+  headers: [
+    'id',
+    'inventory_day_id',
+    'product_id',
+    'kind',
+    'quantity_delta',
+    'source_type',
+    'source_id',
+    'created_by',
+    'created_at',
+    'reason',
+  ],
 };
