@@ -2,7 +2,7 @@
 
 Aplicação web da cantina, planejada para Google Apps Script + Google Sheets + Google Drive.
 
-O projeto está na Fase 5 (`0.1.0-dev`): locks, batch atômico e idempotência por `request_id` sobre o schema E2E.
+O projeto está na Fase 6 (`0.1.0-dev`): backup no Drive, retenção, trigger periódico e restore foundation sobre o schema E2E.
 
 Consulte:
 
@@ -74,7 +74,7 @@ clasp deployments
 E2E_BASE_URL='https://script.google.com/macros/s/SEU_DEPLOYMENT_ID/exec' npm run test:e2e:remote
 ```
 
-O primeiro `getHealth` configura `ENVIRONMENT=E2E` e aplica o schema até `_operation_requests` se a planilha estiver vinculada. `resetE2E` / `seedE2E` recusam qualquer ambiente que não seja E2E, inclusive PROD, e usam `LockService`.
+O primeiro `getHealth` configura `ENVIRONMENT=E2E`, aplica o schema até `_backups` e tenta um backup pré-migration na pasta E2E do Drive. `resetE2E` / `seedE2E` recusam qualquer ambiente que não seja E2E, inclusive PROD, e usam `LockService`. Restore não mescla automaticamente.
 
 Validação completa da fundação (sem Google):
 

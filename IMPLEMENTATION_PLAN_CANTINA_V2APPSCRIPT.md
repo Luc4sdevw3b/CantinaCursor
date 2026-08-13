@@ -109,6 +109,8 @@ Testar retry e double submit.
 - health status;
 - restore foundation.
 
+`AppApi` permanece `getHealth`. Auth/usuários são a Fase 7.
+
 # Marco C — Acesso e cadastros
 
 ## Fase 7 — Auth e usuários

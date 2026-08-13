@@ -37,6 +37,9 @@ describe('GoogleScriptAppApi', () => {
           status: 'ready',
           adapter: 'google-script',
           spreadsheetConfigured: true,
+          schemaVersion: 3,
+          backupConfigured: true,
+          lastBackupAt: '2026-08-13T16:00:00.000Z',
           spreadsheetId: 'should-not-be-required',
         });
         return runner;
@@ -50,6 +53,8 @@ describe('GoogleScriptAppApi', () => {
     const health = await new GoogleScriptAppApi(runner).getHealth();
     expect(health.environment).toBe('E2E');
     expect(health.adapter).toBe('google-script');
+    expect(health.schemaVersion).toBe(3);
+    expect(health.lastBackupAt).toBe('2026-08-13T16:00:00.000Z');
     expect(health).not.toHaveProperty('spreadsheetId');
   });
 });

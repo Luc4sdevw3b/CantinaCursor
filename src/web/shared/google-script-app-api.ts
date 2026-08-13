@@ -20,7 +20,10 @@ function isAppHealth(value: unknown): value is AppHealth {
     isEnvironment(health.environment) &&
     health.status === 'ready' &&
     health.adapter === 'google-script' &&
-    typeof health.spreadsheetConfigured === 'boolean'
+    typeof health.spreadsheetConfigured === 'boolean' &&
+    typeof health.schemaVersion === 'number' &&
+    typeof health.backupConfigured === 'boolean' &&
+    (health.lastBackupAt === null || typeof health.lastBackupAt === 'string')
   );
 }
 
@@ -60,6 +63,9 @@ export class GoogleScriptAppApi implements AppApi {
             status: value.status,
             adapter: value.adapter,
             spreadsheetConfigured: value.spreadsheetConfigured,
+            schemaVersion: value.schemaVersion,
+            backupConfigured: value.backupConfigured,
+            lastBackupAt: value.lastBackupAt,
           });
         })
         .withFailureHandler((error) => reject(toError(error)))

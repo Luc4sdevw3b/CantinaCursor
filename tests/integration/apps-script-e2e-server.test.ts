@@ -14,6 +14,9 @@ interface E2EHealth {
   status: string;
   adapter: string;
   spreadsheetConfigured: boolean;
+  schemaVersion: number;
+  backupConfigured: boolean;
+  lastBackupAt: string | null;
 }
 
 interface ServerContext {
@@ -33,6 +36,34 @@ interface ServerContext {
     replayed: boolean;
     status: string;
   };
+  runBackup(reason?: string): {
+    createdAt: string;
+    reason: string;
+    schemaVersion: number;
+  };
+  prepareRestore(
+    backupId: string,
+    confirmed: boolean,
+  ): {
+    prepared: true;
+    merge: false;
+    snapshotValid: true;
+    currentBackupCreated: true;
+  };
+}
+
+interface DriveMockFile {
+  id: string;
+  name: string;
+  created: Date;
+  trashed: boolean;
+  getId: () => string;
+  getName: () => string;
+  getDateCreated: () => Date;
+  isTrashed: () => boolean;
+  setDescription: (value: string) => DriveMockFile;
+  setTrashed: (value: boolean) => void;
+  makeCopy: (copyName: string, folder: { id: string }) => DriveMockFile;
 }
 
 function createSheet(rows: unknown[][] = [[]], sheetId = 1) {
@@ -123,6 +154,44 @@ function loadServer(
     },
   );
   let uuidCount = 0;
+  const driveFolders = new Map<
+    string,
+    { id: string; files: DriveMockFile[] }
+  >();
+  const driveFiles = new Map<string, DriveMockFile>();
+  const projectTriggers: string[] = [];
+
+  function createDriveFile(id: string, name: string, created = new Date()) {
+    const file = {
+      id,
+      name,
+      created,
+      trashed: false,
+      getId: () => file.id,
+      getName: () => file.name,
+      getDateCreated: () => file.created,
+      isTrashed: () => file.trashed,
+      setDescription: (value: string) => {
+        void value;
+        return file;
+      },
+      setTrashed: (value: boolean) => {
+        file.trashed = value;
+      },
+      makeCopy: (copyName: string, folder: { id: string }) => {
+        const copy = createDriveFile(
+          `backup-file-${driveFiles.size + 1}`,
+          copyName,
+        );
+        driveFiles.set(copy.id, copy);
+        const target = driveFolders.get(folder.id);
+        target?.files.push(copy);
+        return copy;
+      },
+    };
+    return file;
+  }
+
   const context = {
     Date,
     String,
@@ -140,6 +209,9 @@ function loadServer(
       getScriptProperties: () => ({
         getProperty: (key: string) => properties[key] ?? null,
         setProperties,
+        setProperty: (key: string, value: string) => {
+          properties[key] = value;
+        },
       }),
     },
     SpreadsheetApp: {
@@ -164,6 +236,64 @@ function loadServer(
         return `aaaaaaaa-bbbb-4ccc-8ddd-${String(uuidCount).padStart(12, '0')}`;
       },
     },
+    DriveApp: {
+      createFolder: (name: string) => {
+        const folder = {
+          id: 'e2e-backup-folder',
+          name,
+          files: [] as DriveMockFile[],
+        };
+        driveFolders.set(folder.id, folder);
+        return {
+          getId: () => folder.id,
+          getFiles: () => {
+            const remaining = folder.files.filter((file) => !file.trashed);
+            let index = 0;
+            return {
+              hasNext: () => index < remaining.length,
+              next: () => remaining[index++],
+            };
+          },
+        };
+      },
+      getFolderById: (id: string) => {
+        const folder = driveFolders.get(id);
+        if (!folder) {
+          throw new Error('BACKUP_FOLDER_MISSING');
+        }
+        return {
+          id: folder.id,
+          getId: () => folder.id,
+          getFiles: () => {
+            const remaining = folder.files.filter((file) => !file.trashed);
+            let index = 0;
+            return {
+              hasNext: () => index < remaining.length,
+              next: () => remaining[index++],
+            };
+          },
+        };
+      },
+      getFileById: (id: string) =>
+        driveFiles.get(id) ?? createDriveFile(id, 'spreadsheet'),
+    },
+    ScriptApp: {
+      getProjectTriggers: () =>
+        projectTriggers.map((handler) => ({
+          getHandlerFunction: () => handler,
+        })),
+      newTrigger: (handler: string) => ({
+        timeBased: () => ({
+          everyDays: () => ({
+            atHour: () => ({
+              create: () => {
+                projectTriggers.push(handler);
+              },
+            }),
+          }),
+        }),
+      }),
+    },
   };
 
   runInNewContext(source, context);
@@ -176,6 +306,8 @@ function loadServer(
     sheets,
     releaseLock,
     batchUpdate,
+    driveFolders,
+    projectTriggers,
   };
 }
 
@@ -194,6 +326,7 @@ describe('Apps Script E2E server', () => {
     expect(properties.SPREADSHEET_ID).toBe('e2e-sheet-id');
     expect(health.environment).toBe('E2E');
     expect(JSON.stringify(health)).not.toContain('e2e-sheet-id');
+    expect(JSON.stringify(health)).not.toContain('e2e-backup-folder');
   });
 
   it('returns health metadata without exposing the spreadsheet id', () => {
@@ -204,15 +337,18 @@ describe('Apps Script E2E server', () => {
     });
 
     const health = server.getHealth();
-    expect(health).toEqual({
-      appName: 'Cantina V2 AppScript',
-      version: '0.1.0-dev',
-      environment: 'E2E',
-      status: 'ready',
-      adapter: 'google-script',
-      spreadsheetConfigured: true,
-    });
+    expect(health.appName).toBe('Cantina V2 AppScript');
+    expect(health.version).toBe('0.1.0-dev');
+    expect(health.environment).toBe('E2E');
+    expect(health.status).toBe('ready');
+    expect(health.adapter).toBe('google-script');
+    expect(health.spreadsheetConfigured).toBe(true);
+    expect(health.schemaVersion).toBe(3);
+    expect(health.backupConfigured).toBe(true);
+    expect(health.lastBackupAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(JSON.stringify(health)).not.toContain('private-e2e-sheet-id');
+    expect(JSON.stringify(health)).not.toContain('e2e-backup-folder');
+    expect(JSON.stringify(health)).not.toContain('backup-file-');
     expect(openById).toHaveBeenCalledWith('private-e2e-sheet-id');
   });
 
@@ -287,10 +423,11 @@ describe('Apps Script E2E server', () => {
     const second = server.setupSchema();
 
     expect(first).toEqual(second);
-    expect(first.schemaVersion).toBe(2);
+    expect(first.schemaVersion).toBe(3);
     expect(first.appliedMigrations).toEqual([
       '001_foundation',
       '002_operation_requests',
+      '003_backups',
     ]);
     expect(sheets.get('_meta')?.rows[0]).toEqual(['key', 'value']);
     expect(sheets.get('_schema_migrations')?.rows[0]).toEqual([
@@ -316,6 +453,20 @@ describe('Apps Script E2E server', () => {
       sheets
         .get('_schema_migrations')
         ?.rows.filter((row) => row[0] === '002_operation_requests'),
+    ).toHaveLength(1);
+    expect(sheets.get('_backups')?.rows[0]).toEqual([
+      'id',
+      'created_at',
+      'app_version',
+      'schema_version',
+      'reason',
+      'status',
+      'drive_file_id',
+    ]);
+    expect(
+      sheets
+        .get('_schema_migrations')
+        ?.rows.filter((row) => row[0] === '003_backups'),
     ).toHaveLength(1);
   });
 
@@ -435,5 +586,60 @@ describe('Apps Script E2E server', () => {
       server.probeIdempotentOperation('aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'),
     ).toThrow('LOCK_TIMEOUT');
     expect(releaseLock).not.toHaveBeenCalled();
+  });
+
+  it('backs up before pending migrations and schedules a daily trigger once', () => {
+    const { server, sheets, projectTriggers, driveFolders } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+
+    server.setupSchema();
+    server.setupSchema();
+    const backup = server.runBackup('manual');
+
+    expect(backup.reason).toBe('manual');
+    expect(backup.schemaVersion).toBe(3);
+    expect(JSON.stringify(backup)).not.toContain('e2e-sheet-id');
+    expect(JSON.stringify(backup)).not.toContain('e2e-backup-folder');
+    expect(projectTriggers).toEqual(['runScheduledBackup']);
+    expect(sheets.get('_backups')?.rows.length).toBeGreaterThan(1);
+    expect(driveFolders.get('e2e-backup-folder')?.files.length).toBeGreaterThan(
+      0,
+    );
+  });
+
+  it('prepares restore only with confirmation and never merges', () => {
+    const { server, sheets } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.setupSchema();
+    const backupId = String(sheets.get('_backups')?.rows[1]?.[0] || '');
+
+    expect(() => server.prepareRestore(backupId, false)).toThrow(
+      'RESTORE_NOT_CONFIRMED',
+    );
+    expect(() => server.prepareRestore('2', true)).toThrow('INVALID_BACKUP_ID');
+    expect(server.prepareRestore(backupId, true)).toEqual({
+      prepared: true,
+      merge: false,
+      snapshotValid: true,
+      currentBackupCreated: true,
+    });
+  });
+
+  it('refuses backup and restore on PROD', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'PROD',
+      SPREADSHEET_ID: 'prod-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    expect(() => server.runBackup('manual')).toThrow('RESET_PROD_FORBIDDEN');
+    expect(() =>
+      server.prepareRestore('aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', true),
+    ).toThrow('RESET_PROD_FORBIDDEN');
   });
 });

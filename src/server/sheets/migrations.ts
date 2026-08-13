@@ -1,6 +1,8 @@
 import { err, ok, type Result } from '../../domain/result';
 import { checksumHeaders } from './serialize';
 import {
+  BACKUPS_MIGRATION_ID,
+  BACKUPS_SHEET,
   FOUNDATION_MIGRATION_ID,
   OPERATION_REQUESTS_MIGRATION_ID,
   OPERATION_REQUESTS_SHEET,
@@ -24,9 +26,16 @@ export const OPERATION_REQUESTS_MIGRATION: Migration = {
   checksum: checksumHeaders(OPERATION_REQUESTS_SHEET.headers),
 };
 
+export const BACKUPS_MIGRATION: Migration = {
+  id: BACKUPS_MIGRATION_ID,
+  description: 'Cria _backups',
+  checksum: checksumHeaders(BACKUPS_SHEET.headers),
+};
+
 export const MIGRATION_CATALOG: readonly Migration[] = [
   FOUNDATION_MIGRATION,
   OPERATION_REQUESTS_MIGRATION,
+  BACKUPS_MIGRATION,
 ];
 
 export function pendingMigrations(

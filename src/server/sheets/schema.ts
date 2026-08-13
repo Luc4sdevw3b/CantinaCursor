@@ -35,7 +35,21 @@ export const OPERATION_REQUESTS_SHEET: SheetSchema = {
   ],
 };
 
+export const BACKUPS_SHEET: SheetSchema = {
+  name: '_backups',
+  headers: [
+    'id',
+    'created_at',
+    'app_version',
+    'schema_version',
+    'reason',
+    'status',
+    'drive_file_id',
+  ],
+};
+
 export const FOUNDATION_MIGRATION_ID = '001_foundation';
 export const OPERATION_REQUESTS_MIGRATION_ID = '002_operation_requests';
+export const BACKUPS_MIGRATION_ID = '003_backups';
 export const FOUNDATION_SCHEMA_VERSION = 1;
-export const CURRENT_SCHEMA_VERSION = 2;
+export const CURRENT_SCHEMA_VERSION = 3;

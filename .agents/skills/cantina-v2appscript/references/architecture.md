@@ -81,7 +81,7 @@ scripts/
 
 Definir `AppApi` com funções específicas do domínio, nunca ranges/SQL/Sheets genéricos.
 
-Até a Fase 5 o contrato `AppApi` permanece mínimo (`getHealth`). Schema, migrations, lock, batch e idempotência por `request_id` ficam no servidor. Não antecipar alunos, produtos, vendas, estoque, fiado, crédito, caixa, reservas ou WhatsApp.
+Até a Fase 6 o contrato `AppApi` permanece `getHealth`, agora com schema/backup status sem IDs. Lock, batch, backup Drive e restore foundation ficam no servidor. Não antecipar alunos, produtos, vendas, estoque, fiado, crédito, caixa, reservas, auth ou WhatsApp.
 
 O adapter `google.script.run` é usado no Web App Apps Script (ambiente E2E isolado nesta fase). **E2E local usa somente `FakeAppApi`.** Isso permite Playwright desde o início sem Google.
 

@@ -13,6 +13,9 @@ describe('FakeAppApi', () => {
       status: 'ready',
       adapter: 'fake',
       spreadsheetConfigured: false,
+      schemaVersion: 0,
+      backupConfigured: false,
+      lastBackupAt: null,
     });
   });
 

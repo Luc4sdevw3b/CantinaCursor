@@ -9,6 +9,55 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-13 12:52 — Implementada a Fase 6: backup Drive, retenção e restore foundation
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 6
+
+### Pedido / objetivo
+
+- Iniciar a Fase 6: backup no Drive, pasta/config, pré-migration, trigger periódico, retenção, health status e restore foundation.
+
+### Tentativa / implementação
+
+- Cópia da planilha E2E para uma pasta de backup no Drive, com nome/descrição só de ambiente, timestamp e versões (sem IDs).
+- Pasta e retenção (14 dias) em Script Properties; trigger diário `runScheduledBackup` criado uma vez.
+- Migration `003_backups` cria `_backups`. Backup pré-migration roda antes de migrations pendentes; se o Drive não autorizar, o schema E2E ainda aplica.
+- `getHealth` passa a informar `schemaVersion`, `backupConfigured` e `lastBackupAt`, sem IDs de planilha/pasta/arquivo.
+- Restore foundation: confirmação obrigatória, UUID do backup, backup atual antes, sem mesclar automaticamente. Recusa PROD.
+
+### Resultado
+
+- Fase 6 concluída sobre o ambiente E2E isolado.
+- Nenhum ID Google, token ou dado de planilha foi versionado.
+
+### Diferenças do pedido
+
+- O restore não substitui a planilha ao vivo; só valida o snapshot, protege o estado atual e recusa merge. Auth/usuários ficam na Fase 7.
+
+### Impacto técnico
+
+- `src/server/backup/*`, migration `003_backups`, `setupSchema` com hook pré-migration
+- `apps-script/src/Code.gs`, escopos Drive e ScriptApp
+- `AppHealth` ampliado; UI do smoke inalterada
+- testes de nome/retenção/trigger/backup/restore
+- README, Implementation Plan e referências
+
+### Testes
+
+- `npm run format:check` / `lint` / `typecheck` / `version:check` / `validate:skill`: passou.
+- `npm test`: 82 testes passaram.
+- `npm run build`: passou.
+- `npm run test:e2e:local`: 9 testes Chromium passaram.
+- `npm run test:e2e:remote`: 1 teste Chromium passou.
+
+### Pendências / próxima versão
+
+- Não iniciar a Fase 7 (auth e usuários) sem pedido explícito.
+- Na conta Google, autorizar Drive na primeira execução de backup se o health ainda mostrar backup não configurado.
+
 ## 2026-08-13 12:40 — Implementada a Fase 5: locks, batch e idempotência
 
 **Origem:** Pedido do usuário

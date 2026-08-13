@@ -31,6 +31,7 @@ Testar:
 - construção de batch requests (`spreadsheets.batchUpdate`);
 - `withScriptLock` e timeout retryable;
 - retry/double submit com o mesmo `request_id`;
+- backup Drive, retenção e restore foundation (sem merge);
 - validações.
 
 ## Integração remota — E2E env

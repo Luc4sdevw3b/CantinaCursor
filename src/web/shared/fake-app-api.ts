@@ -8,6 +8,9 @@ const LOCAL_HEALTH: AppHealth = {
   status: 'ready',
   adapter: 'fake',
   spreadsheetConfigured: false,
+  schemaVersion: 0,
+  backupConfigured: false,
+  lastBackupAt: null,
 };
 
 export class FakeAppApi implements AppApi {

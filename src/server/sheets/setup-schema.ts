@@ -2,6 +2,8 @@ import { RESET_PROD_FORBIDDEN_ERROR } from '../../domain/e2e-lifecycle';
 import { err, ok, type Result } from '../../domain/result';
 import { pendingMigrations } from './migrations';
 import {
+  BACKUPS_MIGRATION_ID,
+  BACKUPS_SHEET,
   CURRENT_SCHEMA_VERSION,
   FOUNDATION_MIGRATION_ID,
   FOUNDATION_SCHEMA_VERSION,
@@ -19,6 +21,7 @@ export interface SetupSchemaInput {
   appVersion: string;
   nowIso: string;
   spreadsheet: SpreadsheetPort;
+  beforePendingMigrations?: () => Result<void>;
 }
 
 export interface SetupSchemaResult {
@@ -56,6 +59,13 @@ export function setupSchema(
     return err(pending.error);
   }
 
+  if (pending.data.length > 0 && input.beforePendingMigrations) {
+    const prepared = input.beforePendingMigrations();
+    if (!prepared.ok) {
+      return err(prepared.error);
+    }
+  }
+
   for (const migration of pending.data) {
     if (migration.id === FOUNDATION_MIGRATION_ID) {
       meta.data.appendRow(
@@ -91,6 +101,19 @@ export function setupSchema(
       );
       if (!operations.ok) {
         return err(operations.error);
+      }
+      meta.data.appendRow(
+        serializeRecord(META_SHEET.headers, {
+          key: 'schema_version',
+          value: '2',
+        }),
+      );
+    }
+
+    if (migration.id === BACKUPS_MIGRATION_ID) {
+      const backups = ensureSheet(input.spreadsheet, BACKUPS_SHEET);
+      if (!backups.ok) {
+        return err(backups.error);
       }
       meta.data.appendRow(
         serializeRecord(META_SHEET.headers, {

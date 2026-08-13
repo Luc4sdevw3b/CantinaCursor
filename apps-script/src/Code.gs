@@ -26,7 +26,25 @@ const FOUNDATION_MIGRATION_CHECKSUM = 'meta|schema_migrations';
 const OPERATION_REQUESTS_MIGRATION_ID = '002_operation_requests';
 const OPERATION_REQUESTS_MIGRATION_CHECKSUM =
   'request_id|operation_type|result_entity_id|status|created_at';
-const CURRENT_SCHEMA_VERSION = 2;
+const CURRENT_SCHEMA_VERSION = 3;
+const BACKUPS_SHEET = '_backups';
+const BACKUPS_HEADERS = [
+  'id',
+  'created_at',
+  'app_version',
+  'schema_version',
+  'reason',
+  'status',
+  'drive_file_id',
+];
+const BACKUPS_MIGRATION_ID = '003_backups';
+const BACKUPS_MIGRATION_CHECKSUM =
+  'id|created_at|app_version|schema_version|reason|status|drive_file_id';
+const BACKUP_FILE_PREFIX = 'cantina-backup';
+const BACKUP_FOLDER_NAME = 'Cantina V2 AppScript E2E backups';
+const DEFAULT_BACKUP_RETENTION_DAYS = 14;
+const SCHEDULED_BACKUP_HANDLER = 'runScheduledBackup';
+const SCHEDULED_BACKUP_HOUR = 6;
 const E2E_PROBE_OPERATION = 'e2e.probe';
 const OPERATION_COMPLETED = 'completed';
 const REQUEST_ID_PATTERN =
@@ -106,6 +124,7 @@ function buildHealth() {
   const environment = properties.getProperty('ENVIRONMENT');
   const spreadsheetId = properties.getProperty('SPREADSHEET_ID');
   const version = properties.getProperty('APP_VERSION');
+  const backupFolderId = properties.getProperty('BACKUP_FOLDER_ID');
 
   if (environment !== CANTINA_ENVIRONMENT) {
     throw new Error('CONFIGURATION_ERROR: ENVIRONMENT deve ser E2E.');
@@ -118,6 +137,7 @@ function buildHealth() {
   }
 
   SpreadsheetApp.openById(spreadsheetId);
+  const meta = openConfiguredSpreadsheet().getSheetByName(META_SHEET);
 
   return {
     appName: CANTINA_APP_NAME,
@@ -126,6 +146,9 @@ function buildHealth() {
     status: 'ready',
     adapter: 'google-script',
     spreadsheetConfigured: true,
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    backupConfigured: Boolean(backupFolderId),
+    lastBackupAt: meta ? getMetaValue(meta, 'last_backup_at') : null,
   };
 }
 
@@ -192,6 +215,10 @@ function resetE2EUnlocked() {
   if (operations) {
     clearSheetData(operations);
   }
+  const backups = spreadsheet.getSheetByName(BACKUPS_SHEET);
+  if (backups) {
+    clearSheetData(backups);
+  }
   return { reset: true, environment: CANTINA_ENVIRONMENT };
 }
 
@@ -233,7 +260,11 @@ function listAppliedMigrationIds(sheet) {
 }
 
 function assertKnownMigrations(applied) {
-  const catalog = [FOUNDATION_MIGRATION_ID, OPERATION_REQUESTS_MIGRATION_ID];
+  const catalog = [
+    FOUNDATION_MIGRATION_ID,
+    OPERATION_REQUESTS_MIGRATION_ID,
+    BACKUPS_MIGRATION_ID,
+  ];
   applied.forEach(function (id) {
     if (catalog.indexOf(id) === -1) {
       throw new Error(
@@ -254,6 +285,18 @@ function setupSchema() {
   );
   const applied = listAppliedMigrationIds(migrations);
   assertKnownMigrations(applied);
+  const pending =
+    applied.indexOf(FOUNDATION_MIGRATION_ID) === -1 ||
+    applied.indexOf(OPERATION_REQUESTS_MIGRATION_ID) === -1 ||
+    applied.indexOf(BACKUPS_MIGRATION_ID) === -1;
+  let pendingCopy = null;
+  if (pending) {
+    try {
+      pendingCopy = copySpreadsheetUnlocked('pre-migration');
+    } catch (error) {
+      pendingCopy = null;
+    }
+  }
   const createdAt = new Date().toISOString();
   if (applied.indexOf(FOUNDATION_MIGRATION_ID) === -1) {
     meta.appendRow(['schema_version', '1']);
@@ -274,7 +317,7 @@ function setupSchema() {
       OPERATION_REQUESTS_SHEET,
       OPERATION_REQUESTS_HEADERS,
     );
-    meta.appendRow(['schema_version', String(CURRENT_SCHEMA_VERSION)]);
+    meta.appendRow(['schema_version', '2']);
     migrations.appendRow([
       OPERATION_REQUESTS_MIGRATION_ID,
       createdAt,
@@ -282,6 +325,22 @@ function setupSchema() {
       OPERATION_REQUESTS_MIGRATION_CHECKSUM,
       'Cria _operation_requests',
     ]);
+  }
+  if (applied.indexOf(BACKUPS_MIGRATION_ID) === -1) {
+    getOrCreateSheet(spreadsheet, BACKUPS_SHEET, BACKUPS_HEADERS);
+    meta.appendRow(['schema_version', String(CURRENT_SCHEMA_VERSION)]);
+    migrations.appendRow([
+      BACKUPS_MIGRATION_ID,
+      createdAt,
+      CANTINA_APP_VERSION,
+      BACKUPS_MIGRATION_CHECKSUM,
+      'Cria _backups',
+    ]);
+  }
+  if (pendingCopy) {
+    recordBackupUnlocked(pendingCopy);
+    pruneBackupsUnlocked();
+    ensureBackupTrigger();
   }
   return {
     schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -394,6 +453,221 @@ function probeIdempotentOperation(requestId) {
       resultEntityId: resultEntityId,
       replayed: false,
       status: OPERATION_COMPLETED,
+    };
+  });
+}
+
+function getMetaValue(sheet, key) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return null;
+  }
+  const rows = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
+  let value = null;
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index] || [];
+    if (String(row[0] || '') === key && String(row[1] || '')) {
+      value = String(row[1] || '');
+    }
+  }
+  return value;
+}
+
+function getBackupRetentionDays() {
+  const raw = PropertiesService.getScriptProperties().getProperty(
+    'BACKUP_RETENTION_DAYS',
+  );
+  const parsed = parseInt(raw || '', 10);
+  if (parsed > 0) {
+    return parsed;
+  }
+  return DEFAULT_BACKUP_RETENTION_DAYS;
+}
+
+function createBackupFileName(nowIso, schemaVersion) {
+  const stamp = String(nowIso)
+    .replace(/-/g, '')
+    .replace(/:/g, '')
+    .replace(/\.\d+Z$/, 'Z');
+  const version = CANTINA_APP_VERSION.replace(/[^0-9A-Za-z]+/g, '-');
+  return (
+    BACKUP_FILE_PREFIX +
+    '-' +
+    CANTINA_ENVIRONMENT +
+    '-' +
+    stamp +
+    '-v' +
+    version +
+    '-s' +
+    schemaVersion
+  );
+}
+
+function ensureBackupFolderId() {
+  const properties = PropertiesService.getScriptProperties();
+  const existing = properties.getProperty('BACKUP_FOLDER_ID');
+  if (existing) {
+    return existing;
+  }
+  const folder = DriveApp.createFolder(BACKUP_FOLDER_NAME);
+  const folderId = folder.getId();
+  properties.setProperty('BACKUP_FOLDER_ID', folderId);
+  return folderId;
+}
+
+function copySpreadsheetUnlocked(reason) {
+  const spreadsheetId = getConfiguredSpreadsheetId();
+  if (!spreadsheetId) {
+    throw new Error('CONFIGURATION_ERROR: SPREADSHEET_ID não configurado.');
+  }
+  const folderId = ensureBackupFolderId();
+  const folder = DriveApp.getFolderById(folderId);
+  const createdAt = new Date().toISOString();
+  const file = DriveApp.getFileById(spreadsheetId).makeCopy(
+    createBackupFileName(createdAt, CURRENT_SCHEMA_VERSION),
+    folder,
+  );
+  file.setDescription(
+    JSON.stringify({
+      appVersion: CANTINA_APP_VERSION,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      reason: reason,
+      environment: CANTINA_ENVIRONMENT,
+    }),
+  );
+  return {
+    fileId: file.getId(),
+    createdAt: createdAt,
+    reason: reason,
+  };
+}
+
+function recordBackupUnlocked(copy) {
+  const spreadsheet = openConfiguredSpreadsheet();
+  const backups = getOrCreateSheet(spreadsheet, BACKUPS_SHEET, BACKUPS_HEADERS);
+  const meta = getOrCreateSheet(spreadsheet, META_SHEET, META_HEADERS);
+  backups.appendRow([
+    Utilities.getUuid(),
+    copy.createdAt,
+    CANTINA_APP_VERSION,
+    String(CURRENT_SCHEMA_VERSION),
+    copy.reason,
+    'completed',
+    copy.fileId,
+  ]);
+  meta.appendRow(['last_backup_at', copy.createdAt]);
+}
+
+function pruneBackupsUnlocked() {
+  const folderId =
+    PropertiesService.getScriptProperties().getProperty('BACKUP_FOLDER_ID');
+  if (!folderId) {
+    return;
+  }
+  const retentionDays = getBackupRetentionDays();
+  const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+  const files = DriveApp.getFolderById(folderId).getFiles();
+  while (files.hasNext()) {
+    const file = files.next();
+    const name = file.getName();
+    const created = file.getDateCreated();
+    if (
+      name.indexOf(BACKUP_FILE_PREFIX + '-') === 0 &&
+      created &&
+      created.getTime() < cutoff
+    ) {
+      file.setTrashed(true);
+    }
+  }
+}
+
+function ensureBackupTrigger() {
+  if (typeof ScriptApp === 'undefined') {
+    return;
+  }
+  const triggers = ScriptApp.getProjectTriggers();
+  for (let index = 0; index < triggers.length; index += 1) {
+    if (triggers[index].getHandlerFunction() === SCHEDULED_BACKUP_HANDLER) {
+      return;
+    }
+  }
+  ScriptApp.newTrigger(SCHEDULED_BACKUP_HANDLER)
+    .timeBased()
+    .everyDays(1)
+    .atHour(SCHEDULED_BACKUP_HOUR)
+    .create();
+}
+
+function runBackup(reason) {
+  assertE2EEnvironment();
+  return withScriptLock(function () {
+    setupSchema();
+    const copy = copySpreadsheetUnlocked(reason || 'manual');
+    recordBackupUnlocked(copy);
+    pruneBackupsUnlocked();
+    ensureBackupTrigger();
+    return {
+      createdAt: copy.createdAt,
+      reason: copy.reason,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+    };
+  });
+}
+
+function runScheduledBackup() {
+  return runBackup('scheduled');
+}
+
+function prepareRestore(backupId, confirmed) {
+  assertE2EEnvironment();
+  return withScriptLock(function () {
+    if (!confirmed) {
+      throw new Error(
+        'RESTORE_NOT_CONFIRMED: a restauração precisa de confirmação explícita.',
+      );
+    }
+    if (!isRequestId(backupId)) {
+      throw new Error(
+        'INVALID_BACKUP_ID: o backup deve ser identificado por UUID, nunca pelo número da linha.',
+      );
+    }
+    setupSchema();
+    const sheet = getOrCreateSheet(
+      openConfiguredSpreadsheet(),
+      BACKUPS_SHEET,
+      BACKUPS_HEADERS,
+    );
+    const lastRow = sheet.getLastRow();
+    let driveFileId = '';
+    if (lastRow > 1) {
+      const rows = sheet
+        .getRange(2, 1, lastRow - 1, BACKUPS_HEADERS.length)
+        .getValues();
+      for (let index = 0; index < rows.length; index += 1) {
+        const row = rows[index] || [];
+        if (String(row[0] || '') === backupId) {
+          driveFileId = String(row[6] || '');
+        }
+      }
+    }
+    if (!driveFileId) {
+      throw new Error(
+        'RESTORE_SNAPSHOT_INVALID: o snapshot de backup não é válido para restaurar.',
+      );
+    }
+    const snapshot = DriveApp.getFileById(driveFileId);
+    if (!snapshot || snapshot.isTrashed()) {
+      throw new Error(
+        'RESTORE_SNAPSHOT_INVALID: o snapshot de backup não é válido para restaurar.',
+      );
+    }
+    const copy = copySpreadsheetUnlocked('pre-restore');
+    recordBackupUnlocked(copy);
+    return {
+      prepared: true,
+      merge: false,
+      snapshotValid: true,
+      currentBackupCreated: true,
     };
   });
 }

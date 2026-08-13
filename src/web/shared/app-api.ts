@@ -11,6 +11,9 @@ export interface AppHealth {
   status: 'ready';
   adapter: AppApiAdapter;
   spreadsheetConfigured: boolean;
+  schemaVersion: number;
+  backupConfigured: boolean;
+  lastBackupAt: string | null;
 }
 
 /**
