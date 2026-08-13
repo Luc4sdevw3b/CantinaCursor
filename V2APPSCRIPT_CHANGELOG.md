@@ -9,6 +9,53 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-13 13:12 — Implementada a Fase 8: ano letivo, turmas e alunos
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 8
+
+### Pedido / objetivo
+
+- Ir para a Fase 8: nascimento ou idade aproximada, histórico de matrícula, ativo/inativo, reativação com revisão e homônimos.
+
+### Tentativa / implementação
+
+- Migration `005_students` cria `_school_years`, `_classrooms`, `_students` e `_student_enrollments` (schema version 5). IDs continuam UUID; atualizações são append.
+- Idade: data de nascimento **ou** idade aproximada + ano de referência. A aproximada avança por ano e aparece com `~`.
+- Homônimos permanecem cadastros distintos e aparecem com idade e turma diferentes.
+- Reativar exige marcar que o cadastro foi revisado. Troca de turma fecha a matrícula anterior.
+- Dona e funcionário leem/escrevem alunos. `getHealth` segue público. Sem responsáveis (Fase 9).
+
+### Resultado
+
+- Fase 8 concluída sobre o ambiente E2E isolado e o preview local.
+- Nenhum ID Google, token ou dado de planilha foi versionado.
+
+### Diferenças do pedido
+
+- Responsáveis, irmãos e WhatsApp permanecem na Fase 9. O seed E2E e o preview local usam nomes fictícios (duas Ana Souza e um Bruno Lima).
+
+### Impacto técnico
+
+- domínio de idade/perfil/matrícula/homônimo/reativação
+- `MemoryRoster` + `AppApi` de alunos; `Code.gs` com as mesmas regras
+- UI de cadastro após o login; textos de health do smoke inalterados
+- README, Implementation Plan e referências
+
+### Testes
+
+- `npm run format:check` / `lint` / `typecheck` / `version:check` / `validate:skill`: passou.
+- `npm test`: 107 testes passaram.
+- `npm run build`: passou.
+- `npm run test:e2e:local`: 11 testes Chromium passaram.
+- `npm run test:e2e:remote`: 1 teste Chromium passou (health público, sem login).
+
+### Pendências / próxima versão
+
+- Não iniciar a Fase 9 (responsáveis e irmãos) sem pedido explícito.
+
 ## 2026-08-13 13:03 — Implementada a Fase 7: auth, papéis e sessão
 
 **Origem:** Pedido do usuário

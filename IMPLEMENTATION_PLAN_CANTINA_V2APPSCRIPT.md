@@ -133,6 +133,8 @@ E2E login/role.
 - reativação com revisão;
 - homônimos.
 
+Responsáveis e irmãos são a Fase 9.
+
 ## Fase 9 — Responsáveis e irmãos
 
 - múltiplos responsáveis;

@@ -4,6 +4,7 @@ import { pendingMigrations } from './migrations';
 import {
   BACKUPS_MIGRATION_ID,
   BACKUPS_SHEET,
+  CLASSROOMS_SHEET,
   CURRENT_SCHEMA_VERSION,
   FOUNDATION_MIGRATION_ID,
   FOUNDATION_SCHEMA_VERSION,
@@ -11,7 +12,11 @@ import {
   OPERATION_REQUESTS_MIGRATION_ID,
   OPERATION_REQUESTS_SHEET,
   SCHEMA_MIGRATIONS_SHEET,
+  SCHOOL_YEARS_SHEET,
   SESSIONS_SHEET,
+  STUDENTS_MIGRATION_ID,
+  STUDENTS_SHEET,
+  STUDENT_ENROLLMENTS_SHEET,
   USERS_MIGRATION_ID,
   USERS_SHEET,
 } from './schema';
@@ -134,6 +139,34 @@ export function setupSchema(
       const sessions = ensureSheet(input.spreadsheet, SESSIONS_SHEET);
       if (!sessions.ok) {
         return err(sessions.error);
+      }
+      meta.data.appendRow(
+        serializeRecord(META_SHEET.headers, {
+          key: 'schema_version',
+          value: '4',
+        }),
+      );
+    }
+
+    if (migration.id === STUDENTS_MIGRATION_ID) {
+      const years = ensureSheet(input.spreadsheet, SCHOOL_YEARS_SHEET);
+      if (!years.ok) {
+        return err(years.error);
+      }
+      const classrooms = ensureSheet(input.spreadsheet, CLASSROOMS_SHEET);
+      if (!classrooms.ok) {
+        return err(classrooms.error);
+      }
+      const students = ensureSheet(input.spreadsheet, STUDENTS_SHEET);
+      if (!students.ok) {
+        return err(students.error);
+      }
+      const enrollments = ensureSheet(
+        input.spreadsheet,
+        STUDENT_ENROLLMENTS_SHEET,
+      );
+      if (!enrollments.ok) {
+        return err(enrollments.error);
       }
       meta.data.appendRow(
         serializeRecord(META_SHEET.headers, {

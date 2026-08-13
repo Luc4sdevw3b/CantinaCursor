@@ -40,6 +40,17 @@ function runnerWith(
     loginE2E() {},
     logout() {},
     getSession() {},
+    listSchoolYears() {},
+    createSchoolYear() {},
+    listClassrooms() {},
+    createClassroom() {},
+    listStudents() {},
+    getStudent() {},
+    createStudent() {},
+    updateStudent() {},
+    deactivateStudent() {},
+    reactivateStudent() {},
+    enrollStudent() {},
     ...extra,
   };
   return runner;

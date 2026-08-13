@@ -33,6 +33,7 @@ Testar:
 - retry/double submit com o mesmo `request_id`;
 - backup Drive, retenção e restore foundation (sem merge);
 - sessão/role no backend (`owner`/`staff`), login E2E só no ambiente E2E, recusa de token inválido/expirado/revogado;
+- alunos: idade (nascimento ou aproximada), homônimos distintos, matrícula com histórico, reativação com revisão;
 - validações.
 
 ## Integração remota — E2E env
@@ -80,7 +81,8 @@ Mínimo obrigatório do smoke local:
 7. preferência de tema persiste após reload;
 8. `AppApi fake` responde `health`;
 9. nenhuma chamada externa é realizada;
-10. login local como dona/funcionário e logout, sem campo de senha.
+10. login local como dona/funcionário e logout, sem campo de senha;
+11. homônimos distinguíveis e reativação só com revisão do cadastro.
 
 Não confundir com o ambiente Google E2E da Fase 3.
 

@@ -279,6 +279,67 @@ footer {
   font-size: 0.78rem;
 }
 
+.students-panel {
+  padding: 1.5rem 0 2rem;
+}
+
+.students-panel[hidden] {
+  display: none;
+}
+
+.students-panel h2 {
+  margin: 0 0 0.5rem;
+}
+
+.students-panel ul {
+  list-style: none;
+  margin: 1rem 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.students-panel li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--surface);
+}
+
+.students-panel form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.75rem;
+}
+
+.students-panel label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.students-panel input,
+.students-panel select,
+.students-panel button {
+  font: inherit;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  color: var(--text);
+  background: var(--surface-strong);
+}
+
+.form-or {
+  margin: 0;
+  align-self: end;
+  color: var(--muted);
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

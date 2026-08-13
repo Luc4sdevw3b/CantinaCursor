@@ -37,4 +37,38 @@ describe('FakeAppApi', () => {
     await api.logout();
     expect(await api.getSession()).toBeNull();
   });
+
+  it('lists homonyms separately and requires review to reactivate', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const students = await api.listStudents();
+    const anas = students.filter((student) => student.fullName === 'Ana Souza');
+
+    expect(anas).toHaveLength(2);
+    expect(anas.map((student) => student.ageLabel).sort()).toEqual([
+      '10',
+      '~8',
+    ]);
+    expect(new Set(anas.map((student) => student.id)).size).toBe(2);
+
+    const bruno = students.find((student) => student.fullName === 'Bruno Lima');
+    if (!bruno) {
+      throw new Error('Bruno Lima não estava no cadastro local');
+    }
+    await api.deactivateStudent(bruno.id);
+    await expect(
+      api.reactivateStudent(bruno.id, {
+        reviewed: false,
+        fullName: 'Bruno Lima',
+      }),
+    ).rejects.toThrow('REACTIVATION_REVIEW_REQUIRED');
+    expect(
+      (
+        await api.reactivateStudent(bruno.id, {
+          reviewed: true,
+          fullName: 'Bruno Lima',
+        })
+      ).active,
+    ).toBe(true);
+  });
 });

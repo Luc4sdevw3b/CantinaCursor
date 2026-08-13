@@ -1,7 +1,20 @@
 import { APP_NAME, APP_VERSION } from '../../app-version';
 import { isUserRole, type UserRole } from '../../domain/auth';
 import { isEnvironment } from '../../domain/environment';
-import type { AppApi, AppHealth, AppSession } from './app-api';
+import type {
+  AppApi,
+  AppHealth,
+  AppSession,
+  Classroom,
+  CreateClassroomInput,
+  CreateSchoolYearInput,
+  CreateStudentInput,
+  ReactivateStudentInput,
+  SchoolYear,
+  StudentDetail,
+  StudentProfileFields,
+  StudentSummary,
+} from './app-api';
 
 export const SESSION_TOKEN_STORAGE_KEY = 'cantina.sessionToken';
 
@@ -12,6 +25,17 @@ export interface GoogleScriptRunner {
   loginE2E(role: string): void;
   logout(token: string): void;
   getSession(token: string): void;
+  listSchoolYears(token: string): void;
+  createSchoolYear(token: string, payload: unknown): void;
+  listClassrooms(token: string, schoolYearId?: string): void;
+  createClassroom(token: string, payload: unknown): void;
+  listStudents(token: string, query?: unknown): void;
+  getStudent(token: string, id: string): void;
+  createStudent(token: string, payload: unknown): void;
+  updateStudent(token: string, id: string, payload: unknown): void;
+  deactivateStudent(token: string, id: string): void;
+  reactivateStudent(token: string, id: string, payload: unknown): void;
+  enrollStudent(token: string, id: string, payload: unknown): void;
 }
 
 export type SessionTokenStorage = Pick<
@@ -153,6 +177,106 @@ export class GoogleScriptAppApi implements AppApi {
     } catch {
       return;
     }
+  }
+
+  listSchoolYears(): Promise<SchoolYear[]> {
+    return this.callWithToken((runner, token) => runner.listSchoolYears(token));
+  }
+
+  createSchoolYear(input: CreateSchoolYearInput): Promise<SchoolYear> {
+    return this.callWithToken((runner, token) =>
+      runner.createSchoolYear(token, input),
+    );
+  }
+
+  listClassrooms(schoolYearId?: string): Promise<Classroom[]> {
+    return this.callWithToken((runner, token) =>
+      runner.listClassrooms(token, schoolYearId),
+    );
+  }
+
+  createClassroom(input: CreateClassroomInput): Promise<Classroom> {
+    return this.callWithToken((runner, token) =>
+      runner.createClassroom(token, input),
+    );
+  }
+
+  listStudents(query?: {
+    includeInactive?: boolean;
+  }): Promise<StudentSummary[]> {
+    return this.callWithToken((runner, token) =>
+      runner.listStudents(token, query),
+    );
+  }
+
+  getStudent(id: string): Promise<StudentDetail> {
+    return this.callWithToken((runner, token) => runner.getStudent(token, id));
+  }
+
+  createStudent(input: CreateStudentInput): Promise<StudentDetail> {
+    return this.callWithToken((runner, token) =>
+      runner.createStudent(token, {
+        ...input,
+        requestId: crypto.randomUUID(),
+      }),
+    );
+  }
+
+  updateStudent(
+    id: string,
+    input: StudentProfileFields,
+  ): Promise<StudentDetail> {
+    return this.callWithToken((runner, token) =>
+      runner.updateStudent(token, id, {
+        ...input,
+        requestId: crypto.randomUUID(),
+      }),
+    );
+  }
+
+  deactivateStudent(id: string): Promise<StudentDetail> {
+    return this.callWithToken((runner, token) =>
+      runner.deactivateStudent(token, id),
+    );
+  }
+
+  reactivateStudent(
+    id: string,
+    input: ReactivateStudentInput,
+  ): Promise<StudentDetail> {
+    return this.callWithToken((runner, token) =>
+      runner.reactivateStudent(token, id, {
+        ...input,
+        requestId: crypto.randomUUID(),
+      }),
+    );
+  }
+
+  enrollStudent(
+    id: string,
+    input: { classroomId: string; startedOn: string },
+  ): Promise<StudentDetail> {
+    return this.callWithToken((runner, token) =>
+      runner.enrollStudent(token, id, {
+        ...input,
+        requestId: crypto.randomUUID(),
+      }),
+    );
+  }
+
+  private callWithToken<T>(
+    execute: (runner: GoogleScriptRunner, token: string) => void,
+  ): Promise<T> {
+    const token = this.readToken();
+    if (!token) {
+      return Promise.reject(
+        new Error('UNAUTHENTICATED: Entre para continuar.'),
+      );
+    }
+    return this.call(
+      (runner) => execute(runner, token),
+      (value) => value as T,
+    );
   }
 
   private readToken(): string | null {

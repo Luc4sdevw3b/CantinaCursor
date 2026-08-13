@@ -148,4 +148,26 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await page.getByRole('button', { name: 'Entrar como funcionário' }).click();
     await expect(page.getByText('Sessão: Funcionário')).toBeVisible();
   });
+
+  test('shows distinguishable homonyms and requires review to reactivate', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await expect(page.getByRole('heading', { name: 'Alunos', exact: true })).toBeVisible();
+    await expect(page.getByText('Ana Souza • ~8 • 3º A')).toBeVisible();
+    await expect(page.getByText('Ana Souza • 10 • 2º B')).toBeVisible();
+
+    const bruno = page.getByRole('listitem').filter({ hasText: 'Bruno Lima' });
+    await bruno.getByRole('button', { name: 'Desativar' }).click();
+    await bruno.getByRole('button', { name: 'Reativar' }).click();
+    await expect(
+      page.getByText('Revise o cadastro antes de reativar.'),
+    ).toBeVisible();
+    await bruno.getByLabel(/Revisei o cadastro/).check();
+    await bruno.getByRole('button', { name: 'Reativar' }).click();
+    await expect(
+      bruno.getByRole('button', { name: 'Desativar' }),
+    ).toBeVisible();
+  });
 });

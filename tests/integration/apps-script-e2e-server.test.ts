@@ -65,6 +65,65 @@ interface ServerContext {
   loginWithGoogle(): { token: string; role: 'owner' | 'staff' };
   getSession(sessionToken: string): { role: 'owner' | 'staff' };
   logout(sessionToken: string): { loggedOut: true };
+  listSchoolYears(sessionToken: string): Array<{
+    id: string;
+    label: string;
+    startedOn: string;
+    endedOn: string | null;
+    active: boolean;
+  }>;
+  createSchoolYear(
+    sessionToken: string,
+    payload: { label: string; startedOn: string },
+  ): { id: string; label: string; startedOn: string; active: boolean };
+  listClassrooms(
+    sessionToken: string,
+    schoolYearId?: string,
+  ): Array<{
+    id: string;
+    schoolYearId: string;
+    name: string;
+    active: boolean;
+  }>;
+  createClassroom(
+    sessionToken: string,
+    payload: { schoolYearId: string; name: string },
+  ): { id: string; schoolYearId: string; name: string; active: boolean };
+  listStudents(
+    sessionToken: string,
+    query?: { includeInactive?: boolean },
+  ): Array<{
+    id: string;
+    fullName: string;
+    active: boolean;
+    ageLabel: string;
+    classroomName: string | null;
+    schoolYearLabel: string | null;
+    isHomonym: boolean;
+  }>;
+  getStudent(
+    sessionToken: string,
+    id: string,
+  ): {
+    id: string;
+    fullName: string;
+    active: boolean;
+    ageLabel: string;
+    enrollments: Array<{ classroomName: string; endedOn: string | null }>;
+  };
+  createStudent(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): { id: string; fullName: string; active: boolean; ageLabel: string };
+  deactivateStudent(
+    sessionToken: string,
+    id: string,
+  ): { id: string; active: boolean };
+  reactivateStudent(
+    sessionToken: string,
+    id: string,
+    payload: Record<string, unknown>,
+  ): { id: string; active: boolean };
 }
 
 interface DriveMockFile {
@@ -372,7 +431,7 @@ describe('Apps Script E2E server', () => {
     expect(health.status).toBe('ready');
     expect(health.adapter).toBe('google-script');
     expect(health.spreadsheetConfigured).toBe(true);
-    expect(health.schemaVersion).toBe(4);
+    expect(health.schemaVersion).toBe(5);
     expect(health.backupConfigured).toBe(true);
     expect(health.lastBackupAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(JSON.stringify(health)).not.toContain('private-e2e-sheet-id');
@@ -455,12 +514,13 @@ describe('Apps Script E2E server', () => {
     const second = server.setupSchema();
 
     expect(first).toEqual(second);
-    expect(first.schemaVersion).toBe(4);
+    expect(first.schemaVersion).toBe(5);
     expect(first.appliedMigrations).toEqual([
       '001_foundation',
       '002_operation_requests',
       '003_backups',
       '004_users',
+      '005_students',
     ]);
     expect(sheets.get('_meta')?.rows[0]).toEqual(['key', 'value']);
     expect(sheets.get('_schema_migrations')?.rows[0]).toEqual([
@@ -520,6 +580,12 @@ describe('Apps Script E2E server', () => {
       sheets
         .get('_schema_migrations')
         ?.rows.filter((row) => row[0] === '004_users'),
+    ).toHaveLength(1);
+    expect(sheets.get('_students')?.rows[0]?.[0]).toBe('id');
+    expect(
+      sheets
+        .get('_schema_migrations')
+        ?.rows.filter((row) => row[0] === '005_students'),
     ).toHaveLength(1);
   });
 
@@ -662,7 +728,7 @@ describe('Apps Script E2E server', () => {
     const backup = server.runBackup(token, 'manual');
 
     expect(backup.reason).toBe('manual');
-    expect(backup.schemaVersion).toBe(4);
+    expect(backup.schemaVersion).toBe(5);
     expect(JSON.stringify(backup)).not.toContain('e2e-sheet-id');
     expect(JSON.stringify(backup)).not.toContain('e2e-backup-folder');
     expect(projectTriggers).toEqual(['runScheduledBackup']);
@@ -832,5 +898,71 @@ describe('Apps Script E2E server', () => {
     matching.loginE2E('owner');
     expect(matching.loginWithGoogle().role).toBe('owner');
     expect(matching.loginWithGoogle()).not.toHaveProperty('email');
+  });
+
+  it('keeps homonyms separate and requires review to reactivate', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    const token = ownerToken(server);
+    server.seedE2E(token);
+    const afterSeed = ownerToken(server);
+    const listed = server.listStudents(afterSeed);
+    const anas = listed.filter((student) => student.fullName === 'Ana Souza');
+
+    expect(anas).toHaveLength(2);
+    expect(anas.every((student) => student.isHomonym)).toBe(true);
+    expect(new Set(anas.map((student) => student.id)).size).toBe(2);
+    expect(anas.map((student) => student.ageLabel).sort()).toEqual([
+      '10',
+      '~8',
+    ]);
+
+    const bruno = listed.find((student) => student.fullName === 'Bruno Lima');
+    if (!bruno) {
+      throw new Error('Bruno Lima não foi semeado');
+    }
+    expect(server.deactivateStudent(afterSeed, bruno.id).active).toBe(false);
+    expect(() =>
+      server.reactivateStudent(afterSeed, bruno.id, { reviewed: false }),
+    ).toThrow('REACTIVATION_REVIEW_REQUIRED');
+    expect(
+      server.reactivateStudent(afterSeed, bruno.id, {
+        reviewed: true,
+        fullName: 'Bruno Lima',
+        birthDate: '2015-06-01',
+      }).active,
+    ).toBe(true);
+    expect(() => server.getStudent(afterSeed, '2')).toThrow('INVALID_ID');
+  });
+
+  it('lets staff register a student and refuses anonymous access', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    const staff = server.loginE2E('staff').token;
+    const year = server.createSchoolYear(staff, {
+      label: '2026',
+      startedOn: '2026-02-01',
+    });
+    const classroom = server.createClassroom(staff, {
+      schoolYearId: year.id,
+      name: '1º A',
+    });
+    const created = server.createStudent(staff, {
+      fullName: 'Carla Nunes',
+      approximateAge: 7,
+      approximateAgeReferenceYear: 2026,
+      classroomId: classroom.id,
+      startedOn: '2026-02-01',
+    });
+
+    expect(created.fullName).toBe('Carla Nunes');
+    expect(created.ageLabel).toBe('~7');
+    expect(() => server.listStudents('')).toThrow('UNAUTHENTICATED');
   });
 });

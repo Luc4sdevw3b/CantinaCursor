@@ -6,6 +6,7 @@ import {
   FOUNDATION_MIGRATION_ID,
   OPERATION_REQUESTS_MIGRATION_ID,
   USERS_MIGRATION_ID,
+  STUDENTS_MIGRATION_ID,
 } from '../../src/server/sheets/schema';
 
 describe('setupSchema', () => {
@@ -24,17 +25,18 @@ describe('setupSchema', () => {
     expect(first).toEqual({
       ok: true,
       data: {
-        schemaVersion: 4,
+        schemaVersion: 5,
         appliedMigrations: [
           FOUNDATION_MIGRATION_ID,
           OPERATION_REQUESTS_MIGRATION_ID,
           BACKUPS_MIGRATION_ID,
           USERS_MIGRATION_ID,
+          STUDENTS_MIGRATION_ID,
         ],
       },
     });
     expect(second).toEqual(first);
-    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(4);
+    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(5);
     expect(sheets.get('_meta')?.getHeaders()).toEqual(['key', 'value']);
     expect(sheets.get('_operation_requests')?.getHeaders()).toEqual([
       'request_id',
@@ -67,6 +69,15 @@ describe('setupSchema', () => {
       'expires_at',
       'revoked',
     ]);
+    expect(sheets.get('_school_years')?.getHeaders()).toEqual([
+      'id',
+      'label',
+      'started_on',
+      'ended_on',
+      'active',
+      'created_at',
+    ]);
+    expect(sheets.get('_students')?.getHeaders()[0]).toBe('id');
   });
 
   it('applies only the operation-requests migration when foundation already exists', () => {
@@ -103,9 +114,10 @@ describe('setupSchema', () => {
         OPERATION_REQUESTS_MIGRATION_ID,
         BACKUPS_MIGRATION_ID,
         USERS_MIGRATION_ID,
+        STUDENTS_MIGRATION_ID,
       ]);
     }
-    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(4);
+    expect(sheets.get('_schema_migrations')?.listRows()).toHaveLength(5);
   });
 
   it('refuses PROD', () => {

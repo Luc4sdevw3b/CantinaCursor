@@ -72,9 +72,17 @@ _settings
 
 Nunca editar migration já aplicada em PROD.
 
+## Ano letivo e turmas
+
+`_school_years`: id, label, started_on, ended_on, active, created_at.
+
+`_classrooms`: id, school_year_id, name, active, created_at.
+
+Turmas pertencem a um ano letivo. Histórico de matrícula fica em `_student_enrollments` (última linha do mesmo id vence; `ended_on` vazio é a turma atual).
+
 ## Pessoas
 
-`_students`: id, full_name, birth_date, approximate_age, approximate_age_reference_year, active, timestamps.
+`_students`: id, full_name, birth_date, approximate_age, approximate_age_reference_year, active, created_at, updated_at. Nascimento **ou** idade aproximada + ano de referência, nunca os dois. Homônimos são cadastros distintos. Reativação exige revisão explícita. Atualizações são append (mesmo id, última linha vence).
 
 `_student_enrollments`: id, student_id, classroom_id, started_on, ended_on, created_by.
 

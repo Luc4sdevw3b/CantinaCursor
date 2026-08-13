@@ -3,10 +3,15 @@ import { checksumHeaders } from './serialize';
 import {
   BACKUPS_MIGRATION_ID,
   BACKUPS_SHEET,
+  CLASSROOMS_SHEET,
   FOUNDATION_MIGRATION_ID,
   OPERATION_REQUESTS_MIGRATION_ID,
   OPERATION_REQUESTS_SHEET,
+  SCHOOL_YEARS_SHEET,
   SESSIONS_SHEET,
+  STUDENTS_MIGRATION_ID,
+  STUDENTS_SHEET,
+  STUDENT_ENROLLMENTS_SHEET,
   USERS_MIGRATION_ID,
   USERS_SHEET,
 } from './schema';
@@ -44,11 +49,23 @@ export const USERS_MIGRATION: Migration = {
   ]),
 };
 
+export const STUDENTS_MIGRATION: Migration = {
+  id: STUDENTS_MIGRATION_ID,
+  description: 'Cria anos letivos, turmas, alunos e matrículas',
+  checksum: checksumHeaders([
+    ...SCHOOL_YEARS_SHEET.headers,
+    ...CLASSROOMS_SHEET.headers,
+    ...STUDENTS_SHEET.headers,
+    ...STUDENT_ENROLLMENTS_SHEET.headers,
+  ]),
+};
+
 export const MIGRATION_CATALOG: readonly Migration[] = [
   FOUNDATION_MIGRATION,
   OPERATION_REQUESTS_MIGRATION,
   BACKUPS_MIGRATION,
   USERS_MIGRATION,
+  STUDENTS_MIGRATION,
 ];
 
 export function pendingMigrations(

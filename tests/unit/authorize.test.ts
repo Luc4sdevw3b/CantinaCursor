@@ -5,6 +5,7 @@ describe('authorize', () => {
   it('allows owner on privileged actions and staff only on probe', () => {
     expect(authorize('owner', 'e2e.reset').ok).toBe(true);
     expect(authorize('owner', 'backup.restore').ok).toBe(true);
+    expect(authorize('staff', 'students.write').ok).toBe(true);
     expect(authorize('staff', 'e2e.probe').ok).toBe(true);
   });
 
