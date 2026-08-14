@@ -60,7 +60,11 @@ body {
       color-mix(in srgb, var(--sky) 24%, transparent),
       transparent 28rem
     ),
-    linear-gradient(160deg, var(--bg), color-mix(in srgb, var(--accent-soft) 55%, var(--bg)));
+    linear-gradient(
+      160deg,
+      var(--bg),
+      color-mix(in srgb, var(--accent-soft) 55%, var(--bg))
+    );
 }
 
 #app {
@@ -323,9 +327,37 @@ footer {
 .family-panel ul {
   list-style: none;
   margin: 1rem 0;
-  padding: 0;
+  padding: 0 0.35rem 0 0;
   display: grid;
   gap: 0.75rem;
+  align-content: start;
+  max-height: min(46vh, 22rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+.students-panel ul[hidden],
+.family-panel ul[hidden] {
+  display: none;
+}
+
+.students-panel ul::-webkit-scrollbar,
+.family-panel ul::-webkit-scrollbar {
+  width: 0.45rem;
+}
+
+.students-panel ul::-webkit-scrollbar-thumb,
+.family-panel ul::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 999px;
+}
+
+.students-panel ul::-webkit-scrollbar-track,
+.family-panel ul::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .students-panel li,
@@ -354,6 +386,14 @@ footer {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
   gap: 0.75rem;
+  position: relative;
+  z-index: 1;
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 1.25rem;
+  background: color-mix(in srgb, var(--surface-strong) 92%, transparent);
+  box-shadow: 0 8px 24px rgba(96, 122, 108, 0.08);
+  scroll-margin-top: 1rem;
 }
 
 .students-panel form[hidden],

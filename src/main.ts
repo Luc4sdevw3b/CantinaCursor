@@ -146,17 +146,6 @@ app.innerHTML = `
     <section class="students-panel" id="students-panel" hidden>
       <h2>Alunos</h2>
       <p id="students-status">Entre para ver o cadastro.</p>
-      <ul id="students-list"></ul>
-      <h3>Turmas</h3>
-      <ul id="classrooms-list"></ul>
-      <form id="classroom-form" aria-label="Cadastrar turma">
-        <label>
-          Nova turma
-          <input id="classroom-name" required autocomplete="off" />
-        </label>
-        <button type="submit" id="classroom-submit">Cadastrar turma</button>
-        <button type="button" id="classroom-cancel" hidden>Cancelar</button>
-      </form>
       <form id="student-form">
         <label>
           Nome completo
@@ -182,12 +171,22 @@ app.innerHTML = `
         <button type="submit" id="student-submit">Cadastrar aluno</button>
         <button type="button" id="student-cancel" hidden>Cancelar</button>
       </form>
+      <ul id="students-list"></ul>
+      <h3>Turmas</h3>
+      <form id="classroom-form" aria-label="Cadastrar turma">
+        <label>
+          Nova turma
+          <input id="classroom-name" required autocomplete="off" />
+        </label>
+        <button type="submit" id="classroom-submit">Cadastrar turma</button>
+        <button type="button" id="classroom-cancel" hidden>Cancelar</button>
+      </form>
+      <ul id="classrooms-list"></ul>
     </section>
 
     <section class="students-panel" id="family-panel" hidden>
       <h2>Responsáveis</h2>
       <p id="family-status">Entre para ver os responsáveis.</p>
-      <ul id="guardians-list"></ul>
       <form id="guardian-form">
         <label>
           Nome completo
@@ -208,8 +207,8 @@ app.innerHTML = `
         <button type="submit" id="guardian-submit">Cadastrar responsável</button>
         <button type="button" id="guardian-cancel" hidden>Cancelar</button>
       </form>
+      <ul id="guardians-list"></ul>
       <h2>Irmãos autorizados</h2>
-      <ul id="authorizations-list"></ul>
       <form id="sibling-auth-form">
         <label>
           Quem compra
@@ -233,8 +232,8 @@ app.innerHTML = `
         </label>
         <button type="submit">Autorizar irmão</button>
       </form>
+      <ul id="authorizations-list"></ul>
       <h2>Crédito do responsável</h2>
-      <ul id="guardian-credit-links"></ul>
       <form id="guardian-credit-auth-form">
         <label>
           Aluno
@@ -265,6 +264,7 @@ app.innerHTML = `
         </label>
         <button type="submit" id="save-age-setting">Salvar idade</button>
       </form>
+      <ul id="guardian-credit-links"></ul>
     </section>
 
     <section class="students-panel" id="products-panel" hidden>
@@ -272,7 +272,6 @@ app.innerHTML = `
       <p id="products-status">Entre para ver o cardápio.</p>
       <h3>Categorias</h3>
       <p>Crie a categoria antes do produto, se ela ainda não existir. Excluir apaga de verdade. Inativar tira do cardápio de vendas e guarda o cadastro. Não dá para excluir categoria com produto, nem produto que já teve venda, estoque ou reserva.</p>
-      <ul id="categories-list"></ul>
       <form id="category-form" aria-label="Cadastrar categoria">
         <label>
           Nome da categoria
@@ -281,8 +280,8 @@ app.innerHTML = `
         <button type="submit" id="category-submit">Cadastrar categoria</button>
         <button type="button" id="category-cancel" hidden>Cancelar</button>
       </form>
+      <ul id="categories-list"></ul>
       <h3>Produtos</h3>
-      <ul id="products-list"></ul>
       <form id="product-form" aria-label="Cadastrar produto">
         <label>
           Nome
@@ -311,10 +310,10 @@ app.innerHTML = `
         <button type="submit" id="product-submit">Cadastrar produto</button>
         <button type="button" id="product-cancel" hidden>Cancelar</button>
       </form>
+      <ul id="products-list"></ul>
       <div id="ad-hoc-block">
         <h2>Item avulso</h2>
         <p id="ad-hoc-status">Só a dona registra item avulso. Ele não vira produto.</p>
-        <ul id="ad-hoc-list"></ul>
         <form id="ad-hoc-form">
           <label>
             Nome
@@ -326,6 +325,7 @@ app.innerHTML = `
           </label>
           <button type="submit">Registrar avulso</button>
         </form>
+        <ul id="ad-hoc-list"></ul>
       </div>
     </section>
 
@@ -337,7 +337,6 @@ app.innerHTML = `
         <div id="inventory-open-items"></div>
         <button type="submit">Abrir estoque</button>
       </form>
-      <ul id="inventory-list"></ul>
       <form id="inventory-adjust-form">
         <label>
           Produto
@@ -364,13 +363,13 @@ app.innerHTML = `
         </label>
         <button type="submit">Ajustar estoque</button>
       </form>
+      <ul id="inventory-list"></ul>
     </section>
 
     <section class="students-panel" id="reservations-panel" hidden>
       <h2 id="reservations-title">Reservas do recreio</h2>
       <p>A reserva segura a disponibilidade. O estoque físico só muda na venda da retirada.</p>
       <p id="reservations-status">Entre para ver as reservas.</p>
-      <ul id="reservation-availability"></ul>
       <form id="reservation-slot-form">
         <h3 id="reservation-slot-title">Criar recreio</h3>
         <label>
@@ -421,6 +420,7 @@ app.innerHTML = `
         </label>
         <button type="submit">Confirmar reserva</button>
       </form>
+      <ul id="reservation-availability"></ul>
       <h3>Fila do recreio</h3>
       <label>
         Recreio
@@ -430,8 +430,6 @@ app.innerHTML = `
         Pesquisar reserva
         <input id="reservation-search" autocomplete="off" aria-label="Pesquisar reserva" />
       </label>
-      <h3>Produção</h3>
-      <ul id="reservation-production"></ul>
       <form id="reservation-edit-form">
         <h3>Alterar reserva</h3>
         <input id="reservation-edit-id" type="hidden" />
@@ -457,6 +455,8 @@ app.innerHTML = `
         Motivo do cancelamento ou não retirada
         <input id="reservation-action-reason" />
       </label>
+      <h3>Produção</h3>
+      <ul id="reservation-production"></ul>
       <ul id="reservations-list"></ul>
     </section>
 
@@ -631,7 +631,6 @@ app.innerHTML = `
         </div>
         <button type="submit">Adicionar ao carrinho</button>
       </form>
-      <ul id="sale-cart-list"></ul>
       <form id="sale-confirm-form">
         <label>
           Aluno
@@ -687,6 +686,7 @@ app.innerHTML = `
         </div>
         <button type="submit">Confirmar venda</button>
       </form>
+      <ul id="sale-cart-list"></ul>
       <ul id="sales-list"></ul>
     </section>
 
@@ -812,7 +812,6 @@ app.innerHTML = `
         </label>
         <button type="submit">Devolver crédito</button>
       </form>
-      <ul id="credits-list"></ul>
       <h2>Crédito do responsável</h2>
       <form id="guardian-credit-deposit-form">
         <label>
@@ -849,6 +848,8 @@ app.innerHTML = `
         </label>
         <button type="submit">Devolver crédito do responsável</button>
       </form>
+      <h3>Histórico de créditos</h3>
+      <ul id="credits-list"></ul>
     </section>
 
     <section class="students-panel" id="adjust-panel" hidden>
@@ -1483,6 +1484,13 @@ function studentLine(student: StudentSummary): string {
   return `${student.fullName} • ${student.ageLabel} • ${classroom}${guardian}${inactive}`;
 }
 
+function revealFormFor(field: Element | null): void {
+  const form = field?.closest('form');
+  if (form instanceof HTMLElement) {
+    form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
 function fillStudentForm(student: StudentDetail | null): void {
   const name = document.querySelector('#student-name');
   const birth = document.querySelector('#student-birth');
@@ -1524,6 +1532,9 @@ function fillStudentForm(student: StudentDetail | null): void {
   if (cancel instanceof HTMLButtonElement) {
     cancel.hidden = !student;
   }
+  if (student) {
+    revealFormFor(name);
+  }
 }
 
 function fillClassroomForm(classroom: Classroom | null): void {
@@ -1540,6 +1551,9 @@ function fillClassroomForm(classroom: Classroom | null): void {
   }
   if (cancel instanceof HTMLButtonElement) {
     cancel.hidden = !classroom;
+  }
+  if (classroom) {
+    revealFormFor(name);
   }
 }
 
@@ -1780,6 +1794,9 @@ function fillGuardianForm(guardian: Guardian | null): void {
   }
   if (cancel instanceof HTMLButtonElement) {
     cancel.hidden = !guardian;
+  }
+  if (guardian) {
+    revealFormFor(name);
   }
 }
 
@@ -2073,6 +2090,9 @@ function fillProductForm(product: Product | null): void {
   if (cancel instanceof HTMLButtonElement) {
     cancel.hidden = !product;
   }
+  if (product) {
+    revealFormFor(name);
+  }
 }
 
 function fillCategoryForm(category: ProductCategory | null): void {
@@ -2089,6 +2109,9 @@ function fillCategoryForm(category: ProductCategory | null): void {
   }
   if (cancel instanceof HTMLButtonElement) {
     cancel.hidden = !category;
+  }
+  if (category) {
+    revealFormFor(name);
   }
 }
 
@@ -2416,7 +2439,10 @@ async function renderInventory(
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '';
-    if (message.includes('INVENTORY_DAY_NOT_OPEN') && session.role === 'owner') {
+    if (
+      message.includes('INVENTORY_DAY_NOT_OPEN') &&
+      session.role === 'owner'
+    ) {
       inventoryStatus.textContent =
         'Estoque do dia ainda fechado. Informe a quantidade inicial de cada produto.';
       try {
@@ -2502,6 +2528,9 @@ function fillSlotForm(slot: ReservationSlot | null): void {
   }
   if (cancel instanceof HTMLButtonElement) {
     cancel.hidden = !slot;
+  }
+  if (slot) {
+    revealFormFor(label);
   }
 }
 
@@ -3623,8 +3652,7 @@ async function renderPayments(
             payments: await api.listPayments(),
             guardians: rosterShare.guardians,
             links: rosterShare.links,
-            receivables:
-              sharedReceivables ?? (await api.listReceivables()),
+            receivables: sharedReceivables ?? (await api.listReceivables()),
           }
         : await api.getPaymentsScreenData());
     const students = data.students;
@@ -5088,9 +5116,12 @@ inventoryList?.addEventListener('click', (event) => {
 
 document
   .querySelector('#inventory-open-form')
-  ?.addEventListener('submit', (event) => {    event.preventDefault();
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
     const inputs = Array.from(
-      document.querySelectorAll<HTMLInputElement>('#inventory-open-items input'),
+      document.querySelectorAll<HTMLInputElement>(
+        '#inventory-open-items input',
+      ),
     );
     if (inputs.length === 0) {
       return;

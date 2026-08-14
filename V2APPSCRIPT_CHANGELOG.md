@@ -9,6 +9,38 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-14 15:50 — Formulários antes de listas com rolagem própria
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 26.5
+
+### Pedido / objetivo
+
+- Evitar que listas longas empurrem campos e ações para o fim da página.
+- Manter os campos de operação acessíveis e rolar somente os resultados abaixo, inclusive em Crédito do responsável e no celular.
+
+### Tentativa / implementação
+
+- Formulários foram movidos para antes de suas listas em Alunos, Responsáveis, Cardápio, Estoque, Reservas, Vendas e Crédito.
+- Todas as listas das áreas ganharam altura máxima responsiva, rolagem vertical própria, contenção de rolagem e scrollbar discreta.
+- Formulários receberam superfície visual própria para separar claramente a área de ação da área de resultados.
+- Ao editar aluno, turma, responsável, categoria, produto ou recreio, o formulário correspondente entra suavemente em vista.
+- O primeiro teste móvel aguardava uma linha de crédito inicial que não existe no seed; a sincronização foi corrigida para aguardar o seletor de alunos carregado.
+
+### Resultado
+
+- O usuário preenche os campos acima e consulta listas longas abaixo sem alternar entre o início e o fim da página.
+- O fluxo de Crédito do responsável agora aparece antes do histórico de créditos.
+
+### Testes
+
+- Lint, typecheck e build: aprovados.
+- Vitest unitário: 131 testes aprovados.
+- Vitest de integração: 111 testes aprovados.
+- Playwright E2E local: 57 testes aprovados, incluindo ordem dos controles em todas as áreas e rolagem móvel de uma lista longa de créditos.
+
 ## 2026-08-14 14:45 — Visual pastel claro em página única
 
 **Origem:** Pedido do usuário

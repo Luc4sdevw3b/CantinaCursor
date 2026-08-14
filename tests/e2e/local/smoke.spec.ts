@@ -118,6 +118,144 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   });
 
+  test('keeps every management form before its independently scrollable list', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    const areas: Array<{
+      name: string;
+      pairs: Array<[string, string]>;
+    }> = [
+      {
+        name: 'Alunos',
+        pairs: [
+          ['#student-form', '#students-list'],
+          ['#classroom-form', '#classrooms-list'],
+        ],
+      },
+      {
+        name: 'Responsáveis',
+        pairs: [
+          ['#guardian-form', '#guardians-list'],
+          ['#sibling-auth-form', '#authorizations-list'],
+          ['#guardian-credit-auth-form', '#guardian-credit-links'],
+        ],
+      },
+      {
+        name: 'Cardápio',
+        pairs: [
+          ['#category-form', '#categories-list'],
+          ['#product-form', '#products-list'],
+          ['#ad-hoc-form', '#ad-hoc-list'],
+        ],
+      },
+      {
+        name: 'Estoque',
+        pairs: [['#inventory-adjust-form', '#inventory-list']],
+      },
+      {
+        name: 'Reservas',
+        pairs: [
+          ['#reservation-slot-form', '#reservation-slots-list'],
+          ['#reservation-create-form', '#reservation-availability'],
+          ['#reservation-action-reason', '#reservations-list'],
+        ],
+      },
+      {
+        name: 'Vendas',
+        pairs: [['#sale-confirm-form', '#sale-cart-list']],
+      },
+      {
+        name: 'Pagamentos',
+        pairs: [['#family-payment-form', '#payments-list']],
+      },
+      {
+        name: 'Crédito',
+        pairs: [['#guardian-credit-deposit-form', '#credits-list']],
+      },
+      {
+        name: 'Caixa',
+        pairs: [['#cash-open-form', '#cash-movements']],
+      },
+      {
+        name: 'Estornos',
+        pairs: [['#reversal-forms', '#reversals-history']],
+      },
+      {
+        name: 'Juros',
+        pairs: [['#renegotiate-form', '#due-date-history']],
+      },
+    ];
+
+    for (const area of areas) {
+      await goToArea(page, area.name);
+      for (const [controlSelector, listSelector] of area.pairs) {
+        const layout = await page.evaluate(
+          ({ controlSelector, listSelector }) => {
+            const control = document.querySelector(controlSelector);
+            const list = document.querySelector(listSelector);
+            if (
+              !(control instanceof HTMLElement) ||
+              !(list instanceof HTMLElement)
+            ) {
+              return null;
+            }
+            return {
+              controlComesFirst: Boolean(
+                control.compareDocumentPosition(list) &
+                Node.DOCUMENT_POSITION_FOLLOWING,
+              ),
+              overflowY: getComputedStyle(list).overflowY,
+              maxHeight: getComputedStyle(list).maxHeight,
+            };
+          },
+          { controlSelector, listSelector },
+        );
+        expect(
+          layout,
+          `${area.name}: ${controlSelector} → ${listSelector}`,
+        ).not.toBeNull();
+        expect(layout?.controlComesFirst).toBe(true);
+        expect(layout?.overflowY).toBe('auto');
+        expect(layout?.maxHeight).not.toBe('none');
+      }
+    }
+  });
+
+  test('keeps credit fields visible while a long credit list scrolls on mobile', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await goToArea(page, 'Crédito');
+    await expect(page.locator('#credit-student')).toContainText('Ana Souza');
+    await page.locator('#credits-list').evaluate((list) => {
+      for (let index = 0; index < 40; index += 1) {
+        const item = document.createElement('li');
+        item.textContent = `Crédito de teste ${index + 1}`;
+        list.append(item);
+      }
+    });
+    const form = page.locator('#guardian-credit-deposit-form');
+    const list = page.locator('#credits-list');
+    await form.scrollIntoViewIfNeeded();
+    const before = await form.boundingBox();
+    const scrollState = await list.evaluate((element) => {
+      element.scrollTo({ top: 240, behavior: 'instant' });
+      return {
+        clientHeight: element.clientHeight,
+        scrollHeight: element.scrollHeight,
+        scrollTop: element.scrollTop,
+      };
+    });
+    const after = await form.boundingBox();
+    expect(scrollState.scrollHeight).toBeGreaterThan(scrollState.clientHeight);
+    expect(scrollState.scrollTop).toBeGreaterThan(0);
+    expect(after?.y).toBe(before?.y);
+  });
+
   test('FakeAppApi health is visible', async ({ page }) => {
     await openLocalApp(page);
     await expect(page.getByText('Ambiente local funcionando')).toBeVisible();
@@ -460,30 +598,26 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await expect(pauloLink).toBeVisible();
     await pauloLink.getByRole('button', { name: 'Tornar principal' }).click();
     await expect(
-      page.locator('#guardian-credit-links').getByText(
-        'Ana Souza • ~8 • Paulo Nunes • principal',
-        { exact: true },
-      ),
+      page
+        .locator('#guardian-credit-links')
+        .getByText('Ana Souza • ~8 • Paulo Nunes • principal', { exact: true }),
     ).toBeVisible();
     await expect(
-      page.locator('#guardian-credit-links').getByText(
-        'Ana Souza • ~8 • Maria Souza • principal',
-        { exact: true },
-      ),
+      page
+        .locator('#guardian-credit-links')
+        .getByText('Ana Souza • ~8 • Maria Souza • principal', { exact: true }),
     ).toHaveCount(0);
     await pauloLink.getByRole('button', { name: 'Desvincular' }).click();
     await expect(pauloLink).toHaveCount(0);
     await expect(
-      page.locator('#guardian-credit-links').getByText(
-        'Ana Souza • ~8 • Maria Souza',
-        { exact: true },
-      ),
+      page
+        .locator('#guardian-credit-links')
+        .getByText('Ana Souza • ~8 • Maria Souza', { exact: true }),
     ).toBeVisible();
     await expect(
-      page.locator('#guardian-credit-links').getByText(
-        'Ana Souza • 10 • Paulo Nunes • principal',
-        { exact: true },
-      ),
+      page
+        .locator('#guardian-credit-links')
+        .getByText('Ana Souza • 10 • Paulo Nunes • principal', { exact: true }),
     ).toBeVisible();
   });
 
