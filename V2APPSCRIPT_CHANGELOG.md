@@ -9,6 +9,47 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-14 14:45 — Visual pastel claro em página única
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 26.5
+
+### Pedido / objetivo
+
+- Reformular todo o visual do app com cores leves e pastéis e uma interface mais amigável de uma página só.
+
+### Tentativa / implementação
+
+- Nova paleta pastel fixa em `styles.css`: fundo creme `#fdf9f2`, verde suave `#5aa88b`, pêssego `#f2b8a0`, lilás e azul nos brilhos de fundo; texto escuro suavizado.
+- Cantos mais arredondados, sombras mais leves, botões em formato de pílula com hover suave, foco com realce pastel.
+- Seletor de tema (Sistema/Claro/Escuro) removido da barra superior: o app fica sempre no tema claro pastel (`applyTheme` fixo, script inline do `index.html` simplificado e limpeza da preferência antiga no `localStorage`).
+- Estrutura de página única mantida: barra superior, hero com status/sessão, navegação por áreas e área de trabalho rolável, sem rotas novas.
+
+### Resultado
+
+- Interface única, clara e pastel, sem alternância de tema. Testes e build passam.
+
+### Diferenças do pedido
+
+- A alternância de tema escuro foi removida em vez de mantida (o pedido pedia cores leves; o escuro deixou de existir).
+
+### Impacto técnico
+
+- `theme.ts` expõe só `applyTheme(root)` e `THEME_STORAGE_KEY`; `data-theme` fica sempre `light`.
+- Preferências antigas `cantina.theme` são descartadas no carregamento.
+
+### Testes
+
+- Vitest: 131 (teste de tema reescrito para o tema fixo).
+- E2E local: 52 (4 testes de tema substituídos por 1 que verifica o claro fixo, inclusive com `prefers-color-scheme: dark`).
+
+### Pendências / próxima versão
+
+- Ctrl+F5 no Web App após publicar.
+- Fase 27 (WhatsApp) continua fora.
+
 ## 2026-08-14 14:27 — Cortar as abas mais lentas na planilha grande
 
 **Origem:** Pedido do usuário

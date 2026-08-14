@@ -37,12 +37,7 @@ import type {
 } from './web/shared/app-api';
 import { createAppApi } from './web/shared/create-app-api';
 import { getClientPerf, resetClientPerf } from './web/shared/perf';
-import {
-  applyTheme,
-  isThemePreference,
-  THEME_STORAGE_KEY,
-  type ThemePreference,
-} from './web/shared/theme';
+import { applyTheme } from './web/shared/theme';
 
 const app = document.querySelector<HTMLDivElement>('#app');
 
@@ -57,12 +52,6 @@ app.innerHTML = `
         <span class="brand-mark" aria-hidden="true">C2</span>
         <span>Cantina V2</span>
       </a>
-      <fieldset class="theme-picker" aria-label="Tema da interface">
-        <legend class="sr-only">Tema</legend>
-        <button type="button" data-theme-option="system">Sistema</button>
-        <button type="button" data-theme-option="light">Claro</button>
-        <button type="button" data-theme-option="dark">Escuro</button>
-      </fieldset>
     </header>
 
     <section class="hero" id="inicio" aria-labelledby="page-title">
@@ -902,12 +891,6 @@ app.innerHTML = `
   </main>
 `;
 
-const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
-const storedTheme = localStorage.getItem(THEME_STORAGE_KEY);
-let theme: ThemePreference = isThemePreference(storedTheme)
-  ? storedTheme
-  : 'system';
-
 type AppArea =
   | 'sales'
   | 'agenda'
@@ -1373,33 +1356,7 @@ function applyReversalResult(
   });
 }
 
-function renderTheme(): void {
-  applyTheme(document.documentElement, theme, systemTheme.matches);
-  document
-    .querySelectorAll<HTMLButtonElement>('[data-theme-option]')
-    .forEach((button) => {
-      button.setAttribute(
-        'aria-pressed',
-        String(button.dataset.themeOption === theme),
-      );
-    });
-}
-
-document
-  .querySelectorAll<HTMLButtonElement>('[data-theme-option]')
-  .forEach((button) => {
-    button.addEventListener('click', () => {
-      const selected = button.dataset.themeOption ?? null;
-      if (isThemePreference(selected)) {
-        theme = selected;
-        localStorage.setItem(THEME_STORAGE_KEY, theme);
-        renderTheme();
-      }
-    });
-  });
-
-systemTheme.addEventListener('change', renderTheme);
-renderTheme();
+applyTheme(document.documentElement);
 
 const api = createAppApi();
 Object.assign(window, {

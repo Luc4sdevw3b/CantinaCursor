@@ -106,57 +106,16 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     expect(pageErrors).toEqual([]);
   });
 
-  test('system theme follows prefers-color-scheme', async ({ page }) => {
-    await page.emulateMedia({ colorScheme: 'light' });
-    await openLocalApp(page);
-    await page.getByRole('button', { name: 'Sistema' }).click();
-    await expect(page.getByRole('button', { name: 'Sistema' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-
+  test('interface is fixed on the pastel light theme', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  });
-
-  test('light theme applies', async ({ page }) => {
     await openLocalApp(page);
-    await page.getByRole('button', { name: 'Claro' }).click();
-    await expect(page.getByRole('button', { name: 'Claro' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     await expect(page.locator('html')).toHaveAttribute(
       'data-theme-preference',
       'light',
     );
-  });
-
-  test('dark theme applies', async ({ page }) => {
-    await openLocalApp(page);
-    await page.getByRole('button', { name: 'Escuro' }).click();
-    await expect(page.getByRole('button', { name: 'Escuro' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-    await expect(page.locator('html')).toHaveAttribute(
-      'data-theme-preference',
-      'dark',
-    );
-  });
-
-  test('theme preference persists after reload', async ({ page }) => {
-    await openLocalApp(page);
-    await page.getByRole('button', { name: 'Escuro' }).click();
     await page.reload();
-    await expect(page.getByRole('button', { name: 'Escuro' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   });
 
   test('FakeAppApi health is visible', async ({ page }) => {
