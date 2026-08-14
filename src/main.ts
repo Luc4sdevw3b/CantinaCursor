@@ -300,7 +300,7 @@ app.innerHTML = `
           Permite desconto
         </label>
         <label class="checkbox-label">
-          <input id="product-stock" type="checkbox" />
+          <input id="product-stock" type="checkbox" checked />
           Controla estoque
         </label>
         <label class="checkbox-label">
@@ -1163,6 +1163,11 @@ function invalidateAreas(...areas: AppArea[]): void {
   }
 }
 
+function refreshAfterCatalogChange(): Promise<void> {
+  invalidateAreas('sales', 'inventory', 'reservations', 'products');
+  return ensureAreaLoaded('products', true);
+}
+
 function renderTheme(): void {
   applyTheme(document.documentElement, theme, systemTheme.matches);
   document
@@ -1801,7 +1806,7 @@ function fillProductForm(product: Product | null): void {
   name.value = product?.name ?? '';
   price.value = product ? priceInputFromCents(product.priceCents) : '';
   discount.checked = product?.discountAllowed ?? false;
-  stock.checked = product?.stockTracked ?? false;
+  stock.checked = product?.stockTracked ?? true;
   reservable.checked = product?.reservable ?? false;
   if (submit instanceof HTMLButtonElement) {
     submit.textContent = product ? 'Salvar produto' : 'Cadastrar produto';
@@ -1978,15 +1983,7 @@ async function renderProducts(session: AppSession | null): Promise<void> {
               if (editingProductId === product.id) {
                 fillProductForm(null);
               }
-              return api
-                .getSession()
-                .then((current) =>
-                  Promise.all([
-                    renderProducts(current),
-                    renderSales(current),
-                    renderInventory(current),
-                  ]),
-                );
+              return refreshAfterCatalogChange();
             }),
         );
       });
@@ -2003,17 +2000,7 @@ async function renderProducts(session: AppSession | null): Promise<void> {
           () =>
             api
               .activateProduct(product.id)
-              .then(() =>
-                api
-                  .getSession()
-                  .then((current) =>
-                    Promise.all([
-                      renderProducts(current),
-                      renderSales(current),
-                      renderInventory(current),
-                    ]),
-                  ),
-              ),
+              .then(() => refreshAfterCatalogChange()),
         );
       });
       actions.append(activate);
@@ -2031,15 +2018,7 @@ async function renderProducts(session: AppSession | null): Promise<void> {
             if (editingProductId === product.id) {
               fillProductForm(null);
             }
-            return api
-              .getSession()
-              .then((current) =>
-                Promise.all([
-                  renderProducts(current),
-                  renderSales(current),
-                  renderInventory(current),
-                ]),
-              );
+            return refreshAfterCatalogChange();
           }),
       );
     });
@@ -4556,15 +4535,7 @@ document.querySelector('#product-form')?.addEventListener('submit', (event) => {
     () =>
       saved.then(() => {
         fillProductForm(null);
-        return api
-          .getSession()
-          .then((session) =>
-            Promise.all([
-              renderProducts(session),
-              renderSales(session),
-              renderInventory(session),
-            ]),
-          );
+        return refreshAfterCatalogChange();
       }),
   );
 });

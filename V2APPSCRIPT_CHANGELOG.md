@@ -9,6 +9,45 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-14 11:15 — Produto ativo do cardápio aparece no estoque
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 26.5
+
+### Pedido / objetivo
+
+- Produtos novos no cardápio não apareciam para selecionar no estoque.
+- Todo produto que não foi excluído nem inativado precisa aparecer no estoque.
+
+### Tentativa / implementação
+
+- A lista e o select de estoque passam a incluir todos os produtos **ativos** do cardápio, mesmo se o dia já estava aberto ou o item nasceu sem abertura.
+- Sem quantidade inicial, mostra `ACABOU` (zero) e a dona pode ajustar.
+- Inativo ou excluído some do estoque.
+- Cadastro novo marca **Controla estoque** por padrão.
+
+### Resultado
+
+- Produto cadastrado hoje entra no estoque na hora. Inativar tira da lista.
+
+### Diferenças do pedido
+
+- Nenhuma.
+
+### Impacto técnico
+
+- Fonte da verdade do cadastro continua `_products`. Estoque do dia não exige mais linha de abertura para o item aparecer.
+
+### Testes
+
+- Vitest + E2E local: produto novo no select; inativo some; ajuste de item criado depois da abertura.
+
+### Pendências / próxima versão
+
+- Nenhuma.
+
 ## 2026-08-14 11:20 — Fase 26.5: performance sem mudar regra de negócio
 
 **Origem:** Pedido do usuário

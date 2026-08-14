@@ -203,12 +203,32 @@ export class MemoryStock {
     const openings = this.openings.filter(
       (item) => item.inventory_day_id === day.data.id,
     );
+    const openingByProduct = new Map(
+      openings.map((item) => [item.product_id, item] as const),
+    );
     const products = unwrap(
       this.catalog.listProducts({ includeInactive: true }),
-    );
-    const items = openings.map((opening) =>
-      this.toBalance(day.data.id, opening, products),
-    );
+    ).filter((item) => item.active);
+    const items = products
+      .map((product) =>
+        this.toBalance(
+          day.data.id,
+          openingByProduct.get(product.id) ?? {
+            id: '',
+            inventory_day_id: day.data.id,
+            product_id: product.id,
+            opening_quantity: '0',
+          },
+          products,
+        ),
+      )
+      .sort((left, right) =>
+        left.productName < right.productName
+          ? -1
+          : left.productName > right.productName
+            ? 1
+            : 0,
+      );
     return ok({
       businessDate: day.data.business_date,
       status: INVENTORY_DAY_OPEN,
@@ -242,7 +262,7 @@ export class MemoryStock {
       productId: input.productId,
       quantityDelta: input.quantityDelta,
       reason: input.reason,
-      stockTracked: product.data.stockTracked,
+      productActive: product.data.active,
       currentPhysical: current,
     });
     if (!profile.ok) {

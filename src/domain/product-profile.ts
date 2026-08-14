@@ -58,7 +58,7 @@ export function validateProductProfile(
     category_id: categoryId,
     price_cents: String(price.data),
     discount_allowed: input.discountAllowed === true ? 'true' : 'false',
-    stock_tracked: input.stockTracked === true ? 'true' : 'false',
+    stock_tracked: input.stockTracked === false ? 'false' : 'true',
     reservable: input.reservable === true ? 'true' : 'false',
   });
 }

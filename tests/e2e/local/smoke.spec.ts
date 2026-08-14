@@ -277,6 +277,12 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
       .locator('#products-list')
       .getByRole('listitem')
       .filter({ hasText: 'Produto e2e excluir' });
+    await goToArea(page, 'Estoque');
+    await expect(page.locator('#inventory-adjust-product')).toContainText(
+      'Produto e2e excluir',
+    );
+    await expect(page.getByText('Produto e2e excluir • ACABOU')).toBeVisible();
+    await goToArea(page, 'Cardápio');
     await extraProduct.getByRole('button', { name: 'Excluir' }).click();
     await expect(
       page
@@ -301,6 +307,10 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await expect(
       inactiveProduct.getByRole('button', { name: 'Inativar' }),
     ).toHaveCount(0);
+    await goToArea(page, 'Estoque');
+    await expect(page.locator('#inventory-adjust-product')).not.toContainText(
+      'Produto e2e inativar',
+    );
     await goToArea(page, 'Vendas');
     await expect(page.locator('#sale-product')).not.toContainText(
       'Produto e2e inativar',

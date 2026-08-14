@@ -49,6 +49,16 @@ describe('products and money', () => {
         reservable: 'false',
       },
     });
+    expect(
+      validateProductProfile({
+        name: 'Pão de queijo',
+        categoryId: CATEGORY,
+        priceCents: 450,
+      }),
+    ).toMatchObject({
+      ok: true,
+      data: { stock_tracked: 'true' },
+    });
   });
 
   it('records a new price without rewriting the previous history row in place', () => {

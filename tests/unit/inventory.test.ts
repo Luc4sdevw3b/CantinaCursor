@@ -60,7 +60,7 @@ describe('daily inventory', () => {
         productId: COXINHA,
         quantityDelta: -3,
         reason: 'quebra',
-        stockTracked: true,
+        productActive: true,
         currentPhysical: 10,
       }),
     ).toEqual({
@@ -77,7 +77,7 @@ describe('daily inventory', () => {
         productId: COXINHA,
         quantityDelta: -11,
         reason: 'quebra',
-        stockTracked: true,
+        productActive: true,
         currentPhysical: 10,
       }).ok,
     ).toBe(false);
@@ -86,7 +86,7 @@ describe('daily inventory', () => {
         productId: COXINHA,
         quantityDelta: -1,
         reason: ' ',
-        stockTracked: true,
+        productActive: true,
         currentPhysical: 10,
       }).ok,
     ).toBe(false);

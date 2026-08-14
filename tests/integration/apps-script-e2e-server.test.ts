@@ -1934,10 +1934,14 @@ describe('Apps Script E2E server', () => {
     expect(suco.quantityLabel).toBe('ACABOU');
     expect(
       balances.items.some((item) => item.productName === 'Brigadeiro'),
-    ).toBe(false);
+    ).toBe(true);
+    expect(
+      balances.items.find((item) => item.productName === 'Brigadeiro')
+        ?.quantityLabel,
+    ).toBe('ACABOU');
 
     const staff = server.loginE2E('staff').token;
-    expect(server.listInventoryBalances(staff).items).toHaveLength(2);
+    expect(server.listInventoryBalances(staff).items).toHaveLength(3);
     expect(() =>
       server.adjustInventory(staff, {
         productId: server
@@ -1972,6 +1976,48 @@ describe('Apps Script E2E server', () => {
         ),
     ).toBe(true);
     expect(() => server.listInventoryBalances('')).toThrow('UNAUTHENTICATED');
+  });
+
+  it('lists every active catalog product in stock even after the day is open', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const salgados = server
+      .listProductCategories(owner)
+      .find((item) => item.name === 'Salgados');
+    if (!salgados) {
+      throw new Error('categoria Salgados ausente');
+    }
+    const created = server.createProduct(owner, {
+      name: 'Pão de queijo',
+      categoryId: salgados.id,
+      priceCents: 450,
+      stockTracked: false,
+    });
+    const listed = server
+      .listInventoryBalances(owner)
+      .items.find((item) => item.productName === created.name);
+    expect(listed?.quantityLabel).toBe('ACABOU');
+    expect(
+      server
+        .adjustInventory(owner, {
+          productId: created.id,
+          quantityDelta: 4,
+          reason: 'chegou mercadoria',
+        })
+        .items.find((item) => item.productName === created.name)
+        ?.physicalQuantity,
+    ).toBe(4);
+    server.deactivateProduct(owner, created.id);
+    expect(
+      server
+        .listInventoryBalances(owner)
+        .items.some((item) => item.productName === created.name),
+    ).toBe(false);
   });
 
   it('records an anonymous PIX sale, lowers stock and refuses staff discount', () => {

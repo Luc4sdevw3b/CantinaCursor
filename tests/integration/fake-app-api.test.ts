@@ -324,10 +324,14 @@ describe('FakeAppApi', () => {
     expect(suco.quantityLabel).toBe('ACABOU');
     expect(
       balances.items.some((item) => item.productName === 'Brigadeiro'),
-    ).toBe(false);
+    ).toBe(true);
+    expect(
+      balances.items.find((item) => item.productName === 'Brigadeiro')
+        ?.quantityLabel,
+    ).toBe('ACABOU');
 
     await api.loginE2E('staff');
-    expect((await api.listInventoryBalances()).items).toHaveLength(2);
+    expect((await api.listInventoryBalances()).items).toHaveLength(3);
     await expect(
       api.adjustInventory({
         productId: coxinha.productId,
@@ -354,6 +358,42 @@ describe('FakeAppApi', () => {
           item.kind === 'adjustment',
       ),
     ).toBe(true);
+  });
+
+  it('lists every active catalog product in stock even after the day is open', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const salgados = (await api.listProductCategories()).find(
+      (item) => item.name === 'Salgados',
+    );
+    if (!salgados) {
+      throw new Error('categoria Salgados ausente');
+    }
+    const created = await api.createProduct({
+      name: 'Pão de queijo',
+      categoryId: salgados.id,
+      priceCents: 450,
+      stockTracked: false,
+    });
+    const listed = (await api.listInventoryBalances()).items.find(
+      (item) => item.productId === created.id,
+    );
+    expect(listed?.quantityLabel).toBe('ACABOU');
+    expect(
+      (
+        await api.adjustInventory({
+          productId: created.id,
+          quantityDelta: 4,
+          reason: 'chegou mercadoria',
+        })
+      ).items.find((item) => item.productId === created.id)?.physicalQuantity,
+    ).toBe(4);
+    await api.deactivateProduct(created.id);
+    expect(
+      (await api.listInventoryBalances()).items.some(
+        (item) => item.productId === created.id,
+      ),
+    ).toBe(false);
   });
 
   it('records an anonymous PIX sale, lowers stock and refuses staff discount', async () => {

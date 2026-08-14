@@ -3463,7 +3463,7 @@ function validateProductProfileGs(payload) {
     price_cents: String(parseCentsGs(payload && payload.priceCents)),
     discount_allowed:
       payload && payload.discountAllowed === true ? 'true' : 'false',
-    stock_tracked: payload && payload.stockTracked === true ? 'true' : 'false',
+    stock_tracked: payload && payload.stockTracked === false ? 'false' : 'true',
     reservable: payload && payload.reservable === true ? 'true' : 'false',
   };
 }
@@ -4214,16 +4214,13 @@ function quantityLabelGs(physical) {
   return physical === 0 ? SOLD_OUT_LABEL : String(physical);
 }
 
-function toBalanceGs(dayId, opening, products, businessDate) {
-  const product = products.filter(function (item) {
-    return item.id === opening.product_id;
-  })[0];
-  const physical = physicalForGs(dayId, opening.product_id);
-  const reserved = reservedQuantityGs(opening.product_id, businessDate);
+function toBalanceGs(dayId, product, openingQuantity, businessDate) {
+  const physical = physicalForGs(dayId, product.id);
+  const reserved = reservedQuantityGs(product.id, businessDate);
   return {
-    productId: opening.product_id,
-    productName: product ? product.name : '',
-    openingQuantity: Number(opening.opening_quantity),
+    productId: product.id,
+    productName: product.name,
+    openingQuantity: Number(openingQuantity),
     physicalQuantity: physical,
     reservedQuantity: reserved,
     availableQuantity: physical - reserved,
@@ -4234,17 +4231,34 @@ function toBalanceGs(dayId, opening, products, businessDate) {
 
 function listBalancesUnlocked(businessDate) {
   const day = requireInventoryDayGs(businessDate);
-  const products = latestRecordsById(listProductRecords());
+  const openingsByProduct = {};
+  listOpeningRecords().forEach(function (item) {
+    if (item.inventory_day_id === day.id) {
+      openingsByProduct[item.product_id] = item.opening_quantity;
+    }
+  });
+  const items = latestRecordsById(listProductRecords())
+    .filter(function (product) {
+      return product.active === 'true';
+    })
+    .map(function (product) {
+      const opening =
+        openingsByProduct[product.id] !== undefined
+          ? openingsByProduct[product.id]
+          : '0';
+      return toBalanceGs(day.id, product, opening, day.business_date);
+    })
+    .sort(function (left, right) {
+      return left.productName < right.productName
+        ? -1
+        : left.productName > right.productName
+          ? 1
+          : 0;
+    });
   return {
     businessDate: day.business_date,
     status: INVENTORY_DAY_OPEN,
-    items: listOpeningRecords()
-      .filter(function (item) {
-        return item.inventory_day_id === day.id;
-      })
-      .map(function (opening) {
-        return toBalanceGs(day.id, opening, products, day.business_date);
-      }),
+    items: items,
   };
 }
 
@@ -4409,17 +4423,17 @@ function adjustInventory(sessionToken, payload) {
       );
     }
     const product = latestProductById(productId);
+    if (product.active !== 'true') {
+      throw new Error(
+        'PRODUCT_INACTIVE: Produto inativo ou excluído não entra no estoque.',
+      );
+    }
     const current = physicalForGs(day.id, productId);
     const delta = parseQuantityDeltaGs(payload && payload.quantityDelta);
     const reason = String((payload && payload.reason) || '').trim();
     if (reason.length < 2) {
       throw new Error(
         'INVENTORY_REASON_REQUIRED: Informe o motivo do ajuste de estoque.',
-      );
-    }
-    if (product.stock_tracked !== 'true') {
-      throw new Error(
-        'PRODUCT_STOCK_NOT_TRACKED: Só produtos que controlam estoque entram no estoque do dia.',
       );
     }
     if (current + delta < 0) {

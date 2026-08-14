@@ -27,6 +27,12 @@ export const INVENTORY_PRODUCT_NOT_TRACKED_ERROR = {
   retryable: false,
 } as const;
 
+export const INVENTORY_PRODUCT_INACTIVE_ERROR = {
+  code: 'PRODUCT_INACTIVE',
+  message: 'Produto inativo ou excluído não entra no estoque.',
+  retryable: false,
+} as const;
+
 export const INVENTORY_REASON_REQUIRED_ERROR = {
   code: 'INVENTORY_REASON_REQUIRED',
   message: 'Informe o motivo do ajuste de estoque.',
@@ -118,15 +124,15 @@ export function validateAdjustment(input: {
   productId: unknown;
   quantityDelta: unknown;
   reason: unknown;
-  stockTracked: boolean;
+  productActive: boolean;
   currentPhysical: number;
 }): Result<ValidatedAdjustment> {
   const productId = String(input.productId ?? '');
   if (!validId(productId)) {
     return err(INVALID_ID_ERROR);
   }
-  if (!input.stockTracked) {
-    return err(INVENTORY_PRODUCT_NOT_TRACKED_ERROR);
+  if (!input.productActive) {
+    return err(INVENTORY_PRODUCT_INACTIVE_ERROR);
   }
   const delta = parseQuantityDelta(input.quantityDelta);
   if (!delta.ok) {
