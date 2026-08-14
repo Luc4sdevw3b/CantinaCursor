@@ -311,6 +311,15 @@ export class MemoryStock {
     return ok(physical - this.reservedLookup(productId, date));
   }
 
+  physicalQuantity(productId: string, businessDate?: string): Result<number> {
+    const date = this.resolveDate(businessDate);
+    const day = this.requireDay(date);
+    if (!day.ok) {
+      return err(day.error);
+    }
+    return ok(this.physicalFor(day.data.id, productId));
+  }
+
   listMovements(businessDate?: string): Result<InventoryMovementView[]> {
     const day = this.requireDay(this.resolveDate(businessDate));
     if (!day.ok) {

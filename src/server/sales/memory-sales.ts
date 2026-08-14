@@ -85,6 +85,14 @@ import type { MemoryCatalog } from '../products/memory-catalog';
 import type { MemoryStock } from '../inventory/memory-stock';
 import type { MemoryRoster } from '../students/memory-roster';
 import type { MemoryCash } from '../cash/memory-cash';
+import type { MemoryReservations } from '../reservations/memory-reservations';
+import {
+  reservationHeldQuantity,
+  RESERVATION_PICKUP_EXCEEDS_ERROR,
+  RESERVED_OVERRIDE_FORBIDDEN_ERROR,
+  RESERVED_OVERRIDE_MISMATCH_ERROR,
+  RESERVED_OVERRIDE_REQUIRED_ERROR,
+} from '../../domain/reservation';
 import {
   CREDIT_REFUND_ALREADY_REVERSED_ERROR,
   CREDIT_REFUND_NOT_FOUND_ERROR,
@@ -160,6 +168,7 @@ export interface SaleView {
   settlements: SaleSettlementView[];
   items: SaleItemView[];
   summaryLabel: string;
+  sourceReservationId: string | null;
   createdAt: string;
 }
 
@@ -465,6 +474,12 @@ export class MemorySales {
     private readonly nowIso: () => string = () => new Date().toISOString(),
     private readonly createId: () => string = () => crypto.randomUUID(),
   ) {}
+
+  private reservations: MemoryReservations | null = null;
+
+  bindReservations(reservations: MemoryReservations): void {
+    this.reservations = reservations;
+  }
 
   getPixCopyText(): Result<{ text: string }> {
     return ok({ text: DEFAULT_PIX_COPY_TEXT });
@@ -1577,6 +1592,8 @@ export class MemorySales {
     cashTenderedCents?: unknown;
     installments?: readonly FiadoInstallmentInput[];
     actorIsOwner: boolean;
+    sourceReservationId?: string | null;
+    overrideReservationId?: string | null;
   }): Result<SaleView> {
     if (!input.items.length) {
       return err(SALE_ITEMS_REQUIRED_ERROR);
@@ -1609,22 +1626,74 @@ export class MemorySales {
         (needed.get(line.product_id) ?? 0) + Number(line.quantity),
       );
     }
+    const sourceReservation = input.sourceReservationId
+      ? this.reservations?.peekActiveForSale(input.sourceReservationId)
+      : null;
+    if (sourceReservation && !sourceReservation.ok) {
+      return err(sourceReservation.error);
+    }
+    let overrideReservationId = '';
     for (const [productId, quantity] of needed) {
       const available = this.stock.availableQuantity(productId);
       if (!available.ok) {
         return err(available.error);
       }
-      if (available.data < quantity) {
+      if (sourceReservation?.ok) {
+        const held = reservationHeldQuantity(
+          sourceReservation.data.items,
+          productId,
+        );
+        if (held < quantity) {
+          return err(RESERVATION_PICKUP_EXCEEDS_ERROR);
+        }
+        if (available.data + held < quantity) {
+          return err({
+            code: 'INSUFFICIENT_STOCK',
+            message: 'Não há estoque suficiente para esta venda.',
+            retryable: false,
+          });
+        }
+        continue;
+      }
+      if (available.data >= quantity) {
+        continue;
+      }
+      const physical = this.stock.physicalQuantity(productId);
+      if (!physical.ok) {
+        return err(physical.error);
+      }
+      if (physical.data < quantity) {
         return err({
           code: 'INSUFFICIENT_STOCK',
           message: 'Não há estoque suficiente para esta venda.',
           retryable: false,
         });
       }
+      if (!input.actorIsOwner) {
+        return err(RESERVED_OVERRIDE_FORBIDDEN_ERROR);
+      }
+      if (!input.overrideReservationId) {
+        return err(RESERVED_OVERRIDE_REQUIRED_ERROR);
+      }
+      const override = this.reservations?.peekActiveForSale(
+        input.overrideReservationId,
+      );
+      if (!override?.ok) {
+        return err(override?.error ?? RESERVED_OVERRIDE_MISMATCH_ERROR);
+      }
+      const overflow = quantity - available.data;
+      if (reservationHeldQuantity(override.data.items, productId) < overflow) {
+        return err(RESERVED_OVERRIDE_MISMATCH_ERROR);
+      }
+      overrideReservationId = override.data.id;
+    }
+    let consumerStudentId = input.consumerStudentId;
+    if (!consumerStudentId && sourceReservation?.ok) {
+      consumerStudentId = sourceReservation.data.linkedStudentId;
     }
     let consumerId = '';
-    if (input.consumerStudentId) {
-      const student = this.roster.getStudent(input.consumerStudentId);
+    if (consumerStudentId) {
+      const student = this.roster.getStudent(consumerStudentId);
       if (!student.ok) {
         return err(student.error);
       }
@@ -1712,7 +1781,9 @@ export class MemorySales {
       gross_total_cents: totals.gross_total_cents,
       discount_total_cents: totals.discount_total_cents,
       net_total_cents: totals.net_total_cents,
-      source_reservation_id: '',
+      source_reservation_id: sourceReservation?.ok
+        ? sourceReservation.data.id
+        : '',
       created_by: LOCAL_ACTOR_ID,
       created_at: now,
       reversal_id: '',
@@ -1841,6 +1912,21 @@ export class MemorySales {
       });
       if (!recorded.ok) {
         return err(recorded.error);
+      }
+    }
+    if (sourceReservation?.ok) {
+      const fulfilled = this.reservations?.fulfillFromSale(
+        sourceReservation.data.id,
+      );
+      if (fulfilled && !fulfilled.ok) {
+        return err(fulfilled.error);
+      }
+    } else if (overrideReservationId) {
+      const cancelled = this.reservations?.cancelForWalkInOverride(
+        overrideReservationId,
+      );
+      if (cancelled && !cancelled.ok) {
+        return err(cancelled.error);
       }
     }
     return ok(this.toSale(sale));
@@ -2568,6 +2654,7 @@ export class MemorySales {
         guardianCreditLabel,
         accountLabel,
       }),
+      sourceReservationId: sale.source_reservation_id || null,
       createdAt: sale.created_at,
     };
   }

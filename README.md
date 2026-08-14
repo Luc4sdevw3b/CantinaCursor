@@ -2,7 +2,7 @@
 
 Aplicação web da cantina, planejada para Google Apps Script + Google Sheets + Google Drive.
 
-O projeto está na Fase 25 (`0.1.0-dev`): gestão da dona nas reservas do recreio (fila por recreio, produção, pesquisar, alterar, entregar, cancelar, não retirada e vincular aluno). Reserva→venda fica na Fase 26.
+O projeto está na Fase 26 (`0.1.0-dev`): entrega da reserva vira venda no motor normal, com baixa física uma vez e override explícito da dona para venda presencial em unidade reservada.
 
 Consulte:
 
@@ -74,7 +74,7 @@ clasp deployments
 E2E_BASE_URL='https://script.google.com/macros/s/SEU_DEPLOYMENT_ID/exec' npm run test:e2e:remote
 ```
 
-O primeiro `getHealth` configura `ENVIRONMENT=E2E`, aplica o schema e tenta um backup pré-migration na pasta E2E do Drive. `getHealth` continua público. O portal `?portal=reservas` também é público: catálogo reservável, disponibilidade/`ACABOU` e formulário mínimo, sem cadastro privado. Cadastro, vendas, fiado, crédito, caixa, estornos e reservas internas exigem sessão. Só a dona cria recreio. `resetE2E` / `seedE2E` / backup / restore exigem sessão de dona, recusam qualquer ambiente que não seja E2E, inclusive PROD, e usam `LockService`. Restore não mescla automaticamente. `loginE2E` é fixture só do E2E, não é backdoor de PROD. WhatsApp nesta fase é só uma flag; não há envio. Gestão da dona e reserva→venda ficam para as fases seguintes.
+O primeiro `getHealth` configura `ENVIRONMENT=E2E`, aplica o schema e tenta um backup pré-migration na pasta E2E do Drive. `getHealth` continua público. O portal `?portal=reservas` também é público: catálogo reservável, disponibilidade/`ACABOU` e formulário mínimo, sem cadastro privado. Cadastro, vendas, fiado, crédito, caixa, estornos e reservas internas exigem sessão. Só a dona cria recreio. Entregar reserva abre Vendas: a dona escolhe o pagamento, a venda baixa o físico uma vez e libera o reservado. Venda presencial só usa unidade reservada com **Usar unidade reservada**. `resetE2E` / `seedE2E` / backup / restore exigem sessão de dona, recusam qualquer ambiente que não seja E2E, inclusive PROD, e usam `LockService`. Restore não mescla automaticamente. `loginE2E` é fixture só do E2E, não é backdoor de PROD. WhatsApp nesta fase é só uma flag; não há envio.
 
 Validação completa da fundação (sem Google):
 

@@ -14,6 +14,7 @@ export const RESERVATION_STATUS_FULFILLED = 'fulfilled';
 export const RESERVATION_STATUS_CANCELLED = 'cancelled';
 export const RESERVATION_STATUS_NO_SHOW = 'no_show';
 export const RESERVATION_PAYMENT_UNPAID = 'unpaid';
+export const RESERVATION_PAYMENT_PAID = 'paid';
 export const RESERVATION_CREATE_OPERATION = 'reservation.create';
 export const RESERVATION_UPDATE_OPERATION = 'reservation.update';
 
@@ -161,6 +162,31 @@ export const RESERVATION_PARTIAL_UNSUPPORTED_ERROR = {
   code: 'RESERVATION_PARTIAL_UNSUPPORTED',
   message:
     'Não há retirada parcial persistente. Cancele ou retire a reserva inteira.',
+  retryable: false,
+} as const;
+
+export const RESERVATION_PICKUP_EXCEEDS_ERROR = {
+  code: 'RESERVATION_PICKUP_EXCEEDS',
+  message: 'A retirada não pode ser maior que a reserva.',
+  retryable: false,
+} as const;
+
+export const RESERVED_OVERRIDE_REQUIRED_ERROR = {
+  code: 'RESERVED_OVERRIDE_REQUIRED',
+  message:
+    'Esta unidade está reservada. Confirme Usar unidade reservada e escolha a reserva afetada.',
+  retryable: false,
+} as const;
+
+export const RESERVED_OVERRIDE_FORBIDDEN_ERROR = {
+  code: 'RESERVED_OVERRIDE_FORBIDDEN',
+  message: 'Somente a dona pode usar unidade reservada.',
+  retryable: false,
+} as const;
+
+export const RESERVED_OVERRIDE_MISMATCH_ERROR = {
+  code: 'RESERVED_OVERRIDE_MISMATCH',
+  message: 'A reserva escolhida não cobre esta venda.',
   retryable: false,
 } as const;
 
@@ -496,4 +522,13 @@ export function createPublicCode(random: () => number = Math.random): string {
     code += PUBLIC_CODE_ALPHABET[pick] ?? 'A';
   }
   return code;
+}
+
+export function reservationHeldQuantity(
+  items: ReadonlyArray<{ productId: string; quantity: number }>,
+  productId: string,
+): number {
+  return items
+    .filter((item) => item.productId === productId)
+    .reduce((total, item) => total + item.quantity, 0);
 }

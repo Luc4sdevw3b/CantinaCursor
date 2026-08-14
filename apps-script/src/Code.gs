@@ -457,6 +457,7 @@ const RESERVATION_STATUS_FULFILLED = 'fulfilled';
 const RESERVATION_STATUS_CANCELLED = 'cancelled';
 const RESERVATION_STATUS_NO_SHOW = 'no_show';
 const RESERVATION_PAYMENT_UNPAID = 'unpaid';
+const RESERVATION_PAYMENT_PAID = 'paid';
 const RESERVATION_CREATE_OPERATION = 'reservation.create';
 const RESERVATION_UPDATE_OPERATION = 'reservation.update';
 const PUBLIC_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -3666,10 +3667,13 @@ function physicalForGs(dayId, productId) {
   return physical;
 }
 
-function reservedQuantityGs(productId, businessDate) {
+function reservedQuantityGs(productId, businessDate, excludeReservationId) {
   let total = 0;
   latestRecordsById(listReservationRecords()).forEach(function (reservation) {
     if (reservation.status !== RESERVATION_STATUS_RESERVED) {
+      return;
+    }
+    if (excludeReservationId && reservation.id === excludeReservationId) {
       return;
     }
     const slot = latestRecordsById(listReservationSlotRecords()).filter(
@@ -3691,6 +3695,20 @@ function reservedQuantityGs(productId, businessDate) {
         total += Number(item.quantity);
       });
   });
+  return total;
+}
+
+function reservationHeldQuantityGs(reservationId, productId) {
+  let total = 0;
+  listReservationItemRecords()
+    .filter(function (item) {
+      return (
+        item.reservation_id === reservationId && item.product_id === productId
+      );
+    })
+    .forEach(function (item) {
+      total += Number(item.quantity);
+    });
   return total;
 }
 
@@ -4959,6 +4977,7 @@ function toSaleViewGs(sale) {
       accountLabel,
     ),
     createdAt: sale.created_at,
+    sourceReservationId: sale.source_reservation_id || null,
   };
 }
 
@@ -5092,14 +5111,64 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
       (needed[line.product_id] || 0) + Number(line.quantity);
   });
   const businessDate = todayCivil();
+  const sourceReservationId =
+    payload && payload.sourceReservationId
+      ? String(payload.sourceReservationId)
+      : '';
+  let sourceReservation = null;
+  if (sourceReservationId) {
+    sourceReservation = requireActiveReservationGs(sourceReservationId);
+  }
+  let overrideReservationId = '';
   Object.keys(needed).forEach(function (productId) {
     const day = requireInventoryDayGs(businessDate);
     const available = availableForGs(day.id, productId, businessDate);
-    if (available < needed[productId]) {
+    const quantity = needed[productId];
+    if (sourceReservation) {
+      const held = reservationHeldQuantityGs(sourceReservation.id, productId);
+      if (held < quantity) {
+        throw new Error(
+          'RESERVATION_PICKUP_EXCEEDS: A retirada não pode ser maior que a reserva.',
+        );
+      }
+      if (available + held < quantity) {
+        throw new Error(
+          'INSUFFICIENT_STOCK: Não há estoque suficiente para esta venda.',
+        );
+      }
+      return;
+    }
+    if (available >= quantity) {
+      return;
+    }
+    const physical = physicalForGs(day.id, productId);
+    if (physical < quantity) {
       throw new Error(
         'INSUFFICIENT_STOCK: Não há estoque suficiente para esta venda.',
       );
     }
+    if (!actorIsOwner) {
+      throw new Error(
+        'RESERVED_OVERRIDE_FORBIDDEN: Somente a dona pode usar unidade reservada.',
+      );
+    }
+    const overrideId =
+      payload && payload.overrideReservationId
+        ? String(payload.overrideReservationId)
+        : '';
+    if (!overrideId) {
+      throw new Error(
+        'RESERVED_OVERRIDE_REQUIRED: Esta unidade está reservada. Confirme Usar unidade reservada e escolha a reserva afetada.',
+      );
+    }
+    const override = requireActiveReservationGs(overrideId);
+    const overflow = quantity - available;
+    if (reservationHeldQuantityGs(override.id, productId) < overflow) {
+      throw new Error(
+        'RESERVED_OVERRIDE_MISMATCH: A reserva escolhida não cobre esta venda.',
+      );
+    }
+    overrideReservationId = override.id;
   });
   let consumerId = '';
   if (payload.consumerStudentId) {
@@ -5110,6 +5179,13 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
       );
     }
     consumerId = student.id;
+  } else if (sourceReservation && sourceReservation.linked_student_id) {
+    const linked = latestStudentById(
+      String(sourceReservation.linked_student_id),
+    );
+    if (linked.active === 'true') {
+      consumerId = linked.id;
+    }
   }
   const charge = resolveSaleChargeGs(
     consumerId,
@@ -5184,7 +5260,7 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
     totals.gross_total_cents,
     totals.discount_total_cents,
     totals.net_total_cents,
-    '',
+    sourceReservation ? sourceReservation.id : '',
     userId,
     now,
     '',
@@ -5345,6 +5421,22 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
     plannedSettlements.cashTenderedCents,
     plannedSettlements.changeCents,
   );
+  if (sourceReservation) {
+    transitionReservationUnlocked(
+      userId,
+      sourceReservation.id,
+      RESERVATION_STATUS_FULFILLED,
+      'Retirada no recreio',
+      RESERVATION_PAYMENT_PAID,
+    );
+  } else if (overrideReservationId) {
+    transitionReservationUnlocked(
+      userId,
+      overrideReservationId,
+      RESERVATION_STATUS_CANCELLED,
+      'Venda presencial com override',
+    );
+  }
   return toSaleViewGs({
     id: saleId,
     consumer_student_id: consumerId,
@@ -5353,7 +5445,7 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
     gross_total_cents: totals.gross_total_cents,
     discount_total_cents: totals.discount_total_cents,
     net_total_cents: totals.net_total_cents,
-    source_reservation_id: '',
+    source_reservation_id: sourceReservation ? sourceReservation.id : '',
     created_by: userId,
     created_at: now,
     reversal_id: '',
@@ -8273,23 +8365,9 @@ function transitionReservationUnlocked(
   reservationId,
   nextStatus,
   reason,
+  paymentStatus,
 ) {
-  if (!REQUEST_ID_PATTERN.test(reservationId)) {
-    throw new Error(
-      'INVALID_ID: ID deve ser UUID imutável, nunca número da linha.',
-    );
-  }
-  const reservation = latestRecordsById(listReservationRecords()).filter(
-    function (item) {
-      return item.id === reservationId;
-    },
-  )[0];
-  if (!reservation) {
-    throw new Error('RESERVATION_NOT_FOUND: Reserva não encontrada.');
-  }
-  if (reservation.status !== RESERVATION_STATUS_RESERVED) {
-    throw new Error('RESERVATION_NOT_ACTIVE: Esta reserva já foi encerrada.');
-  }
+  const reservation = requireActiveReservationGs(reservationId);
   const note = String(reason || '')
     .trim()
     .replace(/\s+/g, ' ');
@@ -8307,7 +8385,7 @@ function transitionReservationUnlocked(
     reservation.contact_optional,
     reservation.slot_id,
     nextStatus,
-    reservation.payment_status,
+    paymentStatus || reservation.payment_status,
     reservation.linked_student_id,
     reservation.total_cents,
     reservation.created_at,

@@ -117,6 +117,7 @@ export class FakeAppApi implements AppApi {
     this.stock.setReservedLookup((productId, businessDate) =>
       this.reservations.reservedQuantity(productId, businessDate),
     );
+    this.sales.bindReservations(this.reservations);
   }
 
   async getHealth(): Promise<AppHealth> {

@@ -338,4 +338,136 @@ describe('reservas', () => {
     });
     expect(fulfilled.reservations[0]?.status).toBe('fulfilled');
   });
+
+  it('converts a reservation into a PIX sale once and releases leftover reserved units', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const setup = await api.getReservationsSetup();
+    const slot = setup.slots.find((item) => item.label === 'Recreio tarde');
+    const coxinha = setup.reservableProducts.find(
+      (item) => item.name === 'Coxinha',
+    );
+    const ana = (await api.listStudents()).find(
+      (item) => item.fullName === 'Ana Souza' && item.ageLabel === '~8',
+    );
+    if (!slot || !coxinha || !ana) {
+      throw new Error('seed de reserva→venda ausente');
+    }
+    const created = await api.createReservation({
+      requestId: createRequestId(),
+      slotId: slot.id,
+      studentNameText: 'Ana Souza',
+      classroomText: '3º A',
+      items: [{ productId: coxinha.id, quantity: 2 }],
+    });
+    const reservationId = created.reservations[0]?.id ?? '';
+    await api.linkReservationStudent({
+      reservationId,
+      studentId: ana.id,
+    });
+    await expect(
+      api.createSale({
+        sourceReservationId: reservationId,
+        items: [{ productId: coxinha.id, quantity: 3 }],
+        paymentKind: 'pix',
+      }),
+    ).rejects.toThrow('não pode ser maior que a reserva');
+    const sale = await api.createSale({
+      sourceReservationId: reservationId,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'pix',
+    });
+    expect(sale.summaryLabel).toBe('Ana Souza • ~8 • Coxinha • R$ 5,50');
+    expect(sale.sourceReservationId).toBe(reservationId);
+    const after = await api.getReservationsSetup();
+    expect(after.reservations[0]?.status).toBe('fulfilled');
+    expect(after.reservations[0]?.summaryLabel).toContain('retirada');
+    expect(
+      after.availability.find((item) => item.productName === 'Coxinha')
+        ?.summaryLabel,
+    ).toBe('Coxinha • disponível 9 • reservado 0');
+    expect(
+      (await api.listInventoryBalances()).items.find(
+        (item) => item.productName === 'Coxinha',
+      )?.physicalQuantity,
+    ).toBe(9);
+    await expect(
+      api.createSale({
+        sourceReservationId: reservationId,
+        items: [{ productId: coxinha.id, quantity: 1 }],
+        paymentKind: 'pix',
+      }),
+    ).rejects.toThrow('já foi encerrada');
+  });
+
+  it('lets the owner sell a reserved unit with an explicit override', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const setup = await api.getReservationsSetup();
+    const slot = setup.slots.find((item) => item.label === 'Recreio tarde');
+    const coxinha = setup.reservableProducts.find(
+      (item) => item.name === 'Coxinha',
+    );
+    if (!slot || !coxinha) {
+      throw new Error('seed de override ausente');
+    }
+    const reserved = await api.createReservation({
+      requestId: createRequestId(),
+      slotId: slot.id,
+      studentNameText: 'Ana Souza',
+      classroomText: '3º A',
+      items: [{ productId: coxinha.id, quantity: 10 }],
+    });
+    const reservationId = reserved.reservations[0]?.id ?? '';
+    await expect(
+      api.createSale({
+        items: [{ productId: coxinha.id, quantity: 1 }],
+        paymentKind: 'pix',
+      }),
+    ).rejects.toThrow('Usar unidade reservada');
+    const staff = new FakeAppApi();
+    await staff.loginE2E('staff');
+    const staffSetup = await staff.getReservationsSetup();
+    const staffSlot = staffSetup.slots.find(
+      (item) => item.label === 'Recreio tarde',
+    );
+    const staffCoxinha = staffSetup.reservableProducts.find(
+      (item) => item.name === 'Coxinha',
+    );
+    if (!staffSlot || !staffCoxinha) {
+      throw new Error('seed staff override ausente');
+    }
+    const staffReserved = await staff.createReservation({
+      requestId: createRequestId(),
+      slotId: staffSlot.id,
+      studentNameText: 'Bruno Lima',
+      classroomText: '3º A',
+      items: [{ productId: staffCoxinha.id, quantity: 10 }],
+    });
+    await expect(
+      staff.createSale({
+        items: [{ productId: staffCoxinha.id, quantity: 1 }],
+        paymentKind: 'pix',
+        overrideReservationId: staffReserved.reservations[0]?.id,
+      }),
+    ).rejects.toThrow('Somente a dona');
+    const sale = await api.createSale({
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'pix',
+      overrideReservationId: reservationId,
+    });
+    expect(sale.summaryLabel).toBe('Anônima • Coxinha • R$ 5,50');
+    expect(sale.sourceReservationId).toBeNull();
+    const after = await api.getReservationsSetup();
+    expect(after.reservations[0]?.status).toBe('cancelled');
+    expect(
+      after.availability.find((item) => item.productName === 'Coxinha')
+        ?.summaryLabel,
+    ).toBe('Coxinha • disponível 9 • reservado 0');
+    expect(
+      (await api.listInventoryBalances()).items.find(
+        (item) => item.productName === 'Coxinha',
+      )?.physicalQuantity,
+    ).toBe(9);
+  });
 });

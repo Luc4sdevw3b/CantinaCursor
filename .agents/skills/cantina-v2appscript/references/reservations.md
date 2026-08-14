@@ -114,7 +114,7 @@ Nunca confiar no estoque visto pelo navegador.
 - não retirada;
 - vincular aluno quando necessário.
 
-Entregar nesta fase só marca `fulfilled` e libera o reservado. Não cria venda e não baixa o estoque físico.
+Entregar abre o motor de venda: a dona escolhe o pagamento, a venda baixa o físico uma vez e a reserva deixa de segurar o reservado. Se retirar menos, o restante da reserva é encerrado. Venda presencial só usa unidade reservada com **Usar unidade reservada** e a reserva afetada escolhida, na mesma operação.
 
 ## Pagamento
 

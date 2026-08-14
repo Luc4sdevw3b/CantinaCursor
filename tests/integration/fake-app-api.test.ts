@@ -1233,4 +1233,44 @@ describe('FakeAppApi', () => {
       )?.physicalQuantity,
     ).toBe(10);
   });
+
+  it('converts a recreio reservation into a PIX sale and lowers physical stock once', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const setup = await api.getReservationsSetup();
+    const slot = setup.slots.find((item) => item.label === 'Recreio tarde');
+    const coxinha = setup.reservableProducts.find(
+      (item) => item.name === 'Coxinha',
+    );
+    const ana = (await api.listStudents()).find(
+      (item) => item.fullName === 'Ana Souza' && item.ageLabel === '~8',
+    );
+    if (!slot || !coxinha || !ana) {
+      throw new Error('reserva→venda local incompleta');
+    }
+    const created = await api.createReservation({
+      requestId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee33',
+      slotId: slot.id,
+      studentNameText: 'Ana Souza',
+      classroomText: '3º A',
+      items: [{ productId: coxinha.id, quantity: 1 }],
+    });
+    const reservationId = created.reservations[0]?.id ?? '';
+    await api.linkReservationStudent({
+      reservationId,
+      studentId: ana.id,
+    });
+    const sale = await api.createSale({
+      sourceReservationId: reservationId,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'pix',
+    });
+    expect(sale.summaryLabel).toBe('Ana Souza • ~8 • Coxinha • R$ 5,50');
+    expect(sale.sourceReservationId).toBe(reservationId);
+    expect(
+      (await api.listInventoryBalances()).items.find(
+        (item) => item.productName === 'Coxinha',
+      )?.physicalQuantity,
+    ).toBe(9);
+  });
 });

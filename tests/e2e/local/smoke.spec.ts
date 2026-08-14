@@ -1121,18 +1121,112 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
         { exact: true },
       ),
     ).toBeVisible();
+  });
+
+  test('delivers a recreio reservation as a PIX sale without double stock drop', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await goToArea(page, 'Reservas');
+    await page.locator('#reservation-slot-id').selectOption({
+      label: 'Recreio tarde • corte 18:00 • retirada 18:15–18:35',
+    });
+    await page.locator('#reservation-student-name').fill('Ana Souza');
+    await page.locator('#reservation-classroom').fill('3º A');
+    await page.locator('#reservation-product').selectOption({
+      label: 'Coxinha • R$ 5,50',
+    });
+    await page.getByRole('button', { name: 'Confirmar reserva' }).click();
+    await page.locator('#reservation-link-student').selectOption({
+      label: 'Ana Souza • ~8',
+    });
+    await page.getByRole('button', { name: 'Vincular aluno' }).click();
     await page.getByRole('button', { name: 'Entregar reserva' }).click();
+    await expect(page.getByRole('heading', { name: 'Vendas' })).toBeVisible();
     await expect(
       page.getByText(
-        'Ana Souza • 4º B • Coxinha • R$ 5,50 • Recreio tarde • retirada',
+        'Entrega da reserva. Escolha o pagamento e confirme a venda.',
+      ),
+    ).toBeVisible();
+    await expect(
+      page.locator('#sale-cart-list').getByText('Coxinha • 1', { exact: true }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Confirmar venda' }).click();
+    await expect(
+      page
+        .locator('#sales-list')
+        .getByText('Ana Souza • ~8 • Coxinha • R$ 5,50', { exact: true }),
+    ).toBeVisible();
+    await goToArea(page, 'Reservas');
+    await expect(
+      page.getByText(
+        'Ana Souza • 3º A • Coxinha • R$ 5,50 • Recreio tarde • retirada',
         { exact: true },
       ),
     ).toBeVisible();
     await expect(
-      page.getByText('Coxinha • disponível 10 • reservado 0', { exact: true }),
+      page.getByText('Coxinha • disponível 9 • reservado 0', { exact: true }),
     ).toBeVisible();
-    await expect(page.getByText('Coxinha • 1', { exact: true })).toHaveCount(0);
     await goToArea(page, 'Estoque');
-    await expect(page.getByText('Coxinha • 10', { exact: true })).toBeVisible();
+    await expect(page.getByText('Coxinha • 9', { exact: true })).toBeVisible();
+  });
+
+  test('lets the owner sell a reserved unit with an explicit override', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await goToArea(page, 'Reservas');
+    await page.locator('#reservation-slot-id').selectOption({
+      label: 'Recreio tarde • corte 18:00 • retirada 18:15–18:35',
+    });
+    await page.locator('#reservation-student-name').fill('Ana Souza');
+    await page.locator('#reservation-classroom').fill('3º A');
+    await page.locator('#reservation-product').selectOption({
+      label: 'Coxinha • R$ 5,50',
+    });
+    await page.locator('#reservation-quantity').fill('10');
+    await page.getByRole('button', { name: 'Confirmar reserva' }).click();
+    await expect(
+      page.getByText(
+        'Reserva confirmada; o original e a disponibilidade permanecem auditáveis.',
+      ),
+    ).toBeVisible();
+    await expect(
+      page
+        .locator('#reservations-list')
+        .getByText(
+          'Ana Souza • 3º A • Coxinha • R$ 55,00 • Recreio tarde • reservada',
+          { exact: true },
+        ),
+    ).toBeVisible();
+    await goToArea(page, 'Vendas');
+    await page.locator('#sale-product').selectOption({
+      label: 'Coxinha • R$ 5,50',
+    });
+    await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click();
+    await page.getByLabel('Usar unidade reservada').check();
+    await page.locator('#sale-override-reservation').selectOption({
+      label:
+        'Ana Souza • 3º A • Coxinha • R$ 55,00 • Recreio tarde • reservada',
+    });
+    await page.getByRole('button', { name: 'Confirmar venda' }).click();
+    await expect(
+      page
+        .locator('#sales-list')
+        .getByText('Anônima • Coxinha • R$ 5,50', { exact: true }),
+    ).toBeVisible();
+    await goToArea(page, 'Reservas');
+    await expect(
+      page
+        .locator('#reservations-list')
+        .getByText(
+          'Ana Souza • 3º A • Coxinha • R$ 55,00 • Recreio tarde • cancelada',
+          { exact: true },
+        ),
+    ).toBeVisible();
+    await goToArea(page, 'Estoque');
+    await expect(page.getByText('Coxinha • 9', { exact: true })).toBeVisible();
   });
 });

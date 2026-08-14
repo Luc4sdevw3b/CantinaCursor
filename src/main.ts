@@ -53,7 +53,7 @@ app.innerHTML = `
         <p class="eyebrow">Web App em preparação</p>
         <div class="hero-title-row">
           <h1 id="page-title">Cantina V2 AppScript</h1>
-          <span class="phase-badge">Fase 24</span>
+          <span class="phase-badge">Fase 26</span>
         </div>
         <p class="intro">
           Uma base simples e confiável para a operação diária da cantina.
@@ -619,6 +619,17 @@ app.innerHTML = `
           </div>
         </div>
         <p id="sale-change-preview"></p>
+        <p id="sale-source-note" hidden></p>
+        <div id="sale-override-fields" hidden>
+          <label class="checkbox-label">
+            <input id="sale-override-reserved" type="checkbox" />
+            Usar unidade reservada
+          </label>
+          <label>
+            Reserva afetada
+            <select id="sale-override-reservation" aria-label="Reserva afetada"></select>
+          </label>
+        </div>
         <button type="submit">Confirmar venda</button>
       </form>
       <ul id="sales-list"></ul>
@@ -1045,6 +1056,9 @@ document
     button.addEventListener('click', () => {
       if (isAppArea(button.dataset.area)) {
         openArea(button.dataset.area);
+        if (button.dataset.area === 'sales') {
+          void renderSales(currentSession);
+        }
       }
     });
   });
@@ -2111,6 +2125,7 @@ interface CartLine {
 }
 
 const cart: CartLine[] = [];
+let saleSourceReservationId: string | null = null;
 let dueDateShortcuts: DueDateShortcuts | null = null;
 let openReceivables: Receivable[] = [];
 let saleStudents: StudentSummary[] = [];
@@ -2159,6 +2174,16 @@ function renderCart(): void {
     const item = document.createElement('li');
     item.textContent = `${line.name} • ${line.quantity}`;
     saleCartList.append(item);
+  }
+  const note = document.querySelector('#sale-source-note');
+  if (note instanceof HTMLElement) {
+    const source = reservationsSetup?.reservations.find(
+      (item) => item.id === saleSourceReservationId,
+    );
+    note.hidden = !source;
+    note.textContent = source
+      ? `Entrega da reserva ${source.publicCodeLabel}`
+      : '';
   }
 }
 
@@ -2228,7 +2253,7 @@ async function renderSales(session: AppSession | null): Promise<void> {
   }
 
   try {
-    const [products, students, sales, pix, shortcuts, authorizations] =
+    const [products, students, sales, pix, shortcuts, authorizations, setup] =
       await Promise.all([
         api.listProducts(),
         api.listStudents(),
@@ -2236,10 +2261,12 @@ async function renderSales(session: AppSession | null): Promise<void> {
         api.getPixCopyText(),
         api.getDueDateShortcuts(),
         api.listSiblingAuthorizations(),
+        api.getReservationsSetup(),
       ]);
     dueDateShortcuts = shortcuts;
     saleStudents = students;
     saleAuthorizations = authorizations;
+    reservationsSetup = setup;
     if (pixCopyText) {
       pixCopyText.textContent = pix.text;
     }
@@ -2266,6 +2293,22 @@ async function renderSales(session: AppSession | null): Promise<void> {
       }
     }
     fillSaleAccounts();
+    const overrideFields = document.querySelector('#sale-override-fields');
+    const reserved = setup.reservations.filter(
+      (item) =>
+        item.status === 'reserved' && item.id !== saleSourceReservationId,
+    );
+    if (overrideFields instanceof HTMLElement) {
+      overrideFields.hidden = session.role !== 'owner' || reserved.length === 0;
+    }
+    fillSelect(
+      document.querySelector('#sale-override-reservation'),
+      reserved.map((item) => ({
+        value: item.id,
+        label: item.summaryLabel,
+      })),
+      'Escolha a reserva afetada',
+    );
     salesStatus.textContent =
       sales.length === 0
         ? 'Nenhuma venda registrada ainda.'
@@ -2915,9 +2958,30 @@ document
         pixAmountCents,
         cashTenderedCents,
         installments,
+        sourceReservationId: saleSourceReservationId,
+        overrideReservationId:
+          currentSession?.role === 'owner' &&
+          document.querySelector('#sale-override-reserved') instanceof
+            HTMLInputElement &&
+          (
+            document.querySelector(
+              '#sale-override-reserved',
+            ) as HTMLInputElement
+          ).checked
+            ? (
+                document.querySelector(
+                  '#sale-override-reservation',
+                ) as HTMLSelectElement | null
+              )?.value || undefined
+            : undefined,
       })
       .then(() => {
         cart.length = 0;
+        saleSourceReservationId = null;
+        const overrideCheck = document.querySelector('#sale-override-reserved');
+        if (overrideCheck instanceof HTMLInputElement) {
+          overrideCheck.checked = false;
+        }
         if (pixAmountInput instanceof HTMLInputElement) {
           pixAmountInput.value = '';
         }
@@ -2930,6 +2994,7 @@ document
         Promise.all([
           renderSales(session),
           renderInventory(session),
+          renderReservations(session),
           renderCash(session),
           renderReversals(session),
           renderAgenda(session),
@@ -4404,21 +4469,40 @@ reservationsList?.addEventListener('click', (event) => {
     return;
   }
   if (action === 'fulfill') {
-    void api
-      .fulfillReservation({ reservationId })
-      .then(() =>
-        refreshAfterReservation(
-          'Reserva entregue; a disponibilidade foi liberada.',
-        ),
-      )
-      .catch((error: unknown) => {
-        if (reservationsStatus) {
-          reservationsStatus.textContent =
-            error instanceof Error
-              ? error.message.replace(/^[A-Z_]+:\s*/, '')
-              : 'Não foi possível entregar a reserva.';
-        }
+    const entry = reservationsSetup?.reservations.find(
+      (item) => item.id === reservationId,
+    );
+    if (!entry) {
+      return;
+    }
+    cart.length = 0;
+    for (const item of entry.items) {
+      cart.push({
+        productId: item.productId,
+        name: item.productName,
+        quantity: item.quantity,
+        discountKind: 'none',
+        discountInput: null,
       });
+    }
+    saleSourceReservationId = entry.id;
+    openArea('sales');
+    void api.getSession().then((session) =>
+      renderSales(session).then(() => {
+        if (
+          entry.linkedStudentId &&
+          saleStudentSelect instanceof HTMLSelectElement
+        ) {
+          saleStudentSelect.value = entry.linkedStudentId;
+          fillSaleAccounts();
+        }
+        renderCart();
+        if (salesStatus) {
+          salesStatus.textContent =
+            'Entrega da reserva. Escolha o pagamento e confirme a venda.';
+        }
+      }),
+    );
     return;
   }
   const reasonInput = document.querySelector('#reservation-action-reason');

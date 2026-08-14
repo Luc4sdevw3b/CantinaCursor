@@ -259,9 +259,11 @@ interface ServerContext {
     sessionToken: string,
     payload: Record<string, unknown>,
   ): {
+    id: string;
     summaryLabel: string;
     paymentKind: string;
     changeCents: number;
+    sourceReservationId: string | null;
     settlements: Array<{ kind: string; amountCents: number }>;
   };
   listSales(
@@ -2985,5 +2987,127 @@ describe('Apps Script E2E server', () => {
         .listInventoryBalances(owner)
         .items.find((item) => item.productName === 'Coxinha')?.physicalQuantity,
     ).toBe(10);
+  });
+
+  it('converts a recreio reservation into a sale without double-counting stock', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const slots = server.createReservationSlot(owner, {
+      label: 'Recreio teste',
+      cutoffTime: '23:00',
+      pickupStartTime: '23:10',
+      pickupEndTime: '23:30',
+    });
+    const slot = slots.slots.find((item) => item.label === 'Recreio teste');
+    const coxinha = server
+      .getReservationsSetup(owner)
+      .reservableProducts.find((item) => item.name === 'Coxinha');
+    const ana = server
+      .listStudents(owner)
+      .find((item) => item.fullName === 'Ana Souza' && item.ageLabel === '~8');
+    if (!slot || !coxinha || !ana) {
+      throw new Error('reserva→venda E2E incompleta');
+    }
+    const created = server.createReservation(owner, {
+      requestId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee31',
+      slotId: slot.id,
+      studentNameText: 'Ana Souza',
+      classroomText: '3º A',
+      items: [{ productId: coxinha.id, quantity: 2 }],
+    });
+    const reservationId = created.reservations[0]?.id ?? '';
+    server.linkReservationStudent(owner, {
+      reservationId,
+      studentId: ana.id,
+    });
+    expect(() =>
+      server.createSale(owner, {
+        sourceReservationId: reservationId,
+        items: [{ productId: coxinha.id, quantity: 3 }],
+        paymentKind: 'pix',
+      }),
+    ).toThrow('RESERVATION_PICKUP_EXCEEDS');
+    const sale = server.createSale(owner, {
+      sourceReservationId: reservationId,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'pix',
+    });
+    expect(sale.summaryLabel).toBe('Ana Souza • ~8 • Coxinha • R$ 5,50');
+    expect(sale.sourceReservationId).toBe(reservationId);
+    const after = server.getReservationsSetup(owner);
+    expect(after.reservations[0]?.status).toBe('fulfilled');
+    expect(
+      after.availability.find((item) => item.productName === 'Coxinha')
+        ?.reservedQuantity,
+    ).toBe(0);
+    expect(
+      server
+        .listInventoryBalances(owner)
+        .items.find((item) => item.productName === 'Coxinha')?.physicalQuantity,
+    ).toBe(9);
+  });
+
+  it('lets the owner override a reserved unit in a walk-in sale', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const staff = server.loginE2E('staff').token;
+    const slots = server.createReservationSlot(owner, {
+      label: 'Recreio teste',
+      cutoffTime: '23:00',
+      pickupStartTime: '23:10',
+      pickupEndTime: '23:30',
+    });
+    const slot = slots.slots.find((item) => item.label === 'Recreio teste');
+    const coxinha = server
+      .getReservationsSetup(owner)
+      .reservableProducts.find((item) => item.name === 'Coxinha');
+    if (!slot || !coxinha) {
+      throw new Error('override E2E incompleto');
+    }
+    const reserved = server.createReservation(owner, {
+      requestId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee32',
+      slotId: slot.id,
+      studentNameText: 'Ana Souza',
+      classroomText: '3º A',
+      items: [{ productId: coxinha.id, quantity: 10 }],
+    });
+    const reservationId = reserved.reservations[0]?.id ?? '';
+    expect(() =>
+      server.createSale(owner, {
+        items: [{ productId: coxinha.id, quantity: 1 }],
+        paymentKind: 'pix',
+      }),
+    ).toThrow('RESERVED_OVERRIDE_REQUIRED');
+    expect(() =>
+      server.createSale(staff, {
+        items: [{ productId: coxinha.id, quantity: 1 }],
+        paymentKind: 'pix',
+        overrideReservationId: reservationId,
+      }),
+    ).toThrow('RESERVED_OVERRIDE_FORBIDDEN');
+    const sale = server.createSale(owner, {
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'pix',
+      overrideReservationId: reservationId,
+    });
+    expect(sale.summaryLabel).toBe('Anônima • Coxinha • R$ 5,50');
+    expect(server.getReservationsSetup(owner).reservations[0]?.status).toBe(
+      'cancelled',
+    );
+    expect(
+      server
+        .listInventoryBalances(owner)
+        .items.find((item) => item.productName === 'Coxinha')?.physicalQuantity,
+    ).toBe(9);
   });
 });

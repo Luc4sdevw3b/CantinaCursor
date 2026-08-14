@@ -262,6 +262,8 @@ export interface CreateSaleInput {
   pixAmountCents?: number;
   cashTenderedCents?: number;
   installments?: Array<{ dueDate: string; amountCents?: number }>;
+  sourceReservationId?: string | null;
+  overrideReservationId?: string | null;
 }
 
 export interface SaleSettlement {
@@ -295,6 +297,7 @@ export interface Sale {
   settlements: SaleSettlement[];
   items: SaleItem[];
   summaryLabel: string;
+  sourceReservationId: string | null;
   createdAt: string;
 }
 
@@ -660,7 +663,7 @@ export interface PublicReservationConfirmation {
 }
 
 /**
- * Contrato técnico da Fase 24.
+ * Contrato técnico da Fase 26.
  * Portal público não expõe cadastro privado. Sem envio de WhatsApp.
  */
 export interface AppApi {

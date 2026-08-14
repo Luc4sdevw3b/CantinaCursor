@@ -177,7 +177,7 @@ Venda/pagamento estornados ganham uma linha posterior com o mesmo id e `status=r
 
 `_reservation_status_history`: id, reservation_id, from_status, to_status, actor_id, created_at, reason. Mudança de status é append com o mesmo id da reserva.
 
-Reserva ativa aumenta reservado e reduz disponível. Cancelar, não retirada e entregar (status `fulfilled`) liberam reservado sem baixar o físico. A dona pode alterar nome/turma/contato e preencher `linked_student_id` sem apagar o nome digitado. Converter reserva em venda fica na Fase 26. O portal público (`?portal=reservas`) usa as mesmas abas, sem devolver cadastro privado.
+Reserva ativa aumenta reservado e reduz disponível. Cancelar e não retirada liberam reservado sem baixar o físico. Entregar vira venda (`source_reservation_id`): baixa o físico uma vez e zera o reservado daquela reserva. Se a retirada for menor, o restante deixa de ficar reservado. Venda presencial só consome unidade reservada com override explícito da dona, que cancela a reserva escolhida na mesma operação. O portal público (`?portal=reservas`) usa as mesmas abas, sem devolver cadastro privado.
 
 ## Notas
 

@@ -9,6 +9,43 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-14 08:56 — Implementada a Fase 26: reserva vira venda
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 26
+
+### Pedido / objetivo
+
+- Executar a Fase 26: entrega usa o motor normal de venda, escolher pagamento, baixa física uma vez, libera reservado, vínculo `source_reservation_id`; se retirar menos, o restante cancela; venda presencial só usa unidade reservada com override explícito da dona.
+
+### Tentativa / implementação
+
+- **Entregar reserva** preenche o carrinho, abre **Vendas** e pede pagamento. **Confirmar venda** cria a venda com `sourceReservationId`, baixa o físico uma vez (movimento `sale`) e marca a reserva `retirada` / `paid`.
+- Se a venda retira menos do que estava reservado, a reserva inteira é encerrada na retirada: o restante deixa de ficar reservado. Não há status parcial de item.
+- Venda presencial com disponível insuficiente exige **Usar unidade reservada** e a reserva afetada. Só a dona. A reserva escolhida é cancelada por completo na mesma operação (`Venda presencial com override`).
+- Funcionário entrega via **Entregar reserva** → **Confirmar venda**, mas não usa unidade reservada.
+
+### Resultado
+
+- Fase 26 concluída sobre o ambiente E2E isolado e o preview local.
+- WhatsApp oficial permanece na Fase 27.
+
+### Diferenças do pedido
+
+- Alterar reserva continua sem trocar produto/quantidade.
+- O override cancela a reserva escolhida inteira; não reduz só a quantidade reservada.
+
+### Impacto técnico
+
+- Sem migration nova. `source_reservation_id` já existia em `_sales`. `createSale` aceita `sourceReservationId` e `overrideReservationId`.
+
+### Testes
+
+- typecheck, lint, format, Vitest (216) e E2E local (37) passaram.
+- E2E remoto: health e reserva pública no portal.
+
 ## 2026-08-14 08:20 — Implementada a Fase 25: gestão da dona nas reservas
 
 **Origem:** Pedido do usuário

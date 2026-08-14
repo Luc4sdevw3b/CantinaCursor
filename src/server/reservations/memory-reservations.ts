@@ -28,6 +28,7 @@ import {
   RESERVATION_NOT_FOUND_ERROR,
   RESERVATION_PARTIAL_UNSUPPORTED_ERROR,
   RESERVATION_PAYMENT_UNPAID,
+  RESERVATION_PAYMENT_PAID,
   RESERVATION_STATUS_CANCELLED,
   RESERVATION_STATUS_FULFILLED,
   RESERVATION_STATUS_NO_SHOW,
@@ -259,10 +260,17 @@ export class MemoryReservations {
     );
   }
 
-  reservedQuantity(productId: string, businessDate: string): number {
+  reservedQuantity(
+    productId: string,
+    businessDate: string,
+    excludeReservationId?: string,
+  ): number {
     let total = 0;
     for (const reservation of latestById(this.reservations)) {
       if (!isActiveReservationStatus(reservation.status)) {
+        continue;
+      }
+      if (excludeReservationId && reservation.id === excludeReservationId) {
         continue;
       }
       const slot = latestById(this.slots).find(
@@ -633,6 +641,52 @@ export class MemoryReservations {
     );
   }
 
+  peekActiveForSale(reservationId: unknown): Result<{
+    id: string;
+    linkedStudentId: string | null;
+    items: Array<{ productId: string; quantity: number }>;
+  }> {
+    const reservation = this.activeReservation(reservationId);
+    if (!reservation.ok) {
+      return err(reservation.error);
+    }
+    return ok({
+      id: reservation.data.id,
+      linkedStudentId: reservation.data.linked_student_id || null,
+      items: this.items
+        .filter((item) => item.reservation_id === reservation.data.id)
+        .map((item) => ({
+          productId: item.product_id,
+          quantity: Number(item.quantity),
+        })),
+    });
+  }
+
+  fulfillFromSale(reservationId: string): Result<void> {
+    const moved = this.transition(
+      reservationId,
+      RESERVATION_STATUS_FULFILLED,
+      'Retirada no recreio',
+      RESERVATION_PAYMENT_PAID,
+    );
+    if (!moved.ok) {
+      return err(moved.error);
+    }
+    return ok(undefined);
+  }
+
+  cancelForWalkInOverride(reservationId: string): Result<void> {
+    const moved = this.transition(
+      reservationId,
+      RESERVATION_STATUS_CANCELLED,
+      'Venda presencial com override',
+    );
+    if (!moved.ok) {
+      return err(moved.error);
+    }
+    return ok(undefined);
+  }
+
   updateReservation(input: {
     requestId?: unknown;
     reservationId?: unknown;
@@ -741,6 +795,7 @@ export class MemoryReservations {
     reservationId: unknown,
     nextStatus: string,
     reasonValue: unknown,
+    paymentStatus?: string,
   ): Result<ReservationsSetupView> {
     const id = parseImmutableId(reservationId);
     if (!id.ok) {
@@ -763,6 +818,7 @@ export class MemoryReservations {
     this.reservations.push({
       ...reservation,
       status: nextStatus,
+      payment_status: paymentStatus || reservation.payment_status,
       updated_at: now,
     });
     this.history.push({

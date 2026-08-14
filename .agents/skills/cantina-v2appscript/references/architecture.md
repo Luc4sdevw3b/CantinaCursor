@@ -81,7 +81,7 @@ scripts/
 
 Definir `AppApi` com funções específicas do domínio, nunca ranges/SQL/Sheets genéricos.
 
-Até a Fase 24 o contrato `AppApi` inclui sessão, cadastro, cardápio, estoque diário, vendas, agenda, pagamento parcial, juros, renegociação, crédito pessoal, crédito de responsável, pagamento familiar, venda na conta do irmão, caixa físico, reservas internas e o portal público (`getPublicReservationPortal` / `createPublicReservation`) sem cadastro privado. Sem envio de WhatsApp.
+Até a Fase 26 o contrato `AppApi` inclui sessão, cadastro, cardápio, estoque diário, vendas, agenda, pagamento parcial, juros, renegociação, crédito pessoal, crédito de responsável, pagamento familiar, venda na conta do irmão, caixa físico, reservas internas, o portal público (`getPublicReservationPortal` / `createPublicReservation`) sem cadastro privado, e `createSale` com `sourceReservationId` / `overrideReservationId`. Sem envio de WhatsApp.
 
 A tela privada é uma só: hero com atalhos e uma área visível por vez.
 
