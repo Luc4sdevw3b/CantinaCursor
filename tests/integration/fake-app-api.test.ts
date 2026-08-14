@@ -1379,4 +1379,41 @@ describe('FakeAppApi', () => {
       )?.physicalQuantity,
     ).toBe(9);
   });
+
+  it('returns sale screen data from createSale without extra list calls', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const coxinha = (await api.listProducts()).find(
+      (item) => item.name === 'Coxinha',
+    );
+    if (!coxinha) {
+      throw new Error('Coxinha ausente no cardápio local');
+    }
+    const sale = await api.createSale({
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'pix',
+    });
+    expect(sale.screen).toBeDefined();
+    expect(
+      sale.screen?.sales.some(
+        (item) => item.summaryLabel === sale.summaryLabel,
+      ),
+    ).toBe(true);
+    expect(
+      sale.screen?.inventory.items.find(
+        (item) => item.productName === 'Coxinha',
+      )?.physicalQuantity,
+    ).toBe(9);
+    expect(sale.netTotalCents).toBe(550);
+  });
+
+  it('loads the sale screen in one aggregated payload', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const screen = await api.getSaleScreenData();
+    expect(screen.products.some((item) => item.name === 'Coxinha')).toBe(true);
+    expect(screen.students.length).toBeGreaterThan(0);
+    expect(screen.pixCopyText).toContain('PIX');
+    expect(screen.dueDateShortcuts.tomorrow).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
 });

@@ -7,6 +7,7 @@ import {
   SESSION_TOKEN_STORAGE_KEY,
   type GoogleScriptRunner,
 } from '../../src/web/shared/google-script-app-api';
+import { getClientPerf, resetClientPerf } from '../../src/web/shared/perf';
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const values = { ...initial };
@@ -121,6 +122,13 @@ function runnerWith(
     linkReservationStudent() {},
     getPublicReservationPortal() {},
     createPublicReservation() {},
+    getSaleScreenData() {},
+    getStudentsScreenData() {},
+    getFamilyScreenData() {},
+    getCatalogScreenData() {},
+    getPaymentsScreenData() {},
+    getCreditsScreenData() {},
+    getReservationScreenData() {},
     ...extra,
   };
   return runner;
@@ -178,5 +186,16 @@ describe('GoogleScriptAppApi', () => {
     expect(storage.getItem(SESSION_TOKEN_STORAGE_KEY)).toBe(
       'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
     );
+  });
+});
+
+describe('client AppApi call budget', () => {
+  it('records method names without payload contents', async () => {
+    resetClientPerf();
+    const api = createAppApi(undefined);
+    await api.getHealth();
+    const perf = getClientPerf();
+    expect(perf.calls).toBe(1);
+    expect(perf.methods).toEqual(['getHealth']);
   });
 });

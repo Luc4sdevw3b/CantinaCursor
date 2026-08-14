@@ -327,9 +327,26 @@ interface ServerContext {
     id: string;
     summaryLabel: string;
     paymentKind: string;
+    netTotalCents: number;
     changeCents: number;
     sourceReservationId: string | null;
     settlements: Array<{ kind: string; amountCents: number }>;
+    screen?: {
+      products: Array<{ id: string; name: string }>;
+      sales: Array<{ summaryLabel: string }>;
+      inventory: {
+        items: Array<{ productName: string; physicalQuantity: number }>;
+      };
+    };
+  };
+  getSaleScreenData(sessionToken: string): {
+    products: Array<{ id: string; name: string; priceCents: number }>;
+    students: Array<{ id: string }>;
+    sales: Array<{ summaryLabel: string }>;
+    pixCopyText: string;
+    inventory: {
+      items: Array<{ productName: string; physicalQuantity: number }>;
+    };
   };
   listSales(
     sessionToken: string,
@@ -534,10 +551,11 @@ interface DriveMockFile {
   makeCopy: (copyName: string, folder: { id: string }) => DriveMockFile;
 }
 
-function createSheet(rows: unknown[][] = [[]], sheetId = 1) {
+function createSheet(rows: unknown[][] = [[]], sheetId = 1, name = '') {
   const sheet = {
     rows,
     getSheetId: () => sheetId,
+    getName: () => name,
     getLastRow: () => rows.length,
     getLastColumn: () =>
       rows.reduce((max, row) => Math.max(max, row.length), 0) || 1,
@@ -589,7 +607,7 @@ function loadServer(
   const spreadsheet = {
     getSheetByName: (name: string) => sheets.get(name) ?? null,
     insertSheet: (name: string) => {
-      const sheet = createSheet([[]], nextSheetId);
+      const sheet = createSheet([[]], nextSheetId, name);
       nextSheetId += 1;
       sheets.set(name, sheet);
       return sheet;
@@ -677,6 +695,7 @@ function loadServer(
     return file;
   }
 
+  const scriptCache = new Map<string, string>();
   const context = {
     Date,
     String,
@@ -692,6 +711,20 @@ function loadServer(
       createHtmlOutputFromFile: vi.fn(() => output),
       createHtmlOutput,
       XFrameOptionsMode: { ALLOWALL: 'ALLOWALL' },
+    },
+    Logger: {
+      log: () => {},
+    },
+    CacheService: {
+      getScriptCache: () => ({
+        get: (key: string) => scriptCache.get(key) ?? null,
+        put: (key: string, value: string) => {
+          scriptCache.set(key, value);
+        },
+        remove: (key: string) => {
+          scriptCache.delete(key);
+        },
+      }),
     },
     PropertiesService: {
       getScriptProperties: () => ({
@@ -830,6 +863,7 @@ function loadServer(
     driveFolders,
     projectTriggers,
     lockState,
+    scriptCache,
   };
 }
 
@@ -1285,10 +1319,14 @@ describe('Apps Script E2E server', () => {
     });
     sheets.set(
       '_meta',
-      createSheet([
-        ['id', 'value'],
-        ['schema_version', '1'],
-      ]),
+      createSheet(
+        [
+          ['id', 'value'],
+          ['schema_version', '1'],
+        ],
+        1,
+        '_meta',
+      ),
     );
     expect(() => server.setupSchema()).toThrow('HEADER_MISMATCH');
   });
@@ -1299,19 +1337,23 @@ describe('Apps Script E2E server', () => {
       SPREADSHEET_ID: 'e2e-sheet-id',
       APP_VERSION: '0.1.0-dev',
     });
-    sheets.set('_meta', createSheet([['key', 'value']]));
+    sheets.set('_meta', createSheet([['key', 'value']], 1, '_meta'));
     sheets.set(
       '_schema_migrations',
-      createSheet([
+      createSheet(
         [
-          'migration_id',
-          'applied_at',
-          'app_version',
-          'checksum',
-          'description',
+          [
+            'migration_id',
+            'applied_at',
+            'app_version',
+            'checksum',
+            'description',
+          ],
+          ['999_unknown', '', '', '', ''],
         ],
-        ['999_unknown', '', '', '', ''],
-      ]),
+        1,
+        '_schema_migrations',
+      ),
     );
     expect(() => server.setupSchema()).toThrow('UNKNOWN_MIGRATION');
   });
@@ -3262,5 +3304,107 @@ describe('Apps Script E2E server', () => {
         .listInventoryBalances(owner)
         .items.find((item) => item.productName === 'Coxinha')?.physicalQuantity,
     ).toBe(9);
+  });
+
+  it('returns sale screen data on createSale and after a catalog cache miss', () => {
+    const { server, scriptCache } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const products = server.listProducts(owner);
+    const coxinha = products.find((item) => item.name === 'Coxinha');
+    if (!coxinha) {
+      throw new Error('cardápio E2E incompleto');
+    }
+    const firstNames = products.map((item) => item.name).sort();
+    const sale = server.createSale(owner, {
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'pix',
+    });
+    expect(sale.netTotalCents).toBe(550);
+    expect(
+      sale.screen?.sales.some(
+        (item) => item.summaryLabel === sale.summaryLabel,
+      ),
+    ).toBe(true);
+    expect(
+      sale.screen?.inventory.items.find(
+        (item) => item.productName === 'Coxinha',
+      )?.physicalQuantity,
+    ).toBe(9);
+
+    for (const key of [...scriptCache.keys()]) {
+      if (key.startsWith('catalog:')) {
+        scriptCache.delete(key);
+      }
+    }
+    const afterMiss = server
+      .listProducts(owner)
+      .map((item) => item.name)
+      .sort();
+    expect(afterMiss).toEqual(firstNames);
+
+    const second = server.createSale(owner, {
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'pix',
+    });
+    expect(second.netTotalCents).toBe(550);
+    expect(second.summaryLabel).toBe('Anônima • Coxinha • R$ 5,50');
+  });
+
+  it('does not let catalog cache change fiado remaining cents', () => {
+    const { server, scriptCache } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const coxinha = server
+      .listProducts(owner)
+      .find((item) => item.name === 'Coxinha');
+    const ana = server
+      .listStudents(owner)
+      .find(
+        (student) =>
+          student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+      );
+    if (!coxinha || !ana) {
+      throw new Error('fiado E2E incompleto');
+    }
+    const shortcuts = server.getDueDateShortcuts(owner);
+    const withCache = server.createSale(owner, {
+      consumerStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: shortcuts.tomorrow }],
+    });
+    expect(withCache.netTotalCents).toBe(550);
+    const remainingWithCache = [...server.listReceivables(owner).upcoming].find(
+      (item) => item.summaryLabel.includes('R$ 5,50'),
+    );
+    expect(remainingWithCache).toBeTruthy();
+
+    for (const key of [...scriptCache.keys()]) {
+      if (key.startsWith('catalog:')) {
+        scriptCache.delete(key);
+      }
+    }
+    const bruno = server
+      .listStudents(owner)
+      .find((student) => student.fullName === 'Bruno Lima');
+    if (!bruno) {
+      throw new Error('aluno E2E incompleto');
+    }
+    const withoutCache = server.createSale(owner, {
+      consumerStudentId: bruno.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+      paymentKind: 'fiado',
+      installments: [{ dueDate: shortcuts.tomorrow }],
+    });
+    expect(withoutCache.netTotalCents).toBe(550);
   });
 });

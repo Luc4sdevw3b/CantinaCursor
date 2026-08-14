@@ -1497,4 +1497,80 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await goToArea(page, 'Estoque');
     await expect(page.getByText('Coxinha • 9', { exact: true })).toBeVisible();
   });
+
+  test('does not call the server when changing cart quantity and uses one createSale for PIX', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Vendas', exact: true }),
+    ).toBeVisible();
+    await page.evaluate(() => {
+      const perf = (
+        window as Window & {
+          __cantinaPerf?: { reset: () => void };
+        }
+      ).__cantinaPerf;
+      if (!perf) {
+        throw new Error('__cantinaPerf ausente');
+      }
+      perf.reset();
+    });
+    await page.locator('#sale-quantity').fill('2');
+    await page.locator('#sale-product').selectOption({
+      label: 'Coxinha • R$ 5,50',
+    });
+    await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click();
+    await page.locator('#sale-payment-kind').selectOption('cash');
+    await page.locator('#sale-payment-kind').selectOption('pix');
+    const afterUi = await page.evaluate(() => {
+      const perf = (
+        window as Window & {
+          __cantinaPerf?: {
+            snapshot: () => { calls: number; methods: string[] };
+          };
+        }
+      ).__cantinaPerf;
+      if (!perf) {
+        throw new Error('__cantinaPerf ausente');
+      }
+      return perf.snapshot();
+    });
+    expect(afterUi.calls).toBe(0);
+    expect(afterUi.methods).toEqual([]);
+
+    await page.evaluate(() => {
+      const perf = (
+        window as Window & {
+          __cantinaPerf?: { reset: () => void };
+        }
+      ).__cantinaPerf;
+      if (!perf) {
+        throw new Error('__cantinaPerf ausente');
+      }
+      perf.reset();
+    });
+    await page.getByRole('button', { name: 'Confirmar venda' }).click();
+    await expect(
+      page
+        .locator('#sales-list')
+        .getByText('Anônima • Coxinha • R$ 11,00', { exact: true }),
+    ).toBeVisible();
+    const afterSale = await page.evaluate(() => {
+      const perf = (
+        window as Window & {
+          __cantinaPerf?: {
+            snapshot: () => { calls: number; methods: string[] };
+          };
+        }
+      ).__cantinaPerf;
+      if (!perf) {
+        throw new Error('__cantinaPerf ausente');
+      }
+      return perf.snapshot();
+    });
+    expect(afterSale.methods).toEqual(['createSale']);
+    expect(afterSale.calls).toBe(1);
+  });
 });
