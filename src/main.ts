@@ -105,413 +105,444 @@ app.innerHTML = `
 
     <div class="workspace" id="workspace">
     <section class="students-panel" id="public-portal" hidden>
-      <h2>Reservar recreio</h2>
-      <p>Escolha o recreio e o lanche. Não é preciso entrar na cantina.</p>
-      <p id="public-portal-status">Carregando recreios…</p>
-      <form id="public-portal-form" aria-label="Enviar reserva">
-        <label>
-          Recreio
-          <select id="public-portal-slot" aria-label="Recreio da reserva pública"></select>
-        </label>
-        <label>
-          Nome para retirada
-          <input id="public-portal-name" required autocomplete="off" />
-        </label>
-        <label>
-          Turma
-          <input id="public-portal-classroom" required autocomplete="off" />
-        </label>
-        <label>
-          Contato (opcional)
-          <input id="public-portal-contact" autocomplete="off" />
-        </label>
-        <label>
-          Produto
-          <select id="public-portal-product" aria-label="Produto da reserva pública"></select>
-        </label>
-        <label>
-          Quantidade
-          <input id="public-portal-quantity" type="number" min="1" max="20" value="1" required />
-        </label>
-        <label class="sr-only" aria-hidden="true">
-          Empresa
-          <input id="public-portal-honeypot" tabindex="-1" autocomplete="off" />
-        </label>
-        <button type="submit">Enviar reserva</button>
-      </form>
-      <ul id="public-portal-catalog"></ul>
-      <p id="public-portal-code" hidden></p>
-      <p id="public-portal-confirmation" hidden></p>
+      <div class="panel-fixed">
+        <h2>Reservar recreio</h2>
+        <p>Escolha o recreio e o lanche. Não é preciso entrar na cantina.</p>
+        <p id="public-portal-status">Carregando recreios…</p>
+        <form id="public-portal-form" aria-label="Enviar reserva">
+          <label>
+            Recreio
+            <select id="public-portal-slot" aria-label="Recreio da reserva pública"></select>
+          </label>
+          <label>
+            Nome para retirada
+            <input id="public-portal-name" required autocomplete="off" />
+          </label>
+          <label>
+            Turma
+            <input id="public-portal-classroom" required autocomplete="off" />
+          </label>
+          <label>
+            Contato (opcional)
+            <input id="public-portal-contact" autocomplete="off" />
+          </label>
+          <label>
+            Produto
+            <select id="public-portal-product" aria-label="Produto da reserva pública"></select>
+          </label>
+          <label>
+            Quantidade
+            <input id="public-portal-quantity" type="number" min="1" max="20" value="1" required />
+          </label>
+          <label class="sr-only" aria-hidden="true">
+            Empresa
+            <input id="public-portal-honeypot" tabindex="-1" autocomplete="off" />
+          </label>
+          <button type="submit">Enviar reserva</button>
+        </form>
+        <p id="public-portal-code" hidden></p>
+        <p id="public-portal-confirmation" hidden></p>
+      </div>
+      <div class="panel-scroll">
+        <ul id="public-portal-catalog"></ul>
+      </div>
     </section>
     <section class="students-panel" id="students-panel" hidden>
-      <h2>Alunos</h2>
-      <p id="students-status">Entre para ver o cadastro.</p>
-      <form id="student-form">
-        <label>
-          Nome completo
-          <input id="student-name" name="fullName" required autocomplete="name" />
-        </label>
-        <label>
-          Nascimento
-          <input id="student-birth" type="date" />
-        </label>
-        <p class="form-or">ou idade aproximada</p>
-        <label>
-          Idade
-          <input id="student-approx-age" type="number" min="0" max="120" />
-        </label>
-        <label>
-          Ano da idade
-          <input id="student-approx-year" type="number" min="1990" max="2100" />
-        </label>
-        <label>
-          Turma
-          <select id="student-classroom"></select>
-        </label>
-        <button type="submit" id="student-submit">Cadastrar aluno</button>
-        <button type="button" id="student-cancel" hidden>Cancelar</button>
-      </form>
-      <ul id="students-list"></ul>
-      <h3>Turmas</h3>
-      <form id="classroom-form" aria-label="Cadastrar turma">
-        <label>
-          Nova turma
-          <input id="classroom-name" required autocomplete="off" />
-        </label>
-        <button type="submit" id="classroom-submit">Cadastrar turma</button>
-        <button type="button" id="classroom-cancel" hidden>Cancelar</button>
-      </form>
-      <ul id="classrooms-list"></ul>
+      <div class="panel-fixed">
+        <h2>Alunos</h2>
+        <p id="students-status">Entre para ver o cadastro.</p>
+        <form id="student-form">
+          <label>
+            Nome completo
+            <input id="student-name" name="fullName" required autocomplete="name" />
+          </label>
+          <label>
+            Nascimento
+            <input id="student-birth" type="date" />
+          </label>
+          <p class="form-or">ou idade aproximada</p>
+          <label>
+            Idade
+            <input id="student-approx-age" type="number" min="0" max="120" />
+          </label>
+          <label>
+            Ano da idade
+            <input id="student-approx-year" type="number" min="1990" max="2100" />
+          </label>
+          <label>
+            Turma
+            <select id="student-classroom"></select>
+          </label>
+          <button type="submit" id="student-submit">Cadastrar aluno</button>
+          <button type="button" id="student-cancel" hidden>Cancelar</button>
+        </form>
+        <form id="classroom-form" aria-label="Cadastrar turma">
+          <label>
+            Nova turma
+            <input id="classroom-name" required autocomplete="off" />
+          </label>
+          <button type="submit" id="classroom-submit">Cadastrar turma</button>
+          <button type="button" id="classroom-cancel" hidden>Cancelar</button>
+        </form>
+      </div>
+      <div class="panel-scroll">
+        <ul id="students-list"></ul>
+        <h3>Turmas</h3>
+        <ul id="classrooms-list"></ul>
+      </div>
     </section>
 
     <section class="students-panel" id="family-panel" hidden>
-      <h2>Responsáveis</h2>
-      <p id="family-status">Entre para ver os responsáveis.</p>
-      <form id="guardian-form">
-        <label>
-          Nome completo
-          <input id="guardian-name" name="fullName" required autocomplete="name" />
-        </label>
-        <label>
-          Telefone
-          <input id="guardian-phone" inputmode="tel" autocomplete="tel" />
-        </label>
-        <label>
-          Relação
-          <input id="guardian-relation" />
-        </label>
-        <label class="checkbox-label">
-          <input id="guardian-whatsapp" type="checkbox" />
-          WhatsApp
-        </label>
-        <button type="submit" id="guardian-submit">Cadastrar responsável</button>
-        <button type="button" id="guardian-cancel" hidden>Cancelar</button>
-      </form>
-      <ul id="guardians-list"></ul>
-      <h2>Irmãos autorizados</h2>
-      <form id="sibling-auth-form">
-        <label>
-          Quem compra
-          <select id="sibling-consumer" required>
-            <option value="">Escolha o aluno</option>
-          </select>
-        </label>
-        <label>
-          Conta
-          <select id="sibling-account" required>
-            <option value="">Escolha a conta</option>
-          </select>
-        </label>
-        <label class="checkbox-label">
-          <input id="sibling-charge" type="checkbox" />
-          Lançar na conta
-        </label>
-        <label class="checkbox-label">
-          <input id="sibling-credit" type="checkbox" />
-          Usar crédito
-        </label>
-        <button type="submit">Autorizar irmão</button>
-      </form>
-      <ul id="authorizations-list"></ul>
-      <h2>Crédito do responsável</h2>
-      <form id="guardian-credit-auth-form">
-        <label>
-          Aluno
-          <select id="credit-auth-student" required>
-            <option value="">Escolha o aluno</option>
-          </select>
-        </label>
-        <label>
-          Responsável
-          <select id="credit-auth-guardian" required>
-            <option value="">Escolha o responsável</option>
-          </select>
-        </label>
-        <label class="checkbox-label">
-          <input id="credit-auth-can-use" type="checkbox" />
-          Pode usar crédito
-        </label>
-        <label class="checkbox-label">
-          <input id="credit-auth-auto-settle" type="checkbox" />
-          Autoquitar dívida
-        </label>
-        <button type="submit">Salvar autorização</button>
-      </form>
-      <form id="age-setting-form">
-        <label>
-          Pedir responsável abaixo de
-          <input id="guardian-age-setting" type="number" min="1" max="21" />
-        </label>
-        <button type="submit" id="save-age-setting">Salvar idade</button>
-      </form>
-      <ul id="guardian-credit-links"></ul>
+      <div class="panel-fixed">
+        <h2>Responsáveis</h2>
+        <p id="family-status">Entre para ver os responsáveis.</p>
+        <form id="guardian-form">
+          <label>
+            Nome completo
+            <input id="guardian-name" name="fullName" required autocomplete="name" />
+          </label>
+          <label>
+            Telefone
+            <input id="guardian-phone" inputmode="tel" autocomplete="tel" />
+          </label>
+          <label>
+            Relação
+            <input id="guardian-relation" />
+          </label>
+          <label class="checkbox-label">
+            <input id="guardian-whatsapp" type="checkbox" />
+            WhatsApp
+          </label>
+          <button type="submit" id="guardian-submit">Cadastrar responsável</button>
+          <button type="button" id="guardian-cancel" hidden>Cancelar</button>
+        </form>
+        <h2>Irmãos autorizados</h2>
+        <form id="sibling-auth-form">
+          <label>
+            Quem compra
+            <select id="sibling-consumer" required>
+              <option value="">Escolha o aluno</option>
+            </select>
+          </label>
+          <label>
+            Conta
+            <select id="sibling-account" required>
+              <option value="">Escolha a conta</option>
+            </select>
+          </label>
+          <label class="checkbox-label">
+            <input id="sibling-charge" type="checkbox" />
+            Lançar na conta
+          </label>
+          <label class="checkbox-label">
+            <input id="sibling-credit" type="checkbox" />
+            Usar crédito
+          </label>
+          <button type="submit">Autorizar irmão</button>
+        </form>
+        <h2>Crédito do responsável</h2>
+        <form id="guardian-credit-auth-form">
+          <label>
+            Aluno
+            <select id="credit-auth-student" required>
+              <option value="">Escolha o aluno</option>
+            </select>
+          </label>
+          <label>
+            Responsável
+            <select id="credit-auth-guardian" required>
+              <option value="">Escolha o responsável</option>
+            </select>
+          </label>
+          <label class="checkbox-label">
+            <input id="credit-auth-can-use" type="checkbox" />
+            Pode usar crédito
+          </label>
+          <label class="checkbox-label">
+            <input id="credit-auth-auto-settle" type="checkbox" />
+            Autoquitar dívida
+          </label>
+          <button type="submit">Salvar autorização</button>
+        </form>
+        <form id="age-setting-form">
+          <label>
+            Pedir responsável abaixo de
+            <input id="guardian-age-setting" type="number" min="1" max="21" />
+          </label>
+          <button type="submit" id="save-age-setting">Salvar idade</button>
+        </form>
+      </div>
+      <div class="panel-scroll">
+        <ul id="guardians-list"></ul>
+        <ul id="authorizations-list"></ul>
+        <ul id="guardian-credit-links"></ul>
+      </div>
     </section>
 
     <section class="students-panel" id="products-panel" hidden>
-      <h2>Cardápio</h2>
-      <p id="products-status">Entre para ver o cardápio.</p>
-      <h3>Categorias</h3>
-      <p>Crie a categoria antes do produto, se ela ainda não existir. Excluir apaga de verdade. Inativar tira do cardápio de vendas e guarda o cadastro. Não dá para excluir categoria com produto, nem produto que já teve venda, estoque ou reserva.</p>
-      <form id="category-form" aria-label="Cadastrar categoria">
-        <label>
-          Nome da categoria
-          <input id="category-name" required autocomplete="off" />
-        </label>
-        <button type="submit" id="category-submit">Cadastrar categoria</button>
-        <button type="button" id="category-cancel" hidden>Cancelar</button>
-      </form>
-      <ul id="categories-list"></ul>
-      <h3>Produtos</h3>
-      <form id="product-form" aria-label="Cadastrar produto">
-        <label>
-          Nome
-          <input id="product-name" required />
-        </label>
-        <label>
-          Categoria
-          <select id="product-category"></select>
-        </label>
-        <label>
-          Preço (R$)
-          <input id="product-price" inputmode="decimal" placeholder="5,50" required />
-        </label>
-        <label class="checkbox-label">
-          <input id="product-discount" type="checkbox" />
-          Permite desconto
-        </label>
-        <label class="checkbox-label">
-          <input id="product-stock" type="checkbox" checked />
-          Controla estoque
-        </label>
-        <label class="checkbox-label">
-          <input id="product-reservable" type="checkbox" />
-          Reservável
-        </label>
-        <button type="submit" id="product-submit">Cadastrar produto</button>
-        <button type="button" id="product-cancel" hidden>Cancelar</button>
-      </form>
-      <ul id="products-list"></ul>
-      <div id="ad-hoc-block">
-        <h2>Item avulso</h2>
-        <p id="ad-hoc-status">Só a dona registra item avulso. Ele não vira produto.</p>
-        <form id="ad-hoc-form">
+      <div class="panel-fixed">
+        <h2>Cardápio</h2>
+        <p id="products-status">Entre para ver o cardápio.</p>
+        <form id="category-form" aria-label="Cadastrar categoria">
+          <label>
+            Nome da categoria
+            <input id="category-name" required autocomplete="off" />
+          </label>
+          <button type="submit" id="category-submit">Cadastrar categoria</button>
+          <button type="button" id="category-cancel" hidden>Cancelar</button>
+        </form>
+        <form id="product-form" aria-label="Cadastrar produto">
           <label>
             Nome
-            <input id="ad-hoc-name" required />
+            <input id="product-name" required />
+          </label>
+          <label>
+            Categoria
+            <select id="product-category"></select>
           </label>
           <label>
             Preço (R$)
-            <input id="ad-hoc-price" inputmode="decimal" placeholder="6,00" required />
+            <input id="product-price" inputmode="decimal" placeholder="5,50" required />
           </label>
-          <button type="submit">Registrar avulso</button>
+          <label class="checkbox-label">
+            <input id="product-discount" type="checkbox" />
+            Permite desconto
+          </label>
+          <label class="checkbox-label">
+            <input id="product-stock" type="checkbox" checked />
+            Controla estoque
+          </label>
+          <label class="checkbox-label">
+            <input id="product-reservable" type="checkbox" />
+            Reservável
+          </label>
+          <button type="submit" id="product-submit">Cadastrar produto</button>
+          <button type="button" id="product-cancel" hidden>Cancelar</button>
         </form>
+        <div id="ad-hoc-block">
+          <h2>Item avulso</h2>
+          <p id="ad-hoc-status">Só a dona registra item avulso. Ele não vira produto.</p>
+          <form id="ad-hoc-form">
+            <label>
+              Nome
+              <input id="ad-hoc-name" required />
+            </label>
+            <label>
+              Preço (R$)
+              <input id="ad-hoc-price" inputmode="decimal" placeholder="6,00" required />
+            </label>
+            <button type="submit">Registrar avulso</button>
+          </form>
+        </div>
+      </div>
+      <div class="panel-scroll">
+        <h3>Categorias</h3>
+        <p>Crie a categoria antes do produto, se ela ainda não existir. Excluir apaga de verdade. Inativar tira do cardápio de vendas e guarda o cadastro. Não dá para excluir categoria com produto, nem produto que já teve venda, estoque ou reserva.</p>
+        <ul id="categories-list"></ul>
+        <h3>Produtos</h3>
+        <ul id="products-list"></ul>
         <ul id="ad-hoc-list"></ul>
       </div>
     </section>
 
     <section class="students-panel" id="inventory-panel" hidden>
-      <h2>Estoque do dia</h2>
-      <p id="inventory-status">Entre para ver o estoque.</p>
-      <form id="inventory-open-form" hidden>
-        <h3>Abrir estoque do dia</h3>
-        <div id="inventory-open-items"></div>
-        <button type="submit">Abrir estoque</button>
-      </form>
-      <form id="inventory-adjust-form">
-        <label>
-          Produto
-          <select id="inventory-adjust-product"></select>
-        </label>
-        <label>
-          Ajuste
-          <span class="stepper">
-            <button type="button" id="inventory-delta-minus" aria-label="Diminuir uma unidade">−</button>
-            <input id="inventory-adjust-delta" inputmode="numeric" placeholder="0" required aria-label="Quantidade do ajuste" />
-            <button type="button" id="inventory-delta-plus" aria-label="Aumentar uma unidade">+</button>
-          </span>
-        </label>
-        <label>
-          Motivo
-          <input id="inventory-adjust-reason" list="inventory-reason-options" required />
-          <datalist id="inventory-reason-options">
-            <option value="Reposição"></option>
-            <option value="Sobra do dia anterior"></option>
-            <option value="Correção de contagem"></option>
-            <option value="Perda ou estrago"></option>
-            <option value="Consumo da equipe"></option>
-          </datalist>
-        </label>
-        <button type="submit">Ajustar estoque</button>
-      </form>
-      <ul id="inventory-list"></ul>
+      <div class="panel-fixed">
+        <h2>Estoque do dia</h2>
+        <p id="inventory-status">Entre para ver o estoque.</p>
+        <form id="inventory-open-form" hidden>
+          <h3>Abrir estoque do dia</h3>
+          <div id="inventory-open-items"></div>
+          <button type="submit">Abrir estoque</button>
+        </form>
+        <form id="inventory-adjust-form">
+          <label>
+            Produto
+            <select id="inventory-adjust-product"></select>
+          </label>
+          <label>
+            Ajuste
+            <span class="stepper">
+              <button type="button" id="inventory-delta-minus" aria-label="Diminuir uma unidade">−</button>
+              <input id="inventory-adjust-delta" inputmode="numeric" placeholder="0" required aria-label="Quantidade do ajuste" />
+              <button type="button" id="inventory-delta-plus" aria-label="Aumentar uma unidade">+</button>
+            </span>
+          </label>
+          <label>
+            Motivo
+            <input id="inventory-adjust-reason" list="inventory-reason-options" required />
+            <datalist id="inventory-reason-options">
+              <option value="Reposição"></option>
+              <option value="Sobra do dia anterior"></option>
+              <option value="Correção de contagem"></option>
+              <option value="Perda ou estrago"></option>
+              <option value="Consumo da equipe"></option>
+            </datalist>
+          </label>
+          <button type="submit">Ajustar estoque</button>
+        </form>
+      </div>
+      <div class="panel-scroll">
+        <ul id="inventory-list"></ul>
+      </div>
     </section>
 
     <section class="students-panel" id="reservations-panel" hidden>
-      <h2 id="reservations-title">Reservas do recreio</h2>
-      <p>A reserva segura a disponibilidade. O estoque físico só muda na venda da retirada.</p>
-      <p id="reservations-status">Entre para ver as reservas.</p>
-      <form id="reservation-slot-form">
-        <h3 id="reservation-slot-title">Criar recreio</h3>
-        <label>
-          Nome
-          <input id="reservation-slot-label" required />
-        </label>
-        <label>
-          Corte
-          <input id="reservation-slot-cutoff" type="time" required />
-        </label>
-        <label>
-          Início da retirada
-          <input id="reservation-slot-start" type="time" required />
-        </label>
-        <label>
-          Fim da retirada
-          <input id="reservation-slot-end" type="time" required />
-        </label>
-        <button type="submit" id="reservation-slot-submit">Criar recreio</button>
-        <button type="button" id="reservation-slot-cancel" hidden>Cancelar</button>
-      </form>
-      <ul id="reservation-slots-list"></ul>
-      <form id="reservation-create-form" aria-label="Confirmar reserva">
-        <h3>Nova reserva</h3>
-        <label>
-          Recreio
-          <select id="reservation-slot-id" aria-label="Recreio da reserva"></select>
-        </label>
-        <label>
-          Pesquisar aluno
-          <input id="reservation-student-search" autocomplete="off" aria-label="Pesquisar aluno" />
-        </label>
-        <label>
-          Aluno cadastrado
-          <select id="reservation-student" required aria-label="Aluno da reserva"></select>
-        </label>
-        <label>
-          Turma
-          <input id="reservation-classroom" required autocomplete="off" />
-        </label>
-        <label>
-          Produto
-          <select id="reservation-product" aria-label="Produto da reserva"></select>
-        </label>
-        <label>
-          Quantidade
-          <input id="reservation-quantity" type="number" min="1" max="20" value="1" required />
-        </label>
-        <button type="submit">Confirmar reserva</button>
-      </form>
-      <ul id="reservation-availability"></ul>
-      <h3>Fila do recreio</h3>
-      <label>
-        Recreio
-        <select id="reservation-filter-slot" aria-label="Filtrar recreio"></select>
-      </label>
-      <label>
-        Pesquisar reserva
-        <input id="reservation-search" autocomplete="off" aria-label="Pesquisar reserva" />
-      </label>
-      <form id="reservation-edit-form">
-        <h3>Alterar reserva</h3>
-        <input id="reservation-edit-id" type="hidden" />
-        <label>
-          Nome para retirada
-          <input id="reservation-edit-name" required autocomplete="off" />
-        </label>
-        <label>
-          Turma
-          <input id="reservation-edit-classroom" required autocomplete="off" />
-        </label>
-        <label>
-          Contato
-          <input id="reservation-edit-contact" autocomplete="off" />
-        </label>
-        <button type="submit">Alterar reserva</button>
-      </form>
-      <label>
-        Aluno do cadastro
-        <select id="reservation-link-student" aria-label="Aluno para vincular"></select>
-      </label>
-      <label>
-        Motivo do cancelamento ou não retirada
-        <input id="reservation-action-reason" />
-      </label>
-      <h3>Produção</h3>
-      <ul id="reservation-production"></ul>
-      <ul id="reservations-list"></ul>
+      <div class="panel-fixed">
+        <h2 id="reservations-title">Reservas do recreio</h2>
+        <p>A reserva segura a disponibilidade. O estoque físico só muda na venda da retirada.</p>
+        <p id="reservations-status">Entre para ver as reservas.</p>
+        <form id="reservation-create-form" aria-label="Confirmar reserva">
+          <h3>Nova reserva</h3>
+          <label>
+            Recreio
+            <select id="reservation-slot-id" aria-label="Recreio da reserva"></select>
+          </label>
+          <label>
+            Pesquisar aluno
+            <input id="reservation-student-search" autocomplete="off" aria-label="Pesquisar aluno" />
+          </label>
+          <label>
+            Aluno cadastrado
+            <select id="reservation-student" required aria-label="Aluno da reserva"></select>
+          </label>
+          <label>
+            Turma
+            <input id="reservation-classroom" required autocomplete="off" />
+          </label>
+          <label>
+            Produto
+            <select id="reservation-product" aria-label="Produto da reserva"></select>
+          </label>
+          <label>
+            Quantidade
+            <input id="reservation-quantity" type="number" min="1" max="20" value="1" required />
+          </label>
+          <button type="submit">Confirmar reserva</button>
+        </form>
+        <form id="reservation-slot-form">
+          <h3 id="reservation-slot-title">Criar recreio</h3>
+          <label>
+            Nome
+            <input id="reservation-slot-label" required />
+          </label>
+          <label>
+            Corte
+            <input id="reservation-slot-cutoff" type="time" required />
+          </label>
+          <label>
+            Início da retirada
+            <input id="reservation-slot-start" type="time" required />
+          </label>
+          <label>
+            Fim da retirada
+            <input id="reservation-slot-end" type="time" required />
+          </label>
+          <button type="submit" id="reservation-slot-submit">Criar recreio</button>
+          <button type="button" id="reservation-slot-cancel" hidden>Cancelar</button>
+        </form>
+        <form id="reservation-edit-form">
+          <h3>Alterar reserva</h3>
+          <input id="reservation-edit-id" type="hidden" />
+          <label>
+            Nome para retirada
+            <input id="reservation-edit-name" required autocomplete="off" />
+          </label>
+          <label>
+            Turma
+            <input id="reservation-edit-classroom" required autocomplete="off" />
+          </label>
+          <label>
+            Contato
+            <input id="reservation-edit-contact" autocomplete="off" />
+          </label>
+          <button type="submit">Alterar reserva</button>
+        </form>
+        <div class="filter-grid">
+          <label>
+            Recreio
+            <select id="reservation-filter-slot" aria-label="Filtrar recreio"></select>
+          </label>
+          <label>
+            Pesquisar reserva
+            <input id="reservation-search" autocomplete="off" aria-label="Pesquisar reserva" />
+          </label>
+          <label>
+            Aluno do cadastro
+            <select id="reservation-link-student" aria-label="Aluno para vincular"></select>
+          </label>
+          <label>
+            Motivo do cancelamento ou não retirada
+            <input id="reservation-action-reason" />
+          </label>
+        </div>
+      </div>
+      <div class="panel-scroll">
+        <ul id="reservation-availability"></ul>
+        <ul id="reservation-slots-list"></ul>
+        <h3>Produção</h3>
+        <ul id="reservation-production"></ul>
+        <h3>Fila do recreio</h3>
+        <ul id="reservations-list"></ul>
+      </div>
     </section>
 
     <section class="students-panel" id="cash-panel" hidden>
-      <h2>Caixa</h2>
-      <p id="cash-status">Entre para ver o caixa.</p>
-      <p id="cash-session-label"></p>
-      <form id="cash-open-form">
-        <label>
-          Troco inicial
-          <input id="cash-opening-float" inputmode="decimal" placeholder="0,00" />
-        </label>
-        <button type="submit">Abrir caixa</button>
-      </form>
-      <form id="cash-add-form" hidden>
-        <label>
-          Adicionar troco
-          <input id="cash-add-amount" inputmode="decimal" placeholder="20,00" />
-        </label>
-        <label>
-          Origem
-          <input id="cash-add-note" required />
-        </label>
-        <button type="submit">Adicionar troco</button>
-      </form>
-      <form id="cash-remove-form" hidden>
-        <label>
-          Retirar dinheiro
-          <input id="cash-remove-amount" inputmode="decimal" placeholder="10,00" />
-        </label>
-        <label>
-          Motivo
-          <input id="cash-remove-note" required />
-        </label>
-        <button type="submit">Retirar dinheiro</button>
-      </form>
-      <form id="cash-close-form" hidden>
-        <label>
-          Valor contado
-          <input id="cash-counted" inputmode="decimal" placeholder="8,00" />
-        </label>
-        <label>
-          Nota
-          <input id="cash-close-note" />
-        </label>
-        <button type="submit">Fechar caixa</button>
-      </form>
-      <ul id="cash-movements"></ul>
+      <div class="panel-fixed">
+        <h2>Caixa</h2>
+        <p id="cash-status">Entre para ver o caixa.</p>
+        <p id="cash-session-label"></p>
+        <form id="cash-open-form">
+          <label>
+            Troco inicial
+            <input id="cash-opening-float" inputmode="decimal" placeholder="0,00" />
+          </label>
+          <button type="submit">Abrir caixa</button>
+        </form>
+        <form id="cash-add-form" hidden>
+          <label>
+            Adicionar troco
+            <input id="cash-add-amount" inputmode="decimal" placeholder="20,00" />
+          </label>
+          <label>
+            Origem
+            <input id="cash-add-note" required />
+          </label>
+          <button type="submit">Adicionar troco</button>
+        </form>
+        <form id="cash-remove-form" hidden>
+          <label>
+            Retirar dinheiro
+            <input id="cash-remove-amount" inputmode="decimal" placeholder="10,00" />
+          </label>
+          <label>
+            Motivo
+            <input id="cash-remove-note" required />
+          </label>
+          <button type="submit">Retirar dinheiro</button>
+        </form>
+        <form id="cash-close-form" hidden>
+          <label>
+            Valor contado
+            <input id="cash-counted" inputmode="decimal" placeholder="8,00" />
+          </label>
+          <label>
+            Nota
+            <input id="cash-close-note" />
+          </label>
+          <button type="submit">Fechar caixa</button>
+        </form>
+      </div>
+      <div class="panel-scroll">
+        <ul id="cash-movements"></ul>
+      </div>
     </section>
 
     <section class="students-panel" id="reversals-panel" hidden>
-      <h2 id="reversals-title">Estornos completos</h2>
-      <p>A operação original nunca é apagada. Cada devolução, dívida, crédito, caixa e item retornado fica vinculado.</p>
-      <p id="reversals-status">Entre para ver os estornos.</p>
-      <div id="reversal-forms">
+      <div class="panel-fixed">
+        <h2 id="reversals-title">Estornos completos</h2>
+        <p>A operação original nunca é apagada. Cada devolução, dívida, crédito, caixa e item retornado fica vinculado.</p>
+        <p id="reversals-status">Entre para ver os estornos.</p>
+        <div id="reversal-forms">
         <form id="reverse-sale-form" aria-label="Estornar venda">
           <h3>Estornar venda</h3>
           <label>
@@ -595,18 +626,22 @@ app.innerHTML = `
           </label>
           <button type="submit">Confirmar cancelamento da devolução</button>
         </form>
+        </div>
       </div>
-      <div class="reversal-history" aria-label="Histórico de estornos">
-        <h3>Auditoria de estornos</h3>
-        <ul id="reversals-history"></ul>
+      <div class="panel-scroll">
+        <div class="reversal-history" aria-label="Histórico de estornos">
+          <h3>Auditoria de estornos</h3>
+          <ul id="reversals-history"></ul>
+        </div>
       </div>
     </section>
 
     <section class="students-panel" id="sales-panel" hidden>
-      <h2>Vendas</h2>
-      <p id="sales-status">Entre para vender.</p>
-      <p id="pix-copy-text"></p>
-      <form id="sale-cart-form">
+      <div class="panel-fixed">
+        <h2>Vendas</h2>
+        <p id="sales-status">Entre para vender.</p>
+        <p id="pix-copy-text"></p>
+        <form id="sale-cart-form">
         <label>
           Produto
           <select id="sale-product"></select>
@@ -685,26 +720,34 @@ app.innerHTML = `
           </label>
         </div>
         <button type="submit">Confirmar venda</button>
-      </form>
-      <ul id="sale-cart-list"></ul>
-      <ul id="sales-list"></ul>
+        </form>
+      </div>
+      <div class="panel-scroll">
+        <ul id="sale-cart-list"></ul>
+        <ul id="sales-list"></ul>
+      </div>
     </section>
 
     <section class="students-panel" id="agenda-panel" hidden>
-      <h2>Agenda</h2>
-      <p id="agenda-status">Entre para ver os vencimentos.</p>
-      <h3>Atrasados</h3>
-      <ul id="agenda-overdue"></ul>
-      <h3>Hoje</h3>
-      <ul id="agenda-today"></ul>
-      <h3>Próximos</h3>
-      <ul id="agenda-upcoming"></ul>
+      <div class="panel-fixed">
+        <h2>Agenda</h2>
+        <p id="agenda-status">Entre para ver os vencimentos.</p>
+      </div>
+      <div class="panel-scroll">
+        <h3>Atrasados</h3>
+        <ul id="agenda-overdue"></ul>
+        <h3>Hoje</h3>
+        <ul id="agenda-today"></ul>
+        <h3>Próximos</h3>
+        <ul id="agenda-upcoming"></ul>
+      </div>
     </section>
 
     <section class="students-panel" id="payments-panel" hidden>
-      <h2>Pagamentos</h2>
-      <p id="payments-status">Entre para registrar pagamentos.</p>
-      <form id="payment-form">
+      <div class="panel-fixed">
+        <h2>Pagamentos</h2>
+        <p id="payments-status">Entre para registrar pagamentos.</p>
+        <form id="payment-form">
         <label>
           Aluno
           <select id="payment-student" required>
@@ -772,135 +815,147 @@ app.innerHTML = `
             <option value="">Escolha o filho</option>
           </select>
         </label>
-        <ul id="family-payment-debts" hidden></ul>
-        <button type="submit">Registrar pagamento familiar</button>
-      </form>
-      <ul id="payments-list"></ul>
+          <ul id="family-payment-debts" hidden></ul>
+          <button type="submit">Registrar pagamento familiar</button>
+        </form>
+      </div>
+      <div class="panel-scroll">
+        <ul id="payments-list"></ul>
+      </div>
     </section>
 
     <section class="students-panel" id="credits-panel" hidden>
-      <h2>Crédito pessoal</h2>
-      <p id="credits-status">Entre para registrar crédito.</p>
-      <form id="credit-deposit-form">
-        <label>
-          Aluno
-          <select id="credit-student" required>
-            <option value="">Escolha o aluno</option>
-          </select>
-        </label>
-        <label>
-          Valor (R$)
-          <input id="credit-amount" inputmode="decimal" placeholder="2,00" />
-        </label>
-        <label>
-          Método
-          <select id="credit-method">
-            <option value="pix">PIX</option>
-            <option value="cash">Dinheiro</option>
-          </select>
-        </label>
-        <button type="submit">Entrar crédito</button>
-      </form>
-      <form id="credit-refund-form" hidden>
-        <label>
-          Valor (R$)
-          <input id="credit-refund-amount" inputmode="decimal" placeholder="2,00" />
-        </label>
-        <label>
-          Motivo
-          <input id="credit-refund-reason" required />
-        </label>
-        <button type="submit">Devolver crédito</button>
-      </form>
-      <h2>Crédito do responsável</h2>
-      <form id="guardian-credit-deposit-form">
-        <label>
-          Responsável
-          <select id="credit-guardian" required>
-            <option value="">Escolha o responsável</option>
-          </select>
-        </label>
-        <label>
-          Valor (R$)
-          <input id="guardian-credit-amount" inputmode="decimal" placeholder="2,00" />
-        </label>
-        <label>
-          Método
-          <select id="guardian-credit-method">
-            <option value="pix">PIX</option>
-            <option value="cash">Dinheiro</option>
-          </select>
-        </label>
-        <button type="submit">Entrar crédito do responsável</button>
-      </form>
-      <form id="guardian-credit-refund-form" hidden>
-        <label>
-          Valor (R$)
-          <input
-            id="guardian-credit-refund-amount"
-            inputmode="decimal"
-            placeholder="2,00"
-          />
-        </label>
-        <label>
-          Motivo
-          <input id="guardian-credit-refund-reason" required />
-        </label>
-        <button type="submit">Devolver crédito do responsável</button>
-      </form>
-      <h3>Histórico de créditos</h3>
-      <ul id="credits-list"></ul>
+      <div class="panel-fixed">
+        <h2>Crédito pessoal</h2>
+        <p id="credits-status">Entre para registrar crédito.</p>
+        <form id="credit-deposit-form">
+          <label>
+            Aluno
+            <select id="credit-student" required>
+              <option value="">Escolha o aluno</option>
+            </select>
+          </label>
+          <label>
+            Valor (R$)
+            <input id="credit-amount" inputmode="decimal" placeholder="2,00" />
+          </label>
+          <label>
+            Método
+            <select id="credit-method">
+              <option value="pix">PIX</option>
+              <option value="cash">Dinheiro</option>
+            </select>
+          </label>
+          <button type="submit">Entrar crédito</button>
+        </form>
+        <form id="credit-refund-form" hidden>
+          <label>
+            Valor (R$)
+            <input id="credit-refund-amount" inputmode="decimal" placeholder="2,00" />
+          </label>
+          <label>
+            Motivo
+            <input id="credit-refund-reason" required />
+          </label>
+          <button type="submit">Devolver crédito</button>
+        </form>
+        <h2>Crédito do responsável</h2>
+        <form id="guardian-credit-deposit-form">
+          <label>
+            Responsável
+            <select id="credit-guardian" required>
+              <option value="">Escolha o responsável</option>
+            </select>
+          </label>
+          <label>
+            Valor (R$)
+            <input id="guardian-credit-amount" inputmode="decimal" placeholder="2,00" />
+          </label>
+          <label>
+            Método
+            <select id="guardian-credit-method">
+              <option value="pix">PIX</option>
+              <option value="cash">Dinheiro</option>
+            </select>
+          </label>
+          <button type="submit">Entrar crédito do responsável</button>
+        </form>
+        <form id="guardian-credit-refund-form" hidden>
+          <label>
+            Valor (R$)
+            <input
+              id="guardian-credit-refund-amount"
+              inputmode="decimal"
+              placeholder="2,00"
+            />
+          </label>
+          <label>
+            Motivo
+            <input id="guardian-credit-refund-reason" required />
+          </label>
+          <button type="submit">Devolver crédito do responsável</button>
+        </form>
+      </div>
+      <div class="panel-scroll">
+        <ul id="credits-list"></ul>
+      </div>
     </section>
 
     <section class="students-panel" id="adjust-panel" hidden>
-      <h2>Juros e renegociação</h2>
-      <p id="adjust-status">Só a dona lança juros e troca vencimento.</p>
-      <label>
-        Dívida
-        <select id="adjust-receivable">
-          <option value="">Escolha a dívida</option>
-        </select>
-      </label>
-      <form id="interest-form">
-        <label>
-          Juros
-          <select id="interest-kind">
-            <option value="amount">Valor (R$)</option>
-            <option value="percent">Porcento</option>
-          </select>
-        </label>
-        <label id="interest-amount-label">
-          Valor (R$)
-          <input id="interest-amount" inputmode="decimal" placeholder="1,00" />
-        </label>
-        <label id="interest-percent-label" hidden>
-          Porcento
-          <input id="interest-percent" type="number" min="1" max="100" />
-        </label>
-        <label>
-          Motivo
-          <input id="interest-reason" required />
-        </label>
-        <button type="submit">Lançar juros</button>
-      </form>
-      <form id="renegotiate-form">
-        <label>
-          Novo vencimento
-          <input id="renegotiate-due-date" type="date" />
-        </label>
-        <div>
-          <button type="button" id="renegotiate-due-tomorrow">Amanhã</button>
-          <button type="button" id="renegotiate-due-friday">Próxima sexta</button>
-          <button type="button" id="renegotiate-due-plus7">+7 dias</button>
+      <div class="panel-fixed">
+        <h2>Juros e renegociação</h2>
+        <p id="adjust-status">Só a dona lança juros e troca vencimento.</p>
+        <div class="filter-grid">
+          <label>
+            Dívida
+            <select id="adjust-receivable">
+              <option value="">Escolha a dívida</option>
+            </select>
+          </label>
         </div>
-        <label>
-          Motivo
-          <input id="renegotiate-reason" required />
-        </label>
-        <button type="submit">Renegociar vencimento</button>
-      </form>
-      <h3>Histórico de vencimento</h3>
-      <ul id="due-date-history"></ul>
+        <form id="interest-form">
+          <label>
+            Juros
+            <select id="interest-kind">
+              <option value="amount">Valor (R$)</option>
+              <option value="percent">Porcento</option>
+            </select>
+          </label>
+          <label id="interest-amount-label">
+            Valor (R$)
+            <input id="interest-amount" inputmode="decimal" placeholder="1,00" />
+          </label>
+          <label id="interest-percent-label" hidden>
+            Porcento
+            <input id="interest-percent" type="number" min="1" max="100" />
+          </label>
+          <label>
+            Motivo
+            <input id="interest-reason" required />
+          </label>
+          <button type="submit">Lançar juros</button>
+        </form>
+        <form id="renegotiate-form">
+          <label>
+            Novo vencimento
+            <input id="renegotiate-due-date" type="date" />
+          </label>
+          <div>
+            <button type="button" id="renegotiate-due-tomorrow">Amanhã</button>
+            <button type="button" id="renegotiate-due-friday">Próxima sexta</button>
+            <button type="button" id="renegotiate-due-plus7">+7 dias</button>
+          </div>
+          <label>
+            Motivo
+            <input id="renegotiate-reason" required />
+          </label>
+          <button type="submit">Renegociar vencimento</button>
+        </form>
+      </div>
+      <div class="panel-scroll">
+        <h3>Histórico de vencimento</h3>
+        <ul id="due-date-history"></ul>
+      </div>
     </section>
     </div>
 
@@ -2316,6 +2371,9 @@ async function renderProducts(
   if (adHocBlock instanceof HTMLElement) {
     adHocBlock.hidden = !isOwner;
   }
+  if (adHocList instanceof HTMLElement) {
+    adHocList.hidden = !isOwner;
+  }
   if (!isOwner || !(adHocList instanceof HTMLElement) || !adHocStatus) {
     return;
   }
@@ -2439,10 +2497,7 @@ async function renderInventory(
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '';
-    if (
-      message.includes('INVENTORY_DAY_NOT_OPEN') &&
-      session.role === 'owner'
-    ) {
+    if (message.includes('INVENTORY_DAY_NOT_OPEN') && session.role === 'owner') {
       inventoryStatus.textContent =
         'Estoque do dia ainda fechado. Informe a quantidade inicial de cada produto.';
       try {
@@ -3652,7 +3707,8 @@ async function renderPayments(
             payments: await api.listPayments(),
             guardians: rosterShare.guardians,
             links: rosterShare.links,
-            receivables: sharedReceivables ?? (await api.listReceivables()),
+            receivables:
+              sharedReceivables ?? (await api.listReceivables()),
           }
         : await api.getPaymentsScreenData());
     const students = data.students;
@@ -5116,12 +5172,9 @@ inventoryList?.addEventListener('click', (event) => {
 
 document
   .querySelector('#inventory-open-form')
-  ?.addEventListener('submit', (event) => {
-    event.preventDefault();
+  ?.addEventListener('submit', (event) => {    event.preventDefault();
     const inputs = Array.from(
-      document.querySelectorAll<HTMLInputElement>(
-        '#inventory-open-items input',
-      ),
+      document.querySelectorAll<HTMLInputElement>('#inventory-open-items input'),
     );
     if (inputs.length === 0) {
       return;

@@ -9,7 +9,7 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
-## 2026-08-14 15:50 — Formulários antes de listas com rolagem própria
+## 2026-08-14 16:35 — Formulários fixos e listas roláveis em todas as abas
 
 **Origem:** Pedido do usuário
 **Status:** Implementado
@@ -18,28 +18,29 @@ Regras:
 
 ### Pedido / objetivo
 
-- Evitar que listas longas empurrem campos e ações para o fim da página.
-- Manter os campos de operação acessíveis e rolar somente os resultados abaixo, inclusive em Crédito do responsável e no celular.
+- Em abas com listas longas (ex.: Alunos, Crédito), as opções de cadastro/edição só apareciam no fim da rolagem. O usuário quer todo campo de digitação/seleção fixo na tela, com apenas o conteúdo sem campos rolando abaixo — em todas as abas.
 
 ### Tentativa / implementação
 
-- Formulários foram movidos para antes de suas listas no portal público e em Alunos, Responsáveis, Cardápio, Estoque, Reservas, Vendas e Crédito.
-- Todas as listas das áreas ganharam altura máxima responsiva, rolagem vertical própria, contenção de rolagem e scrollbar discreta.
-- Formulários receberam superfície visual própria para separar claramente a área de ação da área de resultados.
-- Ao editar aluno, turma, responsável, categoria, produto ou recreio, o formulário correspondente entra suavemente em vista.
-- O primeiro teste móvel aguardava uma linha de crédito inicial que não existe no seed; a sincronização foi corrigida para aguardar o seletor de alunos carregado.
+- Reestruturação de todos os painéis em `main.ts`: cada aba agora tem duas regiões — `.panel-fixed` (títulos, status e **todos** os formulários e campos soltos de filtro/ação) e `.panel-scroll` (somente listas e textos informativos).
+- `styles.css`: `.workspace` vira coluna flex de altura limitada (`overflow: hidden`); `.panel-fixed` fica fixo no topo com `max-height: 58%` e rolagem própria como válvula de segurança; `.panel-scroll` recebe `flex: 1` + `overflow-y: auto` com scrollbar fina pastel; divisória sutil entre as regiões.
+- Campos soltos de Reservas (filtro de recreio, pesquisa, vínculo de aluno, motivo de cancelamento) e de Juros (seletor de dívida) agrupados em `.filter-grid` dentro da região fixa.
+- Listas de seleção de dívidas dentro dos formulários de pagamento (`#payment-debts`, `#family-payment-debts`) ganham rolagem própria limitada (11rem) por ficarem dentro da região fixa.
+- Correção latente: `ul[hidden]` agora tem `display: none` explícito (a regra `display: grid` das listas sobrescrevia o atributo `hidden`).
+- Item avulso: `#ad-hoc-list` passa a ser escondida junto com `#ad-hoc-block` para funcionários (a lista saiu do bloco na nova estrutura).
+- `revealFormFor` mantido: ao clicar em "Editar", o formulário correspondente rola suavemente até a vista dentro da região fixa.
 
 ### Resultado
 
-- O usuário preenche os campos acima e consulta listas longas abaixo sem alternar entre o início e o fim da página.
-- O fluxo de Crédito do responsável agora aparece antes do histórico de créditos.
+- Em todas as 12 abas, os campos ficam sempre visíveis no topo e só as listas rolam. Lint, typecheck, build, 131 testes unitários, 111 de integração e 57 E2E locais passam, incluindo dois novos: invariante estrutural (todo `form` na zona fixa e toda `ul` na zona rolável, varrendo todas as áreas) e comportamento de rolagem (campo não se move enquanto a lista rola, em Alunos e Crédito).
 
-### Testes
+### Diferenças do pedido
 
-- Lint, typecheck e build: aprovados.
-- Vitest unitário: 131 testes aprovados.
-- Vitest de integração: 111 testes aprovados.
-- Playwright E2E local: 57 testes aprovados, incluindo ordem dos controles em todas as áreas e rolagem móvel de uma lista longa de créditos.
+- Nenhuma.
+
+### Impacto técnico
+
+- `main.ts` (template HTML dos 13 painéis), `styles.css` (layout flex, `.panel-fixed`, `.panel-scroll`, `.filter-grid`, scrollbars), `smoke.spec.ts` (2 novos E2E).
 
 ## 2026-08-14 14:45 — Visual pastel claro em página única
 

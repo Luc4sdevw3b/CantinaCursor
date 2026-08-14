@@ -118,144 +118,6 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   });
 
-  test('keeps every management form before its independently scrollable list', async ({
-    page,
-  }) => {
-    await openLocalApp(page);
-    await page.getByRole('button', { name: 'Entrar como dona' }).click();
-    const areas: Array<{
-      name: string;
-      pairs: Array<[string, string]>;
-    }> = [
-      {
-        name: 'Alunos',
-        pairs: [
-          ['#student-form', '#students-list'],
-          ['#classroom-form', '#classrooms-list'],
-        ],
-      },
-      {
-        name: 'Responsáveis',
-        pairs: [
-          ['#guardian-form', '#guardians-list'],
-          ['#sibling-auth-form', '#authorizations-list'],
-          ['#guardian-credit-auth-form', '#guardian-credit-links'],
-        ],
-      },
-      {
-        name: 'Cardápio',
-        pairs: [
-          ['#category-form', '#categories-list'],
-          ['#product-form', '#products-list'],
-          ['#ad-hoc-form', '#ad-hoc-list'],
-        ],
-      },
-      {
-        name: 'Estoque',
-        pairs: [['#inventory-adjust-form', '#inventory-list']],
-      },
-      {
-        name: 'Reservas',
-        pairs: [
-          ['#reservation-slot-form', '#reservation-slots-list'],
-          ['#reservation-create-form', '#reservation-availability'],
-          ['#reservation-action-reason', '#reservations-list'],
-        ],
-      },
-      {
-        name: 'Vendas',
-        pairs: [['#sale-confirm-form', '#sale-cart-list']],
-      },
-      {
-        name: 'Pagamentos',
-        pairs: [['#family-payment-form', '#payments-list']],
-      },
-      {
-        name: 'Crédito',
-        pairs: [['#guardian-credit-deposit-form', '#credits-list']],
-      },
-      {
-        name: 'Caixa',
-        pairs: [['#cash-open-form', '#cash-movements']],
-      },
-      {
-        name: 'Estornos',
-        pairs: [['#reversal-forms', '#reversals-history']],
-      },
-      {
-        name: 'Juros',
-        pairs: [['#renegotiate-form', '#due-date-history']],
-      },
-    ];
-
-    for (const area of areas) {
-      await goToArea(page, area.name);
-      for (const [controlSelector, listSelector] of area.pairs) {
-        const layout = await page.evaluate(
-          ({ controlSelector, listSelector }) => {
-            const control = document.querySelector(controlSelector);
-            const list = document.querySelector(listSelector);
-            if (
-              !(control instanceof HTMLElement) ||
-              !(list instanceof HTMLElement)
-            ) {
-              return null;
-            }
-            return {
-              controlComesFirst: Boolean(
-                control.compareDocumentPosition(list) &
-                Node.DOCUMENT_POSITION_FOLLOWING,
-              ),
-              overflowY: getComputedStyle(list).overflowY,
-              maxHeight: getComputedStyle(list).maxHeight,
-            };
-          },
-          { controlSelector, listSelector },
-        );
-        expect(
-          layout,
-          `${area.name}: ${controlSelector} → ${listSelector}`,
-        ).not.toBeNull();
-        expect(layout?.controlComesFirst).toBe(true);
-        expect(layout?.overflowY).toBe('auto');
-        expect(layout?.maxHeight).not.toBe('none');
-      }
-    }
-  });
-
-  test('keeps credit fields visible while a long credit list scrolls on mobile', async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await openLocalApp(page);
-    await page.getByRole('button', { name: 'Entrar como dona' }).click();
-    await goToArea(page, 'Crédito');
-    await expect(page.locator('#credit-student')).toContainText('Ana Souza');
-    await page.locator('#credits-list').evaluate((list) => {
-      for (let index = 0; index < 40; index += 1) {
-        const item = document.createElement('li');
-        item.textContent = `Crédito de teste ${index + 1}`;
-        list.append(item);
-      }
-    });
-    const form = page.locator('#guardian-credit-deposit-form');
-    const list = page.locator('#credits-list');
-    await form.scrollIntoViewIfNeeded();
-    const before = await form.boundingBox();
-    const scrollState = await list.evaluate((element) => {
-      element.scrollTo({ top: 240, behavior: 'instant' });
-      return {
-        clientHeight: element.clientHeight,
-        scrollHeight: element.scrollHeight,
-        scrollTop: element.scrollTop,
-      };
-    });
-    const after = await form.boundingBox();
-    expect(scrollState.scrollHeight).toBeGreaterThan(scrollState.clientHeight);
-    expect(scrollState.scrollTop).toBeGreaterThan(0);
-    expect(after?.y).toBe(before?.y);
-  });
-
   test('FakeAppApi health is visible', async ({ page }) => {
     await openLocalApp(page);
     await expect(page.getByText('Ambiente local funcionando')).toBeVisible();
@@ -598,26 +460,30 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await expect(pauloLink).toBeVisible();
     await pauloLink.getByRole('button', { name: 'Tornar principal' }).click();
     await expect(
-      page
-        .locator('#guardian-credit-links')
-        .getByText('Ana Souza • ~8 • Paulo Nunes • principal', { exact: true }),
+      page.locator('#guardian-credit-links').getByText(
+        'Ana Souza • ~8 • Paulo Nunes • principal',
+        { exact: true },
+      ),
     ).toBeVisible();
     await expect(
-      page
-        .locator('#guardian-credit-links')
-        .getByText('Ana Souza • ~8 • Maria Souza • principal', { exact: true }),
+      page.locator('#guardian-credit-links').getByText(
+        'Ana Souza • ~8 • Maria Souza • principal',
+        { exact: true },
+      ),
     ).toHaveCount(0);
     await pauloLink.getByRole('button', { name: 'Desvincular' }).click();
     await expect(pauloLink).toHaveCount(0);
     await expect(
-      page
-        .locator('#guardian-credit-links')
-        .getByText('Ana Souza • ~8 • Maria Souza', { exact: true }),
+      page.locator('#guardian-credit-links').getByText(
+        'Ana Souza • ~8 • Maria Souza',
+        { exact: true },
+      ),
     ).toBeVisible();
     await expect(
-      page
-        .locator('#guardian-credit-links')
-        .getByText('Ana Souza • 10 • Paulo Nunes • principal', { exact: true }),
+      page.locator('#guardian-credit-links').getByText(
+        'Ana Souza • 10 • Paulo Nunes • principal',
+        { exact: true },
+      ),
     ).toBeVisible();
   });
 
@@ -1528,24 +1394,6 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await expect(page.getByRole('button', { name: 'Alunos' })).toHaveCount(0);
     await expect(page.locator('#reservation-student-search')).toBeHidden();
     await expect(page.locator('#reservation-student')).toBeHidden();
-    const portalLayout = await page.evaluate(() => {
-      const form = document.querySelector('#public-portal-form');
-      const catalog = document.querySelector('#public-portal-catalog');
-      if (!(form instanceof HTMLElement) || !(catalog instanceof HTMLElement)) {
-        return null;
-      }
-      return {
-        formComesFirst: Boolean(
-          form.compareDocumentPosition(catalog) &
-            Node.DOCUMENT_POSITION_FOLLOWING,
-        ),
-        overflowY: getComputedStyle(catalog).overflowY,
-      };
-    });
-    expect(portalLayout).toEqual({
-      formComesFirst: true,
-      overflowY: 'auto',
-    });
     await expect(
       page.getByText('Coxinha • R$ 5,50 • disponível 10', { exact: true }),
     ).toBeVisible();
@@ -2023,6 +1871,97 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await expect(
       page.locator('#inventory-list').getByText('Coxinha • 11'),
     ).toBeVisible();
+  });
+
+  test('keeps every form in the fixed zone and every list in the scroll zone', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    const areas: Array<{ name: string; panel: string }> = [
+      { name: 'Vendas', panel: '#sales-panel' },
+      { name: 'Agenda', panel: '#agenda-panel' },
+      { name: 'Pagamentos', panel: '#payments-panel' },
+      { name: 'Crédito', panel: '#credits-panel' },
+      { name: 'Estoque', panel: '#inventory-panel' },
+      { name: 'Reservas', panel: '#reservations-panel' },
+      { name: 'Caixa', panel: '#cash-panel' },
+      { name: 'Estornos', panel: '#reversals-panel' },
+      { name: 'Alunos', panel: '#students-panel' },
+      { name: 'Responsáveis', panel: '#family-panel' },
+      { name: 'Cardápio', panel: '#products-panel' },
+      { name: 'Juros', panel: '#adjust-panel' },
+    ];
+    for (const area of areas) {
+      await goToArea(page, area.name);
+      const result = await page.locator(area.panel).evaluate((el) => {
+        const fixed = el.querySelector('.panel-fixed');
+        const scroll = el.querySelector('.panel-scroll');
+        const formsOutside = [...el.querySelectorAll('form')].filter(
+          (node) => !fixed?.contains(node),
+        ).length;
+        const fieldsOutside = [
+          ...el.querySelectorAll('input, select, textarea'),
+        ].filter(
+          (node) =>
+            (node as HTMLInputElement).type !== 'hidden' &&
+            !fixed?.contains(node),
+        ).length;
+        const listsOutside = [...el.querySelectorAll('ul')].filter(
+          (node) => !scroll?.contains(node) && !fixed?.contains(node),
+        ).length;
+        return { formsOutside, fieldsOutside, listsOutside };
+      });
+      expect(result, area.name).toEqual({
+        formsOutside: 0,
+        fieldsOutside: 0,
+        listsOutside: 0,
+      });
+    }
+  });
+
+  test('keeps forms in place while the list scrolls underneath', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 960, height: 480 });
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await goToArea(page, 'Alunos');
+    const scroller = page.locator('#students-panel .panel-scroll');
+    const field = page.locator('#student-name');
+    const before = await field.boundingBox();
+    expect(before).not.toBeNull();
+    const metrics = await scroller.evaluate((el) => {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'instant' });
+      return { height: el.scrollHeight, client: el.clientHeight };
+    });
+    expect(metrics.height).toBeGreaterThan(metrics.client);
+    await expect
+      .poll(() => scroller.evaluate((el) => el.scrollTop))
+      .toBeGreaterThan(0);
+    const firstItem = await page
+      .locator('#students-list li')
+      .first()
+      .boundingBox();
+    const scrollBox = await scroller.boundingBox();
+    expect(firstItem).not.toBeNull();
+    expect(scrollBox).not.toBeNull();
+    expect(firstItem!.y).toBeLessThan(scrollBox!.y);
+    const after = await field.boundingBox();
+    expect(after).not.toBeNull();
+    expect(Math.abs(after!.y - before!.y)).toBeLessThan(1);
+    await expect(field).toBeVisible();
+    await goToArea(page, 'Crédito');
+    const creditScroller = page.locator('#credits-panel .panel-scroll');
+    const guardianAmount = page.locator('#guardian-credit-amount');
+    await creditScroller.evaluate((el) => {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'instant' });
+    });
+    await expect
+      .poll(() => creditScroller.evaluate((el) => el.scrollTop))
+      .toBeGreaterThan(0);
+    await expect(guardianAmount).toBeVisible();
+    await expect(guardianAmount).toBeEditable();
   });
 
   test('uses one createStudent call when registering a student', async ({
