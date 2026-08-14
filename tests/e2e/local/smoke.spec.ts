@@ -1714,6 +1714,131 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     expect(afterDelete.calls).toBe(1);
   });
 
+  test('uses one adjustInventory call when updating stock', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await goToArea(page, 'Estoque');
+    await expect(page.locator('#inventory-adjust-form')).toBeVisible();
+    await page.evaluate(() => {
+      const perf = (
+        window as Window & {
+          __cantinaPerf?: { reset: () => void };
+        }
+      ).__cantinaPerf;
+      if (!perf) {
+        throw new Error('__cantinaPerf ausente');
+      }
+      perf.reset();
+    });
+    await page.locator('#inventory-adjust-product').selectOption({
+      label: 'Coxinha',
+    });
+    await page.locator('#inventory-adjust-delta').fill('1');
+    await page.locator('#inventory-adjust-reason').fill('Ajuste de teste');
+    await page.getByRole('button', { name: 'Ajustar estoque' }).click();
+    await expect(
+      page.locator('#inventory-list').getByText('Coxinha • 11'),
+    ).toBeVisible();
+    const afterAdjust = await page.evaluate(() => {
+      const perf = (
+        window as Window & {
+          __cantinaPerf?: {
+            snapshot: () => { calls: number; methods: string[] };
+          };
+        }
+      ).__cantinaPerf;
+      if (!perf) {
+        throw new Error('__cantinaPerf ausente');
+      }
+      return perf.snapshot();
+    });
+    expect(afterAdjust.methods).toEqual(['adjustInventory']);
+    expect(afterAdjust.calls).toBe(1);
+  });
+
+  test('uses one createStudent call when registering a student', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await goToArea(page, 'Alunos');
+    await expect(
+      page.getByRole('heading', { name: 'Alunos', exact: true }),
+    ).toBeVisible();
+    await page.evaluate(() => {
+      const perf = (
+        window as Window & {
+          __cantinaPerf?: { reset: () => void };
+        }
+      ).__cantinaPerf;
+      if (!perf) {
+        throw new Error('__cantinaPerf ausente');
+      }
+      perf.reset();
+    });
+    await page.locator('#student-name').fill('Aluno perf cadastro');
+    await page.locator('#student-approx-age').fill('9');
+    await page.locator('#student-approx-year').fill('2026');
+    await page.getByRole('button', { name: 'Cadastrar aluno' }).click();
+    await expect(
+      page.locator('#students-list').getByText('Aluno perf cadastro'),
+    ).toBeVisible();
+    const afterCreate = await page.evaluate(() => {
+      const perf = (
+        window as Window & {
+          __cantinaPerf?: {
+            snapshot: () => { calls: number; methods: string[] };
+          };
+        }
+      ).__cantinaPerf;
+      if (!perf) {
+        throw new Error('__cantinaPerf ausente');
+      }
+      return perf.snapshot();
+    });
+    expect(afterCreate.methods).toEqual(['createStudent']);
+    expect(afterCreate.calls).toBe(1);
+  });
+
+  test('uses one openCashSession call when opening cash', async ({ page }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await goToArea(page, 'Caixa');
+    await expect(
+      page.getByRole('heading', { name: 'Caixa', exact: true }),
+    ).toBeVisible();
+    await page.evaluate(() => {
+      const perf = (
+        window as Window & {
+          __cantinaPerf?: { reset: () => void };
+        }
+      ).__cantinaPerf;
+      if (!perf) {
+        throw new Error('__cantinaPerf ausente');
+      }
+      perf.reset();
+    });
+    await page.getByRole('button', { name: 'Abrir caixa' }).click();
+    await expect(page.getByText(/Aberto •/)).toBeVisible();
+    const afterOpen = await page.evaluate(() => {
+      const perf = (
+        window as Window & {
+          __cantinaPerf?: {
+            snapshot: () => { calls: number; methods: string[] };
+          };
+        }
+      ).__cantinaPerf;
+      if (!perf) {
+        throw new Error('__cantinaPerf ausente');
+      }
+      return perf.snapshot();
+    });
+    expect(afterOpen.methods).toEqual(['openCashSession']);
+    expect(afterOpen.calls).toBe(1);
+  });
+
   test('loads alunos with one getStudentsScreenData call', async ({ page }) => {
     await openLocalApp(page);
     await page.getByRole('button', { name: 'Entrar como dona' }).click();

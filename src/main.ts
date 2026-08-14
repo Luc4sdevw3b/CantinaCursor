@@ -9,20 +9,30 @@ import {
 } from './domain/reservation';
 import type {
   AppSession,
+  CashSetup,
   Classroom,
+  CreditsScreenData,
   DueDateShortcuts,
+  FamilyScreenData,
   Guardian,
   InventoryBalanceItem,
+  InventoryBalances,
   CatalogScreenData,
+  PaymentsScreenData,
   Product,
   ProductCategory,
   Receivable,
+  ReceivableAgenda,
   Reservation,
   ReservationsSetup,
+  ReservationsSetupResult,
+  ReservationScreenData,
   ReversalsSetup,
   SiblingAuthorization,
   StudentDetail,
+  StudentGuardianLink,
   StudentSummary,
+  StudentsScreenData,
   SaleScreenData,
 } from './web/shared/app-api';
 import { createAppApi } from './web/shared/create-app-api';
@@ -1180,6 +1190,129 @@ function applyCatalogResult(result: {
   return refreshAfterCatalogChange();
 }
 
+function applyStudentsResult(result: {
+  screen?: StudentsScreenData;
+}): Promise<void> {
+  invalidateAreas('family', 'sales', 'reservations', 'payments', 'credits');
+  if (result.screen) {
+    loadedAreas.add('students');
+    return renderStudents(Boolean(currentSession), result.screen);
+  }
+  return renderStudents(true);
+}
+
+function applyFamilyResult(result: {
+  screen?: FamilyScreenData;
+}): Promise<void> {
+  invalidateAreas('sales', 'students', 'payments', 'credits');
+  if (result.screen) {
+    loadedAreas.add('family');
+    return renderFamily(currentSession, result.screen);
+  }
+  return ensureAreaLoaded('family', true);
+}
+
+function applyInventoryResult(balances: InventoryBalances): Promise<void> {
+  invalidateAreas('sales', 'reservations');
+  loadedAreas.add('inventory');
+  return renderInventory(currentSession, balances);
+}
+
+function applyCashResult(setup: CashSetup): Promise<void> {
+  invalidateAreas('sales');
+  loadedAreas.add('cash');
+  return renderCash(currentSession, setup);
+}
+
+function applyAgendaData(agenda: ReceivableAgenda): void {
+  openReceivables = [...agenda.overdue, ...agenda.today, ...agenda.upcoming];
+  dueDateHistoryLabels = agenda.dueDateHistory.map((item) => item.summaryLabel);
+}
+
+function applyPaymentsResult(result: {
+  screen?: PaymentsScreenData;
+}): Promise<void> {
+  invalidateAreas('agenda', 'payments', 'credits', 'adjust', 'cash', 'sales');
+  if (result.screen) {
+    const screen = result.screen;
+    loadedAreas.add('payments');
+    applyAgendaData(screen.receivables);
+    loadedAreas.add('agenda');
+    loadedAreas.add('adjust');
+    return renderPayments(currentSession, screen).then(() =>
+      renderAgenda(currentSession, screen.receivables).then(() =>
+        renderAdjust(currentSession),
+      ),
+    );
+  }
+  return ensureAreaLoaded('payments', true);
+}
+
+function applyCreditsResult(result: {
+  screen?: CreditsScreenData;
+}): Promise<void> {
+  invalidateAreas('agenda', 'payments', 'credits', 'adjust', 'cash', 'sales');
+  if (result.screen) {
+    loadedAreas.add('credits');
+    return renderCredits(currentSession, result.screen);
+  }
+  return ensureAreaLoaded('credits', true);
+}
+
+function applyAgendaResult(result: {
+  screen?: ReceivableAgenda;
+}): Promise<void> {
+  invalidateAreas('agenda', 'payments', 'adjust');
+  if (result.screen) {
+    applyAgendaData(result.screen);
+    loadedAreas.add('agenda');
+    loadedAreas.add('adjust');
+    return renderAgenda(currentSession, result.screen).then(() =>
+      renderAdjust(currentSession),
+    );
+  }
+  return ensureAreaLoaded('adjust', true);
+}
+
+function applyReservationResult(
+  result: ReservationsSetupResult,
+  message: string,
+): Promise<void> {
+  invalidateAreas('inventory', 'sales');
+  loadedAreas.add('reservations');
+  const data = result.screen ?? {
+    setup: result,
+    students: reservationStudents,
+  };
+  return renderReservations(currentSession, data).then(() => {
+    if (reservationsStatus) {
+      reservationsStatus.textContent = message;
+    }
+  });
+}
+
+function applyReversalResult(
+  setup: ReversalsSetup,
+  message: string,
+): Promise<void> {
+  invalidateAreas(
+    'reversals',
+    'sales',
+    'inventory',
+    'cash',
+    'agenda',
+    'payments',
+    'credits',
+    'adjust',
+  );
+  loadedAreas.add('reversals');
+  return renderReversals(currentSession, setup).then(() => {
+    if (reversalsStatus) {
+      reversalsStatus.textContent = message;
+    }
+  });
+}
+
 function renderTheme(): void {
   applyTheme(document.documentElement, theme, systemTheme.matches);
   document
@@ -1287,6 +1420,8 @@ const classroomSelect = document.querySelector('#student-classroom');
 let editingStudentId: string | null = null;
 let editingStudentClassroomId: string | null = null;
 let editingClassroomId: string | null = null;
+let studentsScreenCache: StudentsScreenData | null = null;
+let familyLinksCache: StudentGuardianLink[] = [];
 
 function studentLine(student: StudentSummary): string {
   const classroom = student.classroomName || 'Sem turma';
@@ -1359,7 +1494,10 @@ function fillClassroomForm(classroom: Classroom | null): void {
   }
 }
 
-async function renderStudents(authenticated: boolean): Promise<void> {
+async function renderStudents(
+  authenticated: boolean,
+  preloaded?: StudentsScreenData,
+): Promise<void> {
   if (
     !(studentsPanel instanceof HTMLElement) ||
     !studentsStatus ||
@@ -1376,10 +1514,10 @@ async function renderStudents(authenticated: boolean): Promise<void> {
     return;
   }
 
-  const [students, classrooms] = await (async () => {
-    const data = await api.getStudentsScreenData();
-    return [data.students, data.classrooms] as const;
-  })();
+  const data = preloaded ?? (await api.getStudentsScreenData());
+  const students = data.students;
+  const classrooms = data.classrooms;
+  studentsScreenCache = data;
   studentsStatus.textContent =
     students.length === 0
       ? 'Nenhum aluno cadastrado ainda.'
@@ -1426,11 +1564,11 @@ async function renderStudents(authenticated: boolean): Promise<void> {
             remove,
             'Não foi possível excluir a turma.',
             () =>
-              api.deactivateClassroom(classroom.id).then(() => {
+              api.deactivateClassroom(classroom.id).then((result) => {
                 if (editingClassroomId === classroom.id) {
                   fillClassroomForm(null);
                 }
-                return renderStudents(true);
+                return applyStudentsResult(result);
               }),
           );
         });
@@ -1476,7 +1614,9 @@ async function renderStudents(authenticated: boolean): Promise<void> {
           deactivate,
           'Não foi possível desativar o aluno.',
           () =>
-            api.deactivateStudent(student.id).then(() => renderStudents(true)),
+            api
+              .deactivateStudent(student.id)
+              .then((result) => applyStudentsResult(result)),
         );
       });
       actions.append(deactivate);
@@ -1503,7 +1643,7 @@ async function renderStudents(authenticated: boolean): Promise<void> {
                 reviewed: checkbox.checked,
                 fullName: student.fullName,
               })
-              .then(() => renderStudents(true)),
+              .then((result) => applyStudentsResult(result)),
         );
       });
       actions.append(review, reactivate);
@@ -1586,7 +1726,10 @@ function fillGuardianForm(guardian: Guardian | null): void {
   }
 }
 
-async function renderFamily(session: AppSession | null): Promise<void> {
+async function renderFamily(
+  session: AppSession | null,
+  preloaded?: FamilyScreenData,
+): Promise<void> {
   if (
     !(familyPanel instanceof HTMLElement) ||
     !familyStatus ||
@@ -1604,15 +1747,12 @@ async function renderFamily(session: AppSession | null): Promise<void> {
     return;
   }
 
-  const [guardians, students, authorizations, settings] = await (async () => {
-    const data = await api.getFamilyScreenData();
-    return [
-      data.guardians,
-      data.students,
-      data.siblingAuthorizations,
-      data.settings,
-    ] as const;
-  })();
+  const data = preloaded ?? (await api.getFamilyScreenData());
+  const guardians = data.guardians;
+  const students = data.students;
+  const authorizations = data.siblingAuthorizations;
+  const settings = data.settings;
+  familyLinksCache = data.links;
   familyStatus.textContent =
     guardians.length === 0
       ? 'Nenhum responsável cadastrado ainda.'
@@ -1643,11 +1783,11 @@ async function renderFamily(session: AppSession | null): Promise<void> {
           deactivate,
           'Não foi possível desativar o responsável.',
           () =>
-            api.deactivateGuardian(guardian.id).then(() => {
+            api.deactivateGuardian(guardian.id).then((result) => {
               if (editingGuardianId === guardian.id) {
                 fillGuardianForm(null);
               }
-              return ensureAreaLoaded('family', true);
+              return applyFamilyResult(result);
             }),
         );
       });
@@ -1676,9 +1816,9 @@ async function renderFamily(session: AppSession | null): Promise<void> {
         revoke,
         'Não foi possível revogar a autorização.',
         () =>
-          api.revokeSiblingAuthorization(authorization.id).then(() => {
+          api.revokeSiblingAuthorization(authorization.id).then((result) => {
             invalidateAreas('sales');
-            return ensureAreaLoaded('family', true);
+            return applyFamilyResult(result);
           }),
       );
     });
@@ -1748,18 +1888,12 @@ async function renderFamily(session: AppSession | null): Promise<void> {
     }
   }
 
-  const linkGroups = await Promise.all(
-    students.map((student) =>
-      api
-        .getStudentGuardians(student.id)
-        .then((links) =>
-          links
-            .filter((link) => link.active)
-            .map((link) => ({ student, link })),
-        ),
-    ),
+  const linkGroups = students.flatMap((student) =>
+    familyLinksCache
+      .filter((link) => link.studentId === student.id && link.active)
+      .map((link) => ({ student, link })),
   );
-  for (const { student, link } of linkGroups.flat()) {
+  for (const { student, link } of linkGroups) {
     const item = document.createElement('li');
     item.textContent = guardianCreditLinkLine(student, link);
     guardianCreditLinks.append(item);
@@ -2074,7 +2208,10 @@ function inventoryLine(item: InventoryBalanceItem): string {
   return `${item.productName} • ${item.quantityLabel}`;
 }
 
-async function renderInventory(session: AppSession | null): Promise<void> {
+async function renderInventory(
+  session: AppSession | null,
+  preloaded?: InventoryBalances,
+): Promise<void> {
   if (
     !(inventoryPanel instanceof HTMLElement) ||
     !inventoryStatus ||
@@ -2092,7 +2229,7 @@ async function renderInventory(session: AppSession | null): Promise<void> {
   }
 
   try {
-    const balances = await api.listInventoryBalances();
+    const balances = preloaded ?? (await api.listInventoryBalances());
     inventoryStatus.textContent = `Estoque de ${balances.businessDate}.`;
     if (
       session.role === 'owner' &&
@@ -2304,7 +2441,10 @@ function paintReservationQueue(): void {
   }
 }
 
-async function renderReservations(session: AppSession | null): Promise<void> {
+async function renderReservations(
+  session: AppSession | null,
+  preloaded?: ReservationScreenData,
+): Promise<void> {
   if (
     !(reservationsPanel instanceof HTMLElement) ||
     !reservationsStatus ||
@@ -2330,7 +2470,7 @@ async function renderReservations(session: AppSession | null): Promise<void> {
     return;
   }
   try {
-    const data = await api.getReservationScreenData();
+    const data = preloaded ?? (await api.getReservationScreenData());
     const setup = data.setup;
     const students = data.students;
     reservationsSetup = setup;
@@ -2394,13 +2534,11 @@ async function renderReservations(session: AppSession | null): Promise<void> {
   }
 }
 
-function refreshAfterReservation(successMessage: string): Promise<void> {
-  invalidateAreas('inventory', 'sales');
-  return ensureAreaLoaded('reservations', true).then(() => {
-    if (reservationsStatus) {
-      reservationsStatus.textContent = successMessage;
-    }
-  });
+function refreshAfterReservation(
+  result: ReservationsSetupResult,
+  successMessage: string,
+): Promise<void> {
+  return applyReservationResult(result, successMessage);
 }
 
 const cashPanel = document.querySelector('#cash-panel');
@@ -2412,7 +2550,10 @@ const cashAddForm = document.querySelector('#cash-add-form');
 const cashRemoveForm = document.querySelector('#cash-remove-form');
 const cashCloseForm = document.querySelector('#cash-close-form');
 
-async function renderCash(session: AppSession | null): Promise<void> {
+async function renderCash(
+  session: AppSession | null,
+  preloaded?: CashSetup,
+): Promise<void> {
   if (
     !(cashPanel instanceof HTMLElement) ||
     !cashStatus ||
@@ -2443,7 +2584,7 @@ async function renderCash(session: AppSession | null): Promise<void> {
     return;
   }
   try {
-    const setup = await api.getCashSetup();
+    const setup = preloaded ?? (await api.getCashSetup());
     const open = setup.openSession;
     hideForms();
     if (!open) {
@@ -2626,7 +2767,10 @@ function syncReverseSaleFields(): void {
   }
 }
 
-async function renderReversals(session: AppSession | null): Promise<void> {
+async function renderReversals(
+  session: AppSession | null,
+  preloaded?: ReversalsSetup,
+): Promise<void> {
   if (
     !(reversalsPanel instanceof HTMLElement) ||
     !reversalsStatus ||
@@ -2644,7 +2788,7 @@ async function renderReversals(session: AppSession | null): Promise<void> {
     return;
   }
   try {
-    const setup = await api.getReversalsSetup();
+    const setup = preloaded ?? (await api.getReversalsSetup());
     reversalsSetup = setup;
     if (reversalForms instanceof HTMLElement) {
       reversalForms.hidden = session.role !== 'owner';
@@ -2948,7 +3092,10 @@ async function renderSales(
   }
 }
 
-async function renderAgenda(session: AppSession | null): Promise<void> {
+async function renderAgenda(
+  session: AppSession | null,
+  preloaded?: ReceivableAgenda,
+): Promise<void> {
   const panel = document.querySelector('#agenda-panel');
   const status = document.querySelector('#agenda-status');
   const overdueList = document.querySelector('#agenda-overdue');
@@ -2973,7 +3120,7 @@ async function renderAgenda(session: AppSession | null): Promise<void> {
     return;
   }
   try {
-    const agenda = await api.listReceivables();
+    const agenda = preloaded ?? (await api.listReceivables());
     openReceivables = [...agenda.overdue, ...agenda.today, ...agenda.upcoming];
     dueDateHistoryLabels = agenda.dueDateHistory.map(
       (item) => item.summaryLabel,
@@ -3152,7 +3299,10 @@ function renderFamilyPaymentDebts(): void {
   }
 }
 
-async function renderPayments(session: AppSession | null): Promise<void> {
+async function renderPayments(
+  session: AppSession | null,
+  preloaded?: PaymentsScreenData,
+): Promise<void> {
   const panel = document.querySelector('#payments-panel');
   const status = document.querySelector('#payments-status');
   const list = document.querySelector('#payments-list');
@@ -3189,7 +3339,7 @@ async function renderPayments(session: AppSession | null): Promise<void> {
     return;
   }
   try {
-    const data = await api.getPaymentsScreenData();
+    const data = preloaded ?? (await api.getPaymentsScreenData());
     const students = data.students;
     const payments = data.payments;
     const guardians = data.guardians;
@@ -3274,7 +3424,10 @@ function syncInterestFields(): void {
   }
 }
 
-async function renderCredits(session: AppSession | null): Promise<void> {
+async function renderCredits(
+  session: AppSession | null,
+  preloaded?: CreditsScreenData,
+): Promise<void> {
   const panel = document.querySelector('#credits-panel');
   const status = document.querySelector('#credits-status');
   const list = document.querySelector('#credits-list');
@@ -3317,7 +3470,7 @@ async function renderCredits(session: AppSession | null): Promise<void> {
     return;
   }
   try {
-    const data = await api.getCreditsScreenData();
+    const data = preloaded ?? (await api.getCreditsScreenData());
     const students = data.students;
     const guardians = data.guardians;
     const accounts = data.accounts;
@@ -3728,17 +3881,9 @@ document.querySelector('#payment-form')?.addEventListener('submit', (event) => {
           mode === 'selected' ? selectedReceivableIds : undefined,
         allocations: mode === 'manual' ? allocations : undefined,
       })
-      .then(() => {
+      .then((result) => {
         amountInput.value = '';
-        invalidateAreas(
-          'agenda',
-          'payments',
-          'credits',
-          'adjust',
-          'cash',
-          'sales',
-        );
-        return ensureAreaLoaded('payments', true);
+        return applyPaymentsResult(result);
       })
       .catch((error: unknown) => {
         if (status) {
@@ -3842,17 +3987,9 @@ document
               ? allocations
               : undefined,
         })
-        .then(() => {
+        .then((result) => {
           amountInput.value = '';
-          invalidateAreas(
-            'agenda',
-            'payments',
-            'credits',
-            'adjust',
-            'cash',
-            'sales',
-          );
-          return ensureAreaLoaded('payments', true);
+          return applyPaymentsResult(result);
         })
         .catch((error: unknown) => {
           if (status) {
@@ -3905,17 +4042,9 @@ document
           amountCents: parsed.data,
           method,
         })
-        .then(() => {
+        .then((result) => {
           amountInput.value = '';
-          invalidateAreas(
-            'agenda',
-            'payments',
-            'credits',
-            'adjust',
-            'cash',
-            'sales',
-          );
-          return ensureAreaLoaded('credits', true);
+          return applyCreditsResult(result);
         })
         .catch((error: unknown) => {
           if (status) {
@@ -3964,10 +4093,10 @@ document
           amountCents: parsed.data,
           reason: reasonInput.value,
         })
-        .then(() => {
+        .then((result) => {
           amountInput.value = '';
           reasonInput.value = '';
-          return ensureAreaLoaded('credits', true);
+          return applyCreditsResult(result);
         })
         .catch((error: unknown) => {
           if (status) {
@@ -4011,9 +4140,9 @@ document
           canChargeAccount: charge.checked,
           canUseAccountCredit: credit.checked,
         })
-        .then(() => {
+        .then((result) => {
           invalidateAreas('sales');
-          return ensureAreaLoaded('family', true);
+          return applyFamilyResult(result);
         })
         .catch((error: unknown) => {
           if (status) {
@@ -4051,18 +4180,17 @@ document
     }
     busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
       api
-        .getStudentGuardians(studentSelect.value)
-        .then((links) => {
-          const current = links.find(
-            (link) => link.guardianId === guardianSelect.value && link.active,
-          );
-          return api.linkGuardian(studentSelect.value, guardianSelect.value, {
-            isPrimary: current?.isPrimary,
-            canUseGuardianCredit: canUse.checked,
-            autoSettle: autoSettle.checked,
-          });
+        .linkGuardian(studentSelect.value, guardianSelect.value, {
+          isPrimary: familyLinksCache.find(
+            (link) =>
+              link.studentId === studentSelect.value &&
+              link.guardianId === guardianSelect.value &&
+              link.active,
+          )?.isPrimary,
+          canUseGuardianCredit: canUse.checked,
+          autoSettle: autoSettle.checked,
         })
-        .then(() => ensureAreaLoaded('family', true))
+        .then((result) => applyFamilyResult(result))
         .catch((error: unknown) => {
           if (status) {
             status.textContent =
@@ -4114,17 +4242,9 @@ document
           amountCents: parsed.data,
           method,
         })
-        .then(() => {
+        .then((result) => {
           amountInput.value = '';
-          invalidateAreas(
-            'agenda',
-            'payments',
-            'credits',
-            'adjust',
-            'cash',
-            'sales',
-          );
-          return ensureAreaLoaded('credits', true);
+          return applyCreditsResult(result);
         })
         .catch((error: unknown) => {
           if (status) {
@@ -4177,10 +4297,10 @@ document
           amountCents: parsed.data,
           reason: reasonInput.value,
         })
-        .then(() => {
+        .then((result) => {
           amountInput.value = '';
           reasonInput.value = '';
-          return ensureAreaLoaded('credits', true);
+          return applyCreditsResult(result);
         })
         .catch((error: unknown) => {
           if (status) {
@@ -4272,12 +4392,11 @@ document
           percent,
           reason: reasonInput.value,
         })
-        .then(() => {
+        .then((result) => {
           amountInput.value = '';
           percentInput.value = '';
           reasonInput.value = '';
-          invalidateAreas('agenda');
-          return ensureAreaLoaded('adjust', true);
+          return applyAgendaResult(result);
         })
         .catch((error: unknown) => {
           if (status) {
@@ -4325,10 +4444,9 @@ document
           dueDate: dueDate.value,
           reason: reasonInput.value,
         })
-        .then(() => {
+        .then((result) => {
           reasonInput.value = '';
-          invalidateAreas('agenda');
-          return ensureAreaLoaded('adjust', true);
+          return applyAgendaResult(result);
         })
         .catch((error: unknown) => {
           if (status) {
@@ -4389,11 +4507,9 @@ document.querySelector('#student-form')?.addEventListener('submit', (event) => {
             classroomId,
             startedOn: '2026-08-13',
           });
-      return saved.then(() => {
+      return saved.then((result) => {
         fillStudentForm(null);
-        return renderStudents(true).then(() => {
-          invalidateAreas('family', 'sales');
-        });
+        return applyStudentsResult(result);
       });
     },
   );
@@ -4417,23 +4533,36 @@ document
       editingClassroomId
         ? 'Não foi possível salvar a turma.'
         : 'Não foi possível cadastrar a turma.',
-      () =>
-        api.listSchoolYears().then((years) => {
+      () => {
+        const saveClassroom = async () => {
+          if (editingClassroomId) {
+            return api.updateClassroom(editingClassroomId, name.value);
+          }
+          const yearId =
+            studentsScreenCache?.classrooms.find((item) => item.active)
+              ?.schoolYearId ??
+            studentsScreenCache?.classrooms[0]?.schoolYearId;
+          if (yearId) {
+            return api.createClassroom({
+              schoolYearId: yearId,
+              name: name.value,
+            });
+          }
+          const years = await api.listSchoolYears();
           const year = years.find((item) => item.active) ?? years[0];
           if (!year) {
             throw new Error('Nenhum ano letivo ativo para criar a turma.');
           }
-          const saved = editingClassroomId
-            ? api.updateClassroom(editingClassroomId, name.value)
-            : api.createClassroom({
-                schoolYearId: year.id,
-                name: name.value,
-              });
-          return saved.then(() => {
-            fillClassroomForm(null);
-            return renderStudents(true);
+          return api.createClassroom({
+            schoolYearId: year.id,
+            name: name.value,
           });
-        }),
+        };
+        return saveClassroom().then((result) => {
+          fillClassroomForm(null);
+          return applyStudentsResult(result);
+        });
+      },
     );
   });
 
@@ -4473,9 +4602,9 @@ document
         const saved = editingGuardianId
           ? api.updateGuardian(editingGuardianId, fields)
           : api.createGuardian(fields);
-        return saved.then(() => {
+        return saved.then((result) => {
           fillGuardianForm(null);
-          return ensureAreaLoaded('family', true);
+          return applyFamilyResult(result);
         });
       },
     );
@@ -4499,12 +4628,7 @@ document
       () =>
         api
           .setRequireGuardianBelowAge(Number(ageSettingInput.value))
-          .then(() =>
-            Promise.all([
-              renderStudents(true),
-              ensureAreaLoaded('family', true),
-            ]),
-          ),
+          .then((result) => applyFamilyResult(result)),
     );
   });
 
@@ -4645,10 +4769,10 @@ document
           quantityDelta: Number(delta.value),
           reason: reason.value,
         })
-        .then(() => {
+        .then((balances) => {
           delta.value = '';
           reason.value = '';
-          return ensureAreaLoaded('inventory', true);
+          return applyInventoryResult(balances);
         })
         .catch((error: unknown) => {
           if (inventoryStatus) {
@@ -4680,7 +4804,7 @@ document
     busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
       api
         .openCashSession({ openingFloatCents: parsed.data })
-        .then(() => ensureAreaLoaded('cash', true))
+        .then((setup) => applyCashResult(setup))
         .catch((error: unknown) => {
           if (cashStatus) {
             cashStatus.textContent =
@@ -4714,10 +4838,10 @@ document
     busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
       api
         .addCashForChange({ amountCents: parsed.data, note: noteInput.value })
-        .then(() => {
+        .then((setup) => {
           amountInput.value = '';
           noteInput.value = '';
-          return ensureAreaLoaded('cash', true);
+          return applyCashResult(setup);
         })
         .catch((error: unknown) => {
           if (cashStatus) {
@@ -4752,10 +4876,10 @@ document
     busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
       api
         .removeCash({ amountCents: parsed.data, note: noteInput.value })
-        .then(() => {
+        .then((setup) => {
           amountInput.value = '';
           noteInput.value = '';
-          return ensureAreaLoaded('cash', true);
+          return applyCashResult(setup);
         })
         .catch((error: unknown) => {
           if (cashStatus) {
@@ -4793,10 +4917,10 @@ document
           countedCents: parsed.data,
           note: noteInput.value,
         })
-        .then(() => {
+        .then((setup) => {
           countedInput.value = '';
           noteInput.value = '';
-          return ensureAreaLoaded('cash', true);
+          return applyCashResult(setup);
         })
         .catch((error: unknown) => {
           if (cashStatus) {
@@ -4839,22 +4963,11 @@ reverseCreditId?.addEventListener('change', () => {
   }
 });
 
-function refreshAfterReversal(successMessage: string): Promise<void> {
-  invalidateAreas(
-    'reversals',
-    'sales',
-    'inventory',
-    'cash',
-    'agenda',
-    'payments',
-    'credits',
-    'adjust',
-  );
-  return ensureAreaLoaded('reversals', true).then(() => {
-    if (reversalsStatus) {
-      reversalsStatus.textContent = successMessage;
-    }
-  });
+function refreshAfterReversal(
+  setup: ReversalsSetup,
+  successMessage: string,
+): Promise<void> {
+  return applyReversalResult(setup, successMessage);
 }
 
 document
@@ -4913,7 +5026,7 @@ document
             stockChoice.value === 'yes',
           reason,
         })
-        .then(() => {
+        .then((setup) => {
           reverseSaleId.value = '';
           if (reverseSaleMethod instanceof HTMLSelectElement) {
             reverseSaleMethod.value = '';
@@ -4930,6 +5043,7 @@ document
               input.checked = false;
             });
           return refreshAfterReversal(
+            setup,
             'Venda estornada; original e efeitos permanecem auditáveis.',
           );
         })
@@ -4971,7 +5085,7 @@ document
             reversePaymentDifferent.checked,
           reason,
         })
-        .then(() => {
+        .then((setup) => {
           reversePaymentId.value = '';
           if (reversePaymentDifferent instanceof HTMLInputElement) {
             reversePaymentDifferent.checked = false;
@@ -4980,6 +5094,7 @@ document
             reversePaymentReason.value = '';
           }
           return refreshAfterReversal(
+            setup,
             'Pagamento estornado; as dívidas correspondentes foram recalculadas.',
           );
         })
@@ -5022,7 +5137,7 @@ document
             reverseCreditDifferent.checked,
           reason,
         })
-        .then(() => {
+        .then((setup) => {
           reverseCreditId.value = '';
           if (reverseCreditDifferent instanceof HTMLInputElement) {
             reverseCreditDifferent.checked = false;
@@ -5031,6 +5146,7 @@ document
             reverseCreditReason.value = '';
           }
           return refreshAfterReversal(
+            setup,
             'Devolução de crédito estornada e saldo restaurado.',
           );
         })
@@ -5067,12 +5183,12 @@ document
           pickupStartTime: start.value,
           pickupEndTime: end.value,
         })
-        .then(() => {
+        .then((result) => {
           label.value = '';
           cutoff.value = '';
           start.value = '';
           end.value = '';
-          return refreshAfterReservation('Recreio criado.');
+          return refreshAfterReservation(result, 'Recreio criado.');
         })
         .catch((error: unknown) => {
           if (reservationsStatus) {
@@ -5128,7 +5244,7 @@ document
               },
             ],
           })
-          .then(() => {
+          .then((result) => {
             if (reservationStudentSearch instanceof HTMLInputElement) {
               reservationStudentSearch.value = '';
             }
@@ -5137,6 +5253,7 @@ document
             quantity.value = '1';
             fillReservationStudentOptions();
             return refreshAfterReservation(
+              result,
               'Reserva confirmada; o original e a disponibilidade permanecem auditáveis.',
             );
           }),
@@ -5191,7 +5308,9 @@ reservationsList?.addEventListener('click', (event) => {
           reservationId,
           studentId: reservationLinkStudent.value,
         })
-        .then(() => refreshAfterReservation('Aluno vinculado à reserva.'))
+        .then((result) =>
+          refreshAfterReservation(result, 'Aluno vinculado à reserva.'),
+        )
         .catch((error: unknown) => {
           if (reservationsStatus) {
             reservationsStatus.textContent =
@@ -5259,11 +5378,12 @@ reservationsList?.addEventListener('click', (event) => {
     event.target instanceof HTMLButtonElement ? event.target : null,
     'Não foi possível atualizar a reserva.',
     () =>
-      request.then(() => {
+      request.then((result) => {
         if (reasonInput instanceof HTMLInputElement) {
           reasonInput.value = '';
         }
         return refreshAfterReservation(
+          result,
           action === 'no-show'
             ? 'Não retirada registrada; a disponibilidade foi liberada.'
             : 'Reserva cancelada; a disponibilidade foi liberada.',
@@ -5314,9 +5434,9 @@ reservationEditForm?.addEventListener('submit', (event) => {
         classroomText: editClassroom.value,
         contactOptional: editContact.value,
       })
-      .then(() => {
+      .then((result) => {
         editId.value = '';
-        return refreshAfterReservation('Reserva alterada.');
+        return refreshAfterReservation(result, 'Reserva alterada.');
       })
       .catch((error: unknown) => {
         if (reservationsStatus) {

@@ -2588,8 +2588,8 @@ function listClassroomsUnlocked(schoolYearId) {
 
 function createClassroom(sessionToken, payload) {
   requireAction(sessionToken, 'classrooms.manage');
-  return withScriptLock(function () {
-    setupSchema();
+  const record = withScriptLock(function () {
+    ensureSchemaOnce();
     if (!payload || !REQUEST_ID_PATTERN.test(payload.schoolYearId)) {
       throw new Error(
         'INVALID_ID: ID deve ser UUID imutável, nunca número da linha.',
@@ -2616,6 +2616,8 @@ function createClassroom(sessionToken, payload) {
     ]);
     return record;
   });
+  record.screen = getStudentsScreenDataUnlocked();
+  return record;
 }
 
 function appendClassroomRecordGs(record) {
@@ -2659,8 +2661,8 @@ function toClassroomGs(room) {
 
 function updateClassroom(sessionToken, id, payload) {
   requireAction(sessionToken, 'classrooms.manage');
-  return withScriptLock(function () {
-    setupSchema();
+  const classroom = withScriptLock(function () {
+    ensureSchemaOnce();
     if (!REQUEST_ID_PATTERN.test(id)) {
       throw new Error(
         'INVALID_ID: ID deve ser UUID imutável, nunca número da linha.',
@@ -2678,12 +2680,14 @@ function updateClassroom(sessionToken, id, payload) {
     appendClassroomRecordGs(record);
     return toClassroomGs(record);
   });
+  classroom.screen = getStudentsScreenDataUnlocked();
+  return classroom;
 }
 
 function deactivateClassroom(sessionToken, id) {
   requireAction(sessionToken, 'classrooms.manage');
-  return withScriptLock(function () {
-    setupSchema();
+  const classroom = withScriptLock(function () {
+    ensureSchemaOnce();
     if (!REQUEST_ID_PATTERN.test(id)) {
       throw new Error(
         'INVALID_ID: ID deve ser UUID imutável, nunca número da linha.',
@@ -2707,6 +2711,8 @@ function deactivateClassroom(sessionToken, id) {
     appendClassroomRecordGs(record);
     return toClassroomGs(record);
   });
+  classroom.screen = getStudentsScreenDataUnlocked();
+  return classroom;
 }
 
 function listStudents(sessionToken, query) {
@@ -2732,8 +2738,8 @@ function getStudent(sessionToken, id) {
 
 function createStudent(sessionToken, payload) {
   const session = requireAction(sessionToken, 'students.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const student = withScriptLock(function () {
+    ensureSchemaOnce();
     const profile = validateStudentProfileGs(payload || {});
     const now = new Date().toISOString();
     const record = Object.assign(
@@ -2756,12 +2762,14 @@ function createStudent(sessionToken, payload) {
     }
     return toStudentDetailGs(record);
   });
+  student.screen = getStudentsScreenDataUnlocked();
+  return student;
 }
 
 function updateStudent(sessionToken, id, payload) {
   requireAction(sessionToken, 'students.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const student = withScriptLock(function () {
+    ensureSchemaOnce();
     const previous = latestStudentById(id);
     const profile = validateStudentProfileGs(payload || {});
     const record = Object.assign({}, previous, profile, {
@@ -2770,12 +2778,14 @@ function updateStudent(sessionToken, id, payload) {
     appendStudentRecord(record);
     return toStudentDetailGs(record);
   });
+  student.screen = getStudentsScreenDataUnlocked();
+  return student;
 }
 
 function deactivateStudent(sessionToken, id) {
   requireAction(sessionToken, 'students.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const student = withScriptLock(function () {
+    ensureSchemaOnce();
     const previous = latestStudentById(id);
     if (previous.active !== 'true') {
       throw new Error('STUDENT_ALREADY_INACTIVE: Este aluno já está inativo.');
@@ -2787,12 +2797,14 @@ function deactivateStudent(sessionToken, id) {
     appendStudentRecord(record);
     return toStudentDetailGs(record);
   });
+  student.screen = getStudentsScreenDataUnlocked();
+  return student;
 }
 
 function reactivateStudent(sessionToken, id, payload) {
   const session = requireAction(sessionToken, 'students.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const student = withScriptLock(function () {
+    ensureSchemaOnce();
     const previous = latestStudentById(id);
     if (previous.active === 'true') {
       throw new Error('STUDENT_ALREADY_ACTIVE: Este aluno já está ativo.');
@@ -2832,12 +2844,14 @@ function reactivateStudent(sessionToken, id, payload) {
     }
     return toStudentDetailGs(latestStudentById(id));
   });
+  student.screen = getStudentsScreenDataUnlocked();
+  return student;
 }
 
 function enrollStudent(sessionToken, id, payload) {
   const session = requireAction(sessionToken, 'students.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const student = withScriptLock(function () {
+    ensureSchemaOnce();
     const student = latestStudentById(id);
     if (student.active !== 'true') {
       throw new Error(
@@ -2852,6 +2866,8 @@ function enrollStudent(sessionToken, id, payload) {
     );
     return toStudentDetailGs(latestStudentById(id));
   });
+  student.screen = getStudentsScreenDataUnlocked();
+  return student;
 }
 
 function normalizePhoneGs(value) {
@@ -3159,8 +3175,8 @@ function listGuardiansUnlocked(includeInactive) {
 
 function createGuardian(sessionToken, payload) {
   requireAction(sessionToken, 'guardians.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const guardian = withScriptLock(function () {
+    ensureSchemaOnce();
     const profile = validateGuardianProfileGs(payload || {});
     const now = new Date().toISOString();
     const record = Object.assign(
@@ -3175,12 +3191,13 @@ function createGuardian(sessionToken, payload) {
     appendGuardianRecord(record);
     return toGuardianGs(record);
   });
+  return withFamilyScreen(guardian);
 }
 
 function updateGuardian(sessionToken, id, payload) {
   requireAction(sessionToken, 'guardians.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const guardian = withScriptLock(function () {
+    ensureSchemaOnce();
     const previous = latestGuardianById(id, true);
     const profile = validateGuardianProfileGs(payload || {});
     const record = Object.assign({}, previous, profile, {
@@ -3189,12 +3206,13 @@ function updateGuardian(sessionToken, id, payload) {
     appendGuardianRecord(record);
     return toGuardianGs(record);
   });
+  return withFamilyScreen(guardian);
 }
 
 function deactivateGuardian(sessionToken, id) {
   requireAction(sessionToken, 'guardians.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const guardian = withScriptLock(function () {
+    ensureSchemaOnce();
     const previous = latestGuardianById(id, true);
     if (previous.active !== 'true') {
       throw new Error(
@@ -3208,6 +3226,7 @@ function deactivateGuardian(sessionToken, id) {
     appendGuardianRecord(record);
     return toGuardianGs(record);
   });
+  return withFamilyScreen(guardian);
 }
 
 function getStudentGuardians(sessionToken, studentId) {
@@ -3218,8 +3237,8 @@ function getStudentGuardians(sessionToken, studentId) {
 
 function linkGuardian(sessionToken, studentId, guardianId, payload) {
   requireAction(sessionToken, 'guardians.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const links = withScriptLock(function () {
+    ensureSchemaOnce();
     latestStudentById(studentId);
     latestGuardianById(guardianId, true);
     appendGuardianLinkGs({
@@ -3239,6 +3258,7 @@ function linkGuardian(sessionToken, studentId, guardianId, payload) {
     });
     return listStudentGuardianLinksUnlocked(studentId);
   });
+  return withFamilyScreen(links);
 }
 
 function setPrimaryGuardian(sessionToken, studentId, guardianId) {
@@ -3247,8 +3267,8 @@ function setPrimaryGuardian(sessionToken, studentId, guardianId) {
 
 function unlinkGuardian(sessionToken, studentId, guardianId) {
   requireAction(sessionToken, 'guardians.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const links = withScriptLock(function () {
+    ensureSchemaOnce();
     if (
       !REQUEST_ID_PATTERN.test(studentId) ||
       !REQUEST_ID_PATTERN.test(guardianId)
@@ -3275,6 +3295,7 @@ function unlinkGuardian(sessionToken, studentId, guardianId) {
     );
     return listStudentGuardianLinksUnlocked(studentId);
   });
+  return withFamilyScreen(links);
 }
 
 function listSiblings(sessionToken, studentId) {
@@ -3296,8 +3317,8 @@ function listSiblings(sessionToken, studentId) {
 
 function authorizeSibling(sessionToken, payload) {
   const session = requireAction(sessionToken, 'guardians.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const authorization = withScriptLock(function () {
+    ensureSchemaOnce();
     const consumerId = payload && payload.consumerStudentId;
     const accountId = payload && payload.accountStudentId;
     latestStudentById(consumerId);
@@ -3350,12 +3371,13 @@ function authorizeSibling(sessionToken, payload) {
     ]);
     return toAuthorizationGs(record);
   });
+  return withFamilyScreen(authorization);
 }
 
 function revokeSiblingAuthorization(sessionToken, id) {
   requireAction(sessionToken, 'guardians.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const authorization = withScriptLock(function () {
+    ensureSchemaOnce();
     if (!REQUEST_ID_PATTERN.test(id)) {
       throw new Error(
         'INVALID_ID: ID deve ser UUID imutável, nunca número da linha.',
@@ -3396,6 +3418,7 @@ function revokeSiblingAuthorization(sessionToken, id) {
     ]);
     return toAuthorizationGs(record);
   });
+  return withFamilyScreen(authorization);
 }
 
 function listSiblingAuthorizations(sessionToken, studentId) {
@@ -3412,8 +3435,8 @@ function getGuardianSettings(sessionToken) {
 
 function setRequireGuardianBelowAge(sessionToken, age) {
   requireAction(sessionToken, 'settings.manage');
-  return withScriptLock(function () {
-    setupSchema();
+  const settings = withScriptLock(function () {
+    ensureSchemaOnce();
     const parsed = Number(age);
     if (!Number.isInteger(parsed) || parsed < 1 || parsed > 21) {
       throw new Error(
@@ -3426,6 +3449,7 @@ function setRequireGuardianBelowAge(sessionToken, age) {
     ]);
     return { requireGuardianBelowAge: parsed };
   });
+  return withFamilyScreen(settings);
 }
 
 function parseCentsGs(value) {
@@ -4474,7 +4498,7 @@ function listInventoryBalances(sessionToken, businessDate) {
 function adjustInventory(sessionToken, payload) {
   const session = requireAction(sessionToken, 'inventory.adjust');
   return withScriptLock(function () {
-    setupSchema();
+    ensureSchemaOnce();
     const businessDate = resolveBusinessDateGs(payload && payload.businessDate);
     const day = requireInventoryDayGs(businessDate);
     const productId =
@@ -4931,7 +4955,6 @@ function closeCashSessionUnlocked(userId, payload) {
 
 function getCashSetup(sessionToken) {
   requireAction(sessionToken, 'cash.read');
-  setupSchema();
   return getCashSetupUnlocked();
 }
 
@@ -6220,22 +6243,40 @@ function getStudentsScreenData(sessionToken) {
   const startedAt = Date.now();
   resetPerfCounters();
   requireAction(sessionToken, 'students.read');
-  const data = {
-    students: listStudentsUnlocked(true),
-    classrooms: listClassroomsUnlocked(),
-  };
+  const data = getStudentsScreenDataUnlocked();
   logPerf('getStudentsScreenData', startedAt);
   return data;
 }
 
+function getStudentsScreenDataUnlocked() {
+  return {
+    students: listStudentsUnlocked(true),
+    classrooms: listClassroomsUnlocked(),
+  };
+}
+
 function getFamilyScreenData(sessionToken) {
   requireAction(sessionToken, 'guardians.read');
+  return getFamilyScreenDataUnlocked();
+}
+
+function getFamilyScreenDataUnlocked() {
   return {
     guardians: listGuardiansUnlocked(true),
     students: listStudentsUnlocked(true),
     siblingAuthorizations: listSiblingAuthorizationsUnlocked(null),
     settings: { requireGuardianBelowAge: requireGuardianBelowAgeGs() },
+    links: latestRecordsById(listGuardianLinkRecords()).map(toGuardianLinkGs),
   };
+}
+
+function withFamilyScreen(result) {
+  var screen = getFamilyScreenDataUnlocked();
+  if (Object.prototype.toString.call(result) === '[object Array]') {
+    return { links: result, screen: screen };
+  }
+  result.screen = screen;
+  return result;
 }
 
 function getCatalogScreenData(sessionToken) {
@@ -6259,6 +6300,10 @@ function getCatalogScreenDataUnlocked(role) {
 
 function getPaymentsScreenData(sessionToken) {
   requireAction(sessionToken, 'receivables.read');
+  return getPaymentsScreenDataUnlocked();
+}
+
+function getPaymentsScreenDataUnlocked() {
   return {
     students: listStudentsUnlocked(true),
     payments: listPaymentsUnlocked(),
@@ -6270,6 +6315,10 @@ function getPaymentsScreenData(sessionToken) {
 
 function getCreditsScreenData(sessionToken) {
   requireAction(sessionToken, 'credits.read');
+  return getCreditsScreenDataUnlocked();
+}
+
+function getCreditsScreenDataUnlocked() {
   return {
     students: listStudentsUnlocked(true),
     guardians: listGuardiansUnlocked(true),
@@ -6279,10 +6328,23 @@ function getCreditsScreenData(sessionToken) {
 
 function getReservationScreenData(sessionToken) {
   requireAction(sessionToken, 'reservations.read');
+  return getReservationScreenDataUnlocked();
+}
+
+function getReservationScreenDataUnlocked() {
   return {
     setup: toReservationsSetupGs(),
     students: listStudentsUnlocked(false),
   };
+}
+
+function attachReservationScreen(setup) {
+  return Object.assign({}, setup, {
+    screen: {
+      setup: setup,
+      students: listStudentsUnlocked(false),
+    },
+  });
 }
 
 function getPixCopyText(sessionToken) {
@@ -6866,10 +6928,12 @@ function createPaymentUnlocked(userId, payload) {
 
 function createPayment(sessionToken, payload) {
   const session = requireAction(sessionToken, 'payments.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const payment = withScriptLock(function () {
+    ensureSchemaOnce();
     return createPaymentUnlocked(session.user_id, payload || {});
   });
+  payment.screen = getPaymentsScreenDataUnlocked();
+  return payment;
 }
 
 function allocatableReceivablesForGuardianGs(guardianId) {
@@ -6999,10 +7063,12 @@ function createFamilyPaymentUnlocked(userId, payload) {
 
 function createFamilyPayment(sessionToken, payload) {
   const session = requireAction(sessionToken, 'payments.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const payment = withScriptLock(function () {
+    ensureSchemaOnce();
     return createFamilyPaymentUnlocked(session.user_id, payload || {});
   });
+  payment.screen = getPaymentsScreenDataUnlocked();
+  return payment;
 }
 
 function listPaymentsUnlocked() {
@@ -7199,10 +7265,12 @@ function addReceivableInterestUnlocked(userId, payload) {
 
 function addReceivableInterest(sessionToken, payload) {
   const session = requireAction(sessionToken, 'receivables.adjust');
-  return withScriptLock(function () {
-    setupSchema();
+  const receivable = withScriptLock(function () {
+    ensureSchemaOnce();
     return addReceivableInterestUnlocked(session.user_id, payload || {});
   });
+  receivable.screen = listReceivablesUnlocked();
+  return receivable;
 }
 
 function renegotiateReceivableUnlocked(userId, payload) {
@@ -7241,10 +7309,12 @@ function renegotiateReceivableUnlocked(userId, payload) {
 
 function renegotiateReceivable(sessionToken, payload) {
   const session = requireAction(sessionToken, 'receivables.adjust');
-  return withScriptLock(function () {
-    setupSchema();
+  const receivable = withScriptLock(function () {
+    ensureSchemaOnce();
     return renegotiateReceivableUnlocked(session.user_id, payload || {});
   });
+  receivable.screen = listReceivablesUnlocked();
+  return receivable;
 }
 
 function listCreditAccountRecords() {
@@ -7623,18 +7693,22 @@ function listCreditAccountsUnlocked() {
 
 function depositPersonalCredit(sessionToken, payload) {
   const session = requireAction(sessionToken, 'credits.deposit');
-  return withScriptLock(function () {
-    setupSchema();
+  const account = withScriptLock(function () {
+    ensureSchemaOnce();
     return depositPersonalCreditUnlocked(session.user_id, payload || {});
   });
+  account.screen = getCreditsScreenDataUnlocked();
+  return account;
 }
 
 function refundPersonalCredit(sessionToken, payload) {
   const session = requireAction(sessionToken, 'credits.refund');
-  return withScriptLock(function () {
-    setupSchema();
+  const account = withScriptLock(function () {
+    ensureSchemaOnce();
     return refundPersonalCreditUnlocked(session.user_id, payload || {});
   });
+  account.screen = getCreditsScreenDataUnlocked();
+  return account;
 }
 
 function depositGuardianCreditUnlocked(userId, payload) {
@@ -7783,18 +7857,22 @@ function refundGuardianCreditUnlocked(userId, payload) {
 
 function depositGuardianCredit(sessionToken, payload) {
   const session = requireAction(sessionToken, 'credits.deposit');
-  return withScriptLock(function () {
-    setupSchema();
+  const account = withScriptLock(function () {
+    ensureSchemaOnce();
     return depositGuardianCreditUnlocked(session.user_id, payload || {});
   });
+  account.screen = getCreditsScreenDataUnlocked();
+  return account;
 }
 
 function refundGuardianCredit(sessionToken, payload) {
   const session = requireAction(sessionToken, 'credits.refund');
-  return withScriptLock(function () {
-    setupSchema();
+  const account = withScriptLock(function () {
+    ensureSchemaOnce();
     return refundGuardianCreditUnlocked(session.user_id, payload || {});
   });
+  account.screen = getCreditsScreenDataUnlocked();
+  return account;
 }
 
 function listOperationReversalRecords() {
@@ -8926,10 +9004,11 @@ function createReservationSlotUnlocked(userId, payload) {
 
 function createReservationSlot(sessionToken, payload) {
   const session = requireAction(sessionToken, 'reservation_slots.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const setup = withScriptLock(function () {
+    ensureSchemaOnce();
     return createReservationSlotUnlocked(session.user_id, payload || {});
   });
+  return attachReservationScreen(setup);
 }
 
 function createReservationUnlocked(userId, payload) {
@@ -9132,10 +9211,11 @@ function createReservationUnlocked(userId, payload) {
 
 function createReservation(sessionToken, payload) {
   const session = requireAction(sessionToken, 'reservations.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const setup = withScriptLock(function () {
+    ensureSchemaOnce();
     return createReservationUnlocked(session.user_id, payload || {});
   });
+  return attachReservationScreen(setup);
 }
 
 function transitionReservationUnlocked(
@@ -9187,8 +9267,8 @@ function transitionReservationUnlocked(
 
 function cancelReservation(sessionToken, payload) {
   const session = requireAction(sessionToken, 'reservations.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const setup = withScriptLock(function () {
+    ensureSchemaOnce();
     return transitionReservationUnlocked(
       session.user_id,
       String((payload && payload.reservationId) || ''),
@@ -9196,12 +9276,13 @@ function cancelReservation(sessionToken, payload) {
       payload && payload.reason,
     );
   });
+  return attachReservationScreen(setup);
 }
 
 function markReservationNoShow(sessionToken, payload) {
   const session = requireAction(sessionToken, 'reservations.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const setup = withScriptLock(function () {
+    ensureSchemaOnce();
     return transitionReservationUnlocked(
       session.user_id,
       String((payload && payload.reservationId) || ''),
@@ -9209,12 +9290,13 @@ function markReservationNoShow(sessionToken, payload) {
       payload && payload.reason,
     );
   });
+  return attachReservationScreen(setup);
 }
 
 function fulfillReservation(sessionToken, payload) {
   const session = requireAction(sessionToken, 'reservations.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const setup = withScriptLock(function () {
+    ensureSchemaOnce();
     if (payload && payload.partialPickup === true) {
       throw new Error(
         'RESERVATION_PARTIAL_UNSUPPORTED: Não há retirada parcial persistente. Cancele ou retire a reserva inteira.',
@@ -9227,6 +9309,7 @@ function fulfillReservation(sessionToken, payload) {
       'Retirada no recreio',
     );
   });
+  return attachReservationScreen(setup);
 }
 
 function requireActiveReservationGs(reservationId) {
@@ -9335,10 +9418,11 @@ function updateReservationUnlocked(payload) {
 
 function updateReservation(sessionToken, payload) {
   requireAction(sessionToken, 'reservations.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const setup = withScriptLock(function () {
+    ensureSchemaOnce();
     return updateReservationUnlocked(payload || {});
   });
+  return attachReservationScreen(setup);
 }
 
 function linkReservationStudentUnlocked(payload) {
@@ -9366,10 +9450,11 @@ function linkReservationStudentUnlocked(payload) {
 
 function linkReservationStudent(sessionToken, payload) {
   requireAction(sessionToken, 'reservations.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const setup = withScriptLock(function () {
+    ensureSchemaOnce();
     return linkReservationStudentUnlocked(payload || {});
   });
+  return attachReservationScreen(setup);
 }
 
 function ensureE2EPublicCatalogUnlocked() {

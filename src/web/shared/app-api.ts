@@ -690,6 +690,7 @@ export interface FamilyScreenData {
   students: StudentSummary[];
   siblingAuthorizations: SiblingAuthorization[];
   settings: GuardianSettings;
+  links: StudentGuardianLink[];
 }
 
 export interface CatalogScreenData {
@@ -729,6 +730,42 @@ export interface ReservationScreenData {
   students: StudentSummary[];
 }
 
+export interface StudentResult extends StudentDetail {
+  screen?: StudentsScreenData;
+}
+
+export interface ClassroomResult extends Classroom {
+  screen?: StudentsScreenData;
+}
+
+export interface GuardianResult extends Guardian {
+  screen?: FamilyScreenData;
+}
+
+export interface SiblingAuthorizationResult extends SiblingAuthorization {
+  screen?: FamilyScreenData;
+}
+
+export interface GuardianSettingsResult extends GuardianSettings {
+  screen?: FamilyScreenData;
+}
+
+export interface PaymentResult extends Payment {
+  screen?: PaymentsScreenData;
+}
+
+export interface CreditAccountResult extends CreditAccount {
+  screen?: CreditsScreenData;
+}
+
+export interface ReceivableResult extends Receivable {
+  screen?: ReceivableAgenda;
+}
+
+export interface ReservationsSetupResult extends ReservationsSetup {
+  screen?: ReservationScreenData;
+}
+
 /**
  * Contrato técnico da Fase 26.
  * Portal público não expõe cadastro privado. Sem envio de WhatsApp.
@@ -741,53 +778,58 @@ export interface AppApi {
   listSchoolYears(): Promise<SchoolYear[]>;
   createSchoolYear(input: CreateSchoolYearInput): Promise<SchoolYear>;
   listClassrooms(schoolYearId?: string): Promise<Classroom[]>;
-  createClassroom(input: CreateClassroomInput): Promise<Classroom>;
-  updateClassroom(id: string, name: string): Promise<Classroom>;
-  deactivateClassroom(id: string): Promise<Classroom>;
+  createClassroom(input: CreateClassroomInput): Promise<ClassroomResult>;
+  updateClassroom(id: string, name: string): Promise<ClassroomResult>;
+  deactivateClassroom(id: string): Promise<ClassroomResult>;
   listStudents(query?: {
     includeInactive?: boolean;
   }): Promise<StudentSummary[]>;
   getStudent(id: string): Promise<StudentDetail>;
-  createStudent(input: CreateStudentInput): Promise<StudentDetail>;
+  createStudent(input: CreateStudentInput): Promise<StudentResult>;
   updateStudent(
     id: string,
     input: StudentProfileFields,
-  ): Promise<StudentDetail>;
-  deactivateStudent(id: string): Promise<StudentDetail>;
+  ): Promise<StudentResult>;
+  deactivateStudent(id: string): Promise<StudentResult>;
   reactivateStudent(
     id: string,
     input: ReactivateStudentInput,
-  ): Promise<StudentDetail>;
+  ): Promise<StudentResult>;
   enrollStudent(
     id: string,
     input: { classroomId: string; startedOn: string },
-  ): Promise<StudentDetail>;
+  ): Promise<StudentResult>;
   listGuardians(query?: { includeInactive?: boolean }): Promise<Guardian[]>;
-  createGuardian(input: GuardianProfileFields): Promise<Guardian>;
-  updateGuardian(id: string, input: GuardianProfileFields): Promise<Guardian>;
-  deactivateGuardian(id: string): Promise<Guardian>;
+  createGuardian(input: GuardianProfileFields): Promise<GuardianResult>;
+  updateGuardian(
+    id: string,
+    input: GuardianProfileFields,
+  ): Promise<GuardianResult>;
+  deactivateGuardian(id: string): Promise<GuardianResult>;
   getStudentGuardians(studentId: string): Promise<StudentGuardianLink[]>;
   linkGuardian(
     studentId: string,
     guardianId: string,
     input?: LinkGuardianInput,
-  ): Promise<StudentGuardianLink[]>;
+  ): Promise<StudentGuardianLink[] & { screen?: FamilyScreenData }>;
   setPrimaryGuardian(
     studentId: string,
     guardianId: string,
-  ): Promise<StudentGuardianLink[]>;
+  ): Promise<StudentGuardianLink[] & { screen?: FamilyScreenData }>;
   unlinkGuardian(
     studentId: string,
     guardianId: string,
-  ): Promise<StudentGuardianLink[]>;
+  ): Promise<StudentGuardianLink[] & { screen?: FamilyScreenData }>;
   listSiblings(studentId: string): Promise<StudentSummary[]>;
-  authorizeSibling(input: AuthorizeSiblingInput): Promise<SiblingAuthorization>;
-  revokeSiblingAuthorization(id: string): Promise<SiblingAuthorization>;
+  authorizeSibling(
+    input: AuthorizeSiblingInput,
+  ): Promise<SiblingAuthorizationResult>;
+  revokeSiblingAuthorization(id: string): Promise<SiblingAuthorizationResult>;
   listSiblingAuthorizations(
     studentId?: string,
   ): Promise<SiblingAuthorization[]>;
   getGuardianSettings(): Promise<GuardianSettings>;
-  setRequireGuardianBelowAge(age: number): Promise<GuardianSettings>;
+  setRequireGuardianBelowAge(age: number): Promise<GuardianSettingsResult>;
   listProductCategories(): Promise<ProductCategory[]>;
   createCategory(name: string): Promise<CategoryResult>;
   updateCategory(id: string, name: string): Promise<CategoryResult>;
@@ -823,24 +865,28 @@ export interface AppApi {
   getPixCopyText(): Promise<{ text: string }>;
   listReceivables(): Promise<ReceivableAgenda>;
   getDueDateShortcuts(): Promise<DueDateShortcuts>;
-  createPayment(input: CreatePaymentInput): Promise<Payment>;
-  createFamilyPayment(input: CreateFamilyPaymentInput): Promise<Payment>;
+  createPayment(input: CreatePaymentInput): Promise<PaymentResult>;
+  createFamilyPayment(input: CreateFamilyPaymentInput): Promise<PaymentResult>;
   listPayments(): Promise<Payment[]>;
-  addReceivableInterest(input: AddReceivableInterestInput): Promise<Receivable>;
-  renegotiateReceivable(input: RenegotiateReceivableInput): Promise<Receivable>;
+  addReceivableInterest(
+    input: AddReceivableInterestInput,
+  ): Promise<ReceivableResult>;
+  renegotiateReceivable(
+    input: RenegotiateReceivableInput,
+  ): Promise<ReceivableResult>;
   listCreditAccounts(): Promise<CreditAccount[]>;
   depositPersonalCredit(
     input: DepositPersonalCreditInput,
-  ): Promise<CreditAccount>;
+  ): Promise<CreditAccountResult>;
   refundPersonalCredit(
     input: RefundPersonalCreditInput,
-  ): Promise<CreditAccount>;
+  ): Promise<CreditAccountResult>;
   depositGuardianCredit(
     input: DepositGuardianCreditInput,
-  ): Promise<CreditAccount>;
+  ): Promise<CreditAccountResult>;
   refundGuardianCredit(
     input: RefundGuardianCreditInput,
-  ): Promise<CreditAccount>;
+  ): Promise<CreditAccountResult>;
   getCashSetup(): Promise<CashSetup>;
   openCashSession(input: { openingFloatCents?: number }): Promise<CashSetup>;
   addCashForChange(input: {
@@ -859,23 +905,27 @@ export interface AppApi {
   getReservationsSetup(): Promise<ReservationsSetup>;
   createReservationSlot(
     input: CreateReservationSlotInput,
-  ): Promise<ReservationsSetup>;
-  createReservation(input: CreateReservationInput): Promise<ReservationsSetup>;
+  ): Promise<ReservationsSetupResult>;
+  createReservation(
+    input: CreateReservationInput,
+  ): Promise<ReservationsSetupResult>;
   cancelReservation(input: {
     reservationId: string;
     reason: string;
-  }): Promise<ReservationsSetup>;
+  }): Promise<ReservationsSetupResult>;
   markReservationNoShow(input: {
     reservationId: string;
     reason: string;
-  }): Promise<ReservationsSetup>;
+  }): Promise<ReservationsSetupResult>;
   fulfillReservation(input: {
     reservationId: string;
-  }): Promise<ReservationsSetup>;
-  updateReservation(input: UpdateReservationInput): Promise<ReservationsSetup>;
+  }): Promise<ReservationsSetupResult>;
+  updateReservation(
+    input: UpdateReservationInput,
+  ): Promise<ReservationsSetupResult>;
   linkReservationStudent(
     input: LinkReservationStudentInput,
-  ): Promise<ReservationsSetup>;
+  ): Promise<ReservationsSetupResult>;
   getPublicReservationPortal(): Promise<PublicReservationPortal>;
   createPublicReservation(
     input: CreateReservationInput,

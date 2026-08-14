@@ -39,7 +39,6 @@ import type {
   ProductPriceHistory,
   ReactivateStudentInput,
   ReceivableAgenda,
-  Receivable,
   ReversalsSetup,
   ReverseCreditRefundInput,
   ReversePaymentInput,
@@ -69,6 +68,15 @@ import type {
   ProductResult,
   CategoryResult,
   AdHocItemResult,
+  StudentResult,
+  ClassroomResult,
+  GuardianResult,
+  SiblingAuthorizationResult,
+  GuardianSettingsResult,
+  PaymentResult,
+  CreditAccountResult,
+  ReceivableResult,
+  ReservationsSetupResult,
 } from './app-api';
 
 export const SESSION_TOKEN_STORAGE_KEY = 'cantina.sessionToken';
@@ -211,6 +219,26 @@ function isAppSession(value: unknown): value is AppSession {
   );
 }
 
+function familyLinksFromGs(
+  result: unknown,
+): StudentGuardianLink[] & { screen?: FamilyScreenData } {
+  if (Array.isArray(result)) {
+    return result as StudentGuardianLink[];
+  }
+  if (
+    result &&
+    typeof result === 'object' &&
+    Array.isArray((result as { links?: unknown }).links)
+  ) {
+    const wrapped = result as {
+      links: StudentGuardianLink[];
+      screen?: FamilyScreenData;
+    };
+    return Object.assign(wrapped.links.slice(), { screen: wrapped.screen });
+  }
+  return result as StudentGuardianLink[];
+}
+
 function toError(error: unknown): Error {
   if (error instanceof Error) {
     return error;
@@ -336,19 +364,19 @@ export class GoogleScriptAppApi implements AppApi {
     );
   }
 
-  createClassroom(input: CreateClassroomInput): Promise<Classroom> {
+  createClassroom(input: CreateClassroomInput): Promise<ClassroomResult> {
     return this.callWithToken((runner, token) =>
       runner.createClassroom(token, input),
     );
   }
 
-  updateClassroom(id: string, name: string): Promise<Classroom> {
+  updateClassroom(id: string, name: string): Promise<ClassroomResult> {
     return this.callWithToken((runner, token) =>
       runner.updateClassroom(token, id, { name }),
     );
   }
 
-  deactivateClassroom(id: string): Promise<Classroom> {
+  deactivateClassroom(id: string): Promise<ClassroomResult> {
     return this.callWithToken((runner, token) =>
       runner.deactivateClassroom(token, id),
     );
@@ -366,7 +394,7 @@ export class GoogleScriptAppApi implements AppApi {
     return this.callWithToken((runner, token) => runner.getStudent(token, id));
   }
 
-  createStudent(input: CreateStudentInput): Promise<StudentDetail> {
+  createStudent(input: CreateStudentInput): Promise<StudentResult> {
     return this.callWithToken((runner, token) =>
       runner.createStudent(token, {
         ...input,
@@ -378,7 +406,7 @@ export class GoogleScriptAppApi implements AppApi {
   updateStudent(
     id: string,
     input: StudentProfileFields,
-  ): Promise<StudentDetail> {
+  ): Promise<StudentResult> {
     return this.callWithToken((runner, token) =>
       runner.updateStudent(token, id, {
         ...input,
@@ -387,7 +415,7 @@ export class GoogleScriptAppApi implements AppApi {
     );
   }
 
-  deactivateStudent(id: string): Promise<StudentDetail> {
+  deactivateStudent(id: string): Promise<StudentResult> {
     return this.callWithToken((runner, token) =>
       runner.deactivateStudent(token, id),
     );
@@ -396,7 +424,7 @@ export class GoogleScriptAppApi implements AppApi {
   reactivateStudent(
     id: string,
     input: ReactivateStudentInput,
-  ): Promise<StudentDetail> {
+  ): Promise<StudentResult> {
     return this.callWithToken((runner, token) =>
       runner.reactivateStudent(token, id, {
         ...input,
@@ -408,7 +436,7 @@ export class GoogleScriptAppApi implements AppApi {
   enrollStudent(
     id: string,
     input: { classroomId: string; startedOn: string },
-  ): Promise<StudentDetail> {
+  ): Promise<StudentResult> {
     return this.callWithToken((runner, token) =>
       runner.enrollStudent(token, id, {
         ...input,
@@ -423,7 +451,7 @@ export class GoogleScriptAppApi implements AppApi {
     );
   }
 
-  createGuardian(input: GuardianProfileFields): Promise<Guardian> {
+  createGuardian(input: GuardianProfileFields): Promise<GuardianResult> {
     return this.callWithToken((runner, token) =>
       runner.createGuardian(token, {
         ...input,
@@ -432,7 +460,10 @@ export class GoogleScriptAppApi implements AppApi {
     );
   }
 
-  updateGuardian(id: string, input: GuardianProfileFields): Promise<Guardian> {
+  updateGuardian(
+    id: string,
+    input: GuardianProfileFields,
+  ): Promise<GuardianResult> {
     return this.callWithToken((runner, token) =>
       runner.updateGuardian(token, id, {
         ...input,
@@ -441,7 +472,7 @@ export class GoogleScriptAppApi implements AppApi {
     );
   }
 
-  deactivateGuardian(id: string): Promise<Guardian> {
+  deactivateGuardian(id: string): Promise<GuardianResult> {
     return this.callWithToken((runner, token) =>
       runner.deactivateGuardian(token, id),
     );
@@ -457,31 +488,31 @@ export class GoogleScriptAppApi implements AppApi {
     studentId: string,
     guardianId: string,
     input?: LinkGuardianInput,
-  ): Promise<StudentGuardianLink[]> {
+  ): Promise<StudentGuardianLink[] & { screen?: FamilyScreenData }> {
     return this.callWithToken((runner, token) =>
       runner.linkGuardian(token, studentId, guardianId, {
         ...input,
         requestId: crypto.randomUUID(),
       }),
-    );
+    ).then(familyLinksFromGs);
   }
 
   setPrimaryGuardian(
     studentId: string,
     guardianId: string,
-  ): Promise<StudentGuardianLink[]> {
+  ): Promise<StudentGuardianLink[] & { screen?: FamilyScreenData }> {
     return this.callWithToken((runner, token) =>
       runner.setPrimaryGuardian(token, studentId, guardianId),
-    );
+    ).then(familyLinksFromGs);
   }
 
   unlinkGuardian(
     studentId: string,
     guardianId: string,
-  ): Promise<StudentGuardianLink[]> {
+  ): Promise<StudentGuardianLink[] & { screen?: FamilyScreenData }> {
     return this.callWithToken((runner, token) =>
       runner.unlinkGuardian(token, studentId, guardianId),
-    );
+    ).then(familyLinksFromGs);
   }
 
   listSiblings(studentId: string): Promise<StudentSummary[]> {
@@ -492,7 +523,7 @@ export class GoogleScriptAppApi implements AppApi {
 
   authorizeSibling(
     input: AuthorizeSiblingInput,
-  ): Promise<SiblingAuthorization> {
+  ): Promise<SiblingAuthorizationResult> {
     return this.callWithToken((runner, token) =>
       runner.authorizeSibling(token, {
         ...input,
@@ -501,7 +532,7 @@ export class GoogleScriptAppApi implements AppApi {
     );
   }
 
-  revokeSiblingAuthorization(id: string): Promise<SiblingAuthorization> {
+  revokeSiblingAuthorization(id: string): Promise<SiblingAuthorizationResult> {
     return this.callWithToken((runner, token) =>
       runner.revokeSiblingAuthorization(token, id),
     );
@@ -521,7 +552,7 @@ export class GoogleScriptAppApi implements AppApi {
     );
   }
 
-  setRequireGuardianBelowAge(age: number): Promise<GuardianSettings> {
+  setRequireGuardianBelowAge(age: number): Promise<GuardianSettingsResult> {
     return this.callWithToken((runner, token) =>
       runner.setRequireGuardianBelowAge(token, age),
     );
@@ -732,13 +763,13 @@ export class GoogleScriptAppApi implements AppApi {
     );
   }
 
-  createPayment(input: CreatePaymentInput): Promise<Payment> {
+  createPayment(input: CreatePaymentInput): Promise<PaymentResult> {
     return this.callWithToken((runner, token) =>
       runner.createPayment(token, input),
     );
   }
 
-  createFamilyPayment(input: CreateFamilyPaymentInput): Promise<Payment> {
+  createFamilyPayment(input: CreateFamilyPaymentInput): Promise<PaymentResult> {
     return this.callWithToken((runner, token) =>
       runner.createFamilyPayment(token, input),
     );
@@ -750,7 +781,7 @@ export class GoogleScriptAppApi implements AppApi {
 
   addReceivableInterest(
     input: AddReceivableInterestInput,
-  ): Promise<Receivable> {
+  ): Promise<ReceivableResult> {
     return this.callWithToken((runner, token) =>
       runner.addReceivableInterest(token, input),
     );
@@ -758,7 +789,7 @@ export class GoogleScriptAppApi implements AppApi {
 
   renegotiateReceivable(
     input: RenegotiateReceivableInput,
-  ): Promise<Receivable> {
+  ): Promise<ReceivableResult> {
     return this.callWithToken((runner, token) =>
       runner.renegotiateReceivable(token, input),
     );
@@ -772,7 +803,7 @@ export class GoogleScriptAppApi implements AppApi {
 
   depositPersonalCredit(
     input: DepositPersonalCreditInput,
-  ): Promise<CreditAccount> {
+  ): Promise<CreditAccountResult> {
     return this.callWithToken((runner, token) =>
       runner.depositPersonalCredit(token, input),
     );
@@ -780,7 +811,7 @@ export class GoogleScriptAppApi implements AppApi {
 
   refundPersonalCredit(
     input: RefundPersonalCreditInput,
-  ): Promise<CreditAccount> {
+  ): Promise<CreditAccountResult> {
     return this.callWithToken((runner, token) =>
       runner.refundPersonalCredit(token, input),
     );
@@ -788,7 +819,7 @@ export class GoogleScriptAppApi implements AppApi {
 
   depositGuardianCredit(
     input: DepositGuardianCreditInput,
-  ): Promise<CreditAccount> {
+  ): Promise<CreditAccountResult> {
     return this.callWithToken((runner, token) =>
       runner.depositGuardianCredit(token, input),
     );
@@ -796,7 +827,7 @@ export class GoogleScriptAppApi implements AppApi {
 
   refundGuardianCredit(
     input: RefundGuardianCreditInput,
-  ): Promise<CreditAccount> {
+  ): Promise<CreditAccountResult> {
     return this.callWithToken((runner, token) =>
       runner.refundGuardianCredit(token, input),
     );
@@ -870,13 +901,15 @@ export class GoogleScriptAppApi implements AppApi {
 
   createReservationSlot(
     input: CreateReservationSlotInput,
-  ): Promise<ReservationsSetup> {
+  ): Promise<ReservationsSetupResult> {
     return this.callWithToken((runner, token) =>
       runner.createReservationSlot(token, input),
     );
   }
 
-  createReservation(input: CreateReservationInput): Promise<ReservationsSetup> {
+  createReservation(
+    input: CreateReservationInput,
+  ): Promise<ReservationsSetupResult> {
     return this.callWithToken((runner, token) =>
       runner.createReservation(token, input),
     );
@@ -885,7 +918,7 @@ export class GoogleScriptAppApi implements AppApi {
   cancelReservation(input: {
     reservationId: string;
     reason: string;
-  }): Promise<ReservationsSetup> {
+  }): Promise<ReservationsSetupResult> {
     return this.callWithToken((runner, token) =>
       runner.cancelReservation(token, input),
     );
@@ -894,7 +927,7 @@ export class GoogleScriptAppApi implements AppApi {
   markReservationNoShow(input: {
     reservationId: string;
     reason: string;
-  }): Promise<ReservationsSetup> {
+  }): Promise<ReservationsSetupResult> {
     return this.callWithToken((runner, token) =>
       runner.markReservationNoShow(token, input),
     );
@@ -902,13 +935,15 @@ export class GoogleScriptAppApi implements AppApi {
 
   fulfillReservation(input: {
     reservationId: string;
-  }): Promise<ReservationsSetup> {
+  }): Promise<ReservationsSetupResult> {
     return this.callWithToken((runner, token) =>
       runner.fulfillReservation(token, input),
     );
   }
 
-  updateReservation(input: UpdateReservationInput): Promise<ReservationsSetup> {
+  updateReservation(
+    input: UpdateReservationInput,
+  ): Promise<ReservationsSetupResult> {
     return this.callWithToken((runner, token) =>
       runner.updateReservation(token, input),
     );
@@ -916,7 +951,7 @@ export class GoogleScriptAppApi implements AppApi {
 
   linkReservationStudent(
     input: LinkReservationStudentInput,
-  ): Promise<ReservationsSetup> {
+  ): Promise<ReservationsSetupResult> {
     return this.callWithToken((runner, token) =>
       runner.linkReservationStudent(token, input),
     );

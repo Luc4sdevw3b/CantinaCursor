@@ -9,6 +9,49 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-14 12:10 — Estoque, alunos e demais abas em 1 round trip
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 26.5
+
+### Pedido / objetivo
+
+- Estoque para preencher e atualizar estava lento.
+- Corrigir a lentidão de todas as abas.
+
+### Tentativa / implementação
+
+- Ajustar estoque, abrir/fechar caixa e estornar já devolviam a lista; a UI pedia a lista de novo. Agora usa o retorno.
+- Mutações de aluno, turma, responsável, pagamento, crédito, juros, renegociação e reserva devolvem `screen` da própria aba, como venda e cardápio.
+- Aba Família passa a trazer os vínculos aluno–responsável no payload (antes era 1 chamada por aluno).
+- Criar turma reutiliza o ano letivo já carregado, sem `listSchoolYears` extra.
+
+### Resultado
+
+- Ajuste de estoque, cadastro de aluno, abrir caixa e as outras mutações das abas: 2 round trips → 1.
+- Abrir Responsáveis deixa de disparar N `getStudentGuardians`.
+
+### Diferenças do pedido
+
+- Uma `google.script.run` fria ainda custa centenas de ms a ~2 s; isso não zera.
+- Trocar aluno de turma no editar continua em 2 chamadas (`updateStudent` + `enrollStudent`).
+
+### Impacto técnico
+
+- Sem schema novo. `FamilyScreenData.links` entra no payload da aba Família.
+- Reserva devolve `screen` numa cópia do setup para não circular no `google.script.run`.
+
+### Testes
+
+- Vitest **240** e E2E local **50**: orçamento de 1 chamada em `adjustInventory`, `createStudent` e `openCashSession`; `createStudent.screen` / `createGuardian.screen`.
+
+### Pendências / próxima versão
+
+- Recarregar o Web App (Ctrl+F5).
+- Fase 27 só com pedido explícito.
+
 ## 2026-08-14 11:50 — Excluir no cardápio e varredura de desempenho
 
 **Origem:** Pedido do usuário

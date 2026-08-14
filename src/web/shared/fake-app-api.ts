@@ -47,7 +47,6 @@ import type {
   ProductPriceHistory,
   ReactivateStudentInput,
   ReceivableAgenda,
-  Receivable,
   ReversalsSetup,
   ReverseCreditRefundInput,
   ReversePaymentInput,
@@ -77,6 +76,15 @@ import type {
   ProductResult,
   CategoryResult,
   AdHocItemResult,
+  StudentResult,
+  ClassroomResult,
+  GuardianResult,
+  SiblingAuthorizationResult,
+  GuardianSettingsResult,
+  PaymentResult,
+  CreditAccountResult,
+  ReceivableResult,
+  ReservationsSetupResult,
 } from './app-api';
 
 const LOCAL_HEALTH: AppHealth = {
@@ -171,19 +179,25 @@ export class FakeAppApi implements AppApi {
     return throwResult(this.roster.listClassrooms(schoolYearId));
   }
 
-  async createClassroom(input: CreateClassroomInput): Promise<Classroom> {
+  async createClassroom(input: CreateClassroomInput): Promise<ClassroomResult> {
     this.assertSession();
-    return throwResult(this.roster.createClassroom(input));
+    return this.withStudentsScreen(
+      throwResult(this.roster.createClassroom(input)),
+    );
   }
 
-  async updateClassroom(id: string, name: string): Promise<Classroom> {
+  async updateClassroom(id: string, name: string): Promise<ClassroomResult> {
     this.assertSession();
-    return throwResult(this.roster.updateClassroom(id, name));
+    return this.withStudentsScreen(
+      throwResult(this.roster.updateClassroom(id, name)),
+    );
   }
 
-  async deactivateClassroom(id: string): Promise<Classroom> {
+  async deactivateClassroom(id: string): Promise<ClassroomResult> {
     this.assertSession();
-    return throwResult(this.roster.deactivateClassroom(id));
+    return this.withStudentsScreen(
+      throwResult(this.roster.deactivateClassroom(id)),
+    );
   }
 
   async listStudents(query?: {
@@ -198,38 +212,48 @@ export class FakeAppApi implements AppApi {
     return throwResult(this.roster.getStudent(id));
   }
 
-  async createStudent(input: CreateStudentInput): Promise<StudentDetail> {
+  async createStudent(input: CreateStudentInput): Promise<StudentResult> {
     this.assertSession();
-    return throwResult(this.roster.createStudent(input));
+    return this.withStudentsScreen(
+      throwResult(this.roster.createStudent(input)),
+    );
   }
 
   async updateStudent(
     id: string,
     input: StudentProfileFields,
-  ): Promise<StudentDetail> {
+  ): Promise<StudentResult> {
     this.assertSession();
-    return throwResult(this.roster.updateStudent(id, input));
+    return this.withStudentsScreen(
+      throwResult(this.roster.updateStudent(id, input)),
+    );
   }
 
-  async deactivateStudent(id: string): Promise<StudentDetail> {
+  async deactivateStudent(id: string): Promise<StudentResult> {
     this.assertSession();
-    return throwResult(this.roster.deactivateStudent(id));
+    return this.withStudentsScreen(
+      throwResult(this.roster.deactivateStudent(id)),
+    );
   }
 
   async reactivateStudent(
     id: string,
     input: ReactivateStudentInput,
-  ): Promise<StudentDetail> {
+  ): Promise<StudentResult> {
     this.assertSession();
-    return throwResult(this.roster.reactivateStudent(id, input));
+    return this.withStudentsScreen(
+      throwResult(this.roster.reactivateStudent(id, input)),
+    );
   }
 
   async enrollStudent(
     id: string,
     input: { classroomId: string; startedOn: string },
-  ): Promise<StudentDetail> {
+  ): Promise<StudentResult> {
     this.assertAction('students.write');
-    return throwResult(this.roster.enrollStudent(id, input));
+    return this.withStudentsScreen(
+      throwResult(this.roster.enrollStudent(id, input)),
+    );
   }
 
   async listGuardians(query?: {
@@ -239,22 +263,28 @@ export class FakeAppApi implements AppApi {
     return throwResult(this.roster.listGuardians(query));
   }
 
-  async createGuardian(input: GuardianProfileFields): Promise<Guardian> {
+  async createGuardian(input: GuardianProfileFields): Promise<GuardianResult> {
     this.assertAction('guardians.write');
-    return throwResult(this.roster.createGuardian(input));
+    return this.withFamilyScreen(
+      throwResult(this.roster.createGuardian(input)),
+    );
   }
 
   async updateGuardian(
     id: string,
     input: GuardianProfileFields,
-  ): Promise<Guardian> {
+  ): Promise<GuardianResult> {
     this.assertAction('guardians.write');
-    return throwResult(this.roster.updateGuardian(id, input));
+    return this.withFamilyScreen(
+      throwResult(this.roster.updateGuardian(id, input)),
+    );
   }
 
-  async deactivateGuardian(id: string): Promise<Guardian> {
+  async deactivateGuardian(id: string): Promise<GuardianResult> {
     this.assertAction('guardians.write');
-    return throwResult(this.roster.deactivateGuardian(id));
+    return this.withFamilyScreen(
+      throwResult(this.roster.deactivateGuardian(id)),
+    );
   }
 
   async getStudentGuardians(studentId: string): Promise<StudentGuardianLink[]> {
@@ -266,25 +296,31 @@ export class FakeAppApi implements AppApi {
     studentId: string,
     guardianId: string,
     input?: LinkGuardianInput,
-  ): Promise<StudentGuardianLink[]> {
+  ): Promise<StudentGuardianLink[] & { screen?: FamilyScreenData }> {
     this.assertAction('guardians.write');
-    return throwResult(this.roster.linkGuardian(studentId, guardianId, input));
+    return this.withFamilyLinksScreen(
+      throwResult(this.roster.linkGuardian(studentId, guardianId, input)),
+    );
   }
 
   async setPrimaryGuardian(
     studentId: string,
     guardianId: string,
-  ): Promise<StudentGuardianLink[]> {
+  ): Promise<StudentGuardianLink[] & { screen?: FamilyScreenData }> {
     this.assertAction('guardians.write');
-    return throwResult(this.roster.setPrimaryGuardian(studentId, guardianId));
+    return this.withFamilyLinksScreen(
+      throwResult(this.roster.setPrimaryGuardian(studentId, guardianId)),
+    );
   }
 
   async unlinkGuardian(
     studentId: string,
     guardianId: string,
-  ): Promise<StudentGuardianLink[]> {
+  ): Promise<StudentGuardianLink[] & { screen?: FamilyScreenData }> {
     this.assertAction('guardians.write');
-    return throwResult(this.roster.unlinkGuardian(studentId, guardianId));
+    return this.withFamilyLinksScreen(
+      throwResult(this.roster.unlinkGuardian(studentId, guardianId)),
+    );
   }
 
   async listSiblings(studentId: string): Promise<StudentSummary[]> {
@@ -294,14 +330,20 @@ export class FakeAppApi implements AppApi {
 
   async authorizeSibling(
     input: AuthorizeSiblingInput,
-  ): Promise<SiblingAuthorization> {
+  ): Promise<SiblingAuthorizationResult> {
     this.assertAction('guardians.write');
-    return throwResult(this.roster.authorizeSibling(input));
+    return this.withFamilyScreen(
+      throwResult(this.roster.authorizeSibling(input)),
+    );
   }
 
-  async revokeSiblingAuthorization(id: string): Promise<SiblingAuthorization> {
+  async revokeSiblingAuthorization(
+    id: string,
+  ): Promise<SiblingAuthorizationResult> {
     this.assertAction('guardians.write');
-    return throwResult(this.roster.revokeSiblingAuthorization(id));
+    return this.withFamilyScreen(
+      throwResult(this.roster.revokeSiblingAuthorization(id)),
+    );
   }
 
   async listSiblingAuthorizations(
@@ -316,9 +358,13 @@ export class FakeAppApi implements AppApi {
     return throwResult(this.roster.getGuardianSettings());
   }
 
-  async setRequireGuardianBelowAge(age: number): Promise<GuardianSettings> {
+  async setRequireGuardianBelowAge(
+    age: number,
+  ): Promise<GuardianSettingsResult> {
     this.assertAction('settings.manage');
-    return throwResult(this.roster.setRequireGuardianBelowAge(age));
+    return this.withFamilyScreen(
+      throwResult(this.roster.setRequireGuardianBelowAge(age)),
+    );
   }
 
   async listProductCategories(): Promise<ProductCategory[]> {
@@ -484,28 +530,12 @@ export class FakeAppApi implements AppApi {
 
   async getStudentsScreenData(): Promise<StudentsScreenData> {
     this.assertAction('students.read');
-    return {
-      students: throwResult(
-        this.roster.listStudents({ includeInactive: true }),
-      ),
-      classrooms: throwResult(this.roster.listClassrooms()),
-    };
+    return this.studentsScreenUnlocked();
   }
 
   async getFamilyScreenData(): Promise<FamilyScreenData> {
     this.assertAction('guardians.read');
-    return {
-      guardians: throwResult(
-        this.roster.listGuardians({ includeInactive: true }),
-      ),
-      students: throwResult(
-        this.roster.listStudents({ includeInactive: true }),
-      ),
-      siblingAuthorizations: throwResult(
-        this.roster.listSiblingAuthorizations(),
-      ),
-      settings: throwResult(this.roster.getGuardianSettings()),
-    };
+    return this.familyScreenUnlocked();
   }
 
   async getCatalogScreenData(): Promise<CatalogScreenData> {
@@ -515,35 +545,12 @@ export class FakeAppApi implements AppApi {
 
   async getPaymentsScreenData(): Promise<PaymentsScreenData> {
     this.assertAction('receivables.read');
-    const students = throwResult(
-      this.roster.listStudents({ includeInactive: true }),
-    );
-    const links: StudentGuardianLink[] = [];
-    for (const student of students) {
-      links.push(...throwResult(this.roster.getStudentGuardians(student.id)));
-    }
-    return {
-      students,
-      payments: throwResult(this.sales.listPayments()),
-      guardians: throwResult(
-        this.roster.listGuardians({ includeInactive: true }),
-      ),
-      links,
-      receivables: throwResult(this.sales.listReceivables()),
-    };
+    return this.paymentsScreenUnlocked();
   }
 
   async getCreditsScreenData(): Promise<CreditsScreenData> {
     this.assertAction('credits.read');
-    return {
-      students: throwResult(
-        this.roster.listStudents({ includeInactive: true }),
-      ),
-      guardians: throwResult(
-        this.roster.listGuardians({ includeInactive: true }),
-      ),
-      accounts: throwResult(this.sales.listCreditAccounts()),
-    };
+    return this.creditsScreenUnlocked();
   }
 
   async getReservationScreenData(): Promise<ReservationScreenData> {
@@ -590,6 +597,117 @@ export class FakeAppApi implements AppApi {
     return { ...value, screen: this.catalogScreenUnlocked() };
   }
 
+  private studentsScreenUnlocked(): StudentsScreenData {
+    return {
+      students: throwResult(
+        this.roster.listStudents({ includeInactive: true }),
+      ),
+      classrooms: throwResult(this.roster.listClassrooms()),
+    };
+  }
+
+  private withStudentsScreen<T extends object>(
+    value: T,
+  ): T & { screen: StudentsScreenData } {
+    return { ...value, screen: this.studentsScreenUnlocked() };
+  }
+
+  private familyScreenUnlocked(): FamilyScreenData {
+    const students = throwResult(
+      this.roster.listStudents({ includeInactive: true }),
+    );
+    const links: StudentGuardianLink[] = [];
+    for (const student of students) {
+      links.push(...throwResult(this.roster.getStudentGuardians(student.id)));
+    }
+    return {
+      guardians: throwResult(
+        this.roster.listGuardians({ includeInactive: true }),
+      ),
+      students,
+      siblingAuthorizations: throwResult(
+        this.roster.listSiblingAuthorizations(),
+      ),
+      settings: throwResult(this.roster.getGuardianSettings()),
+      links,
+    };
+  }
+
+  private withFamilyScreen<T extends object>(
+    value: T,
+  ): T & { screen: FamilyScreenData } {
+    return { ...value, screen: this.familyScreenUnlocked() };
+  }
+
+  private withFamilyLinksScreen(
+    links: StudentGuardianLink[],
+  ): StudentGuardianLink[] & { screen: FamilyScreenData } {
+    return Object.assign(links.slice(), {
+      screen: this.familyScreenUnlocked(),
+    });
+  }
+
+  private paymentsScreenUnlocked(): PaymentsScreenData {
+    const students = throwResult(
+      this.roster.listStudents({ includeInactive: true }),
+    );
+    const links: StudentGuardianLink[] = [];
+    for (const student of students) {
+      links.push(...throwResult(this.roster.getStudentGuardians(student.id)));
+    }
+    return {
+      students,
+      payments: throwResult(this.sales.listPayments()),
+      guardians: throwResult(
+        this.roster.listGuardians({ includeInactive: true }),
+      ),
+      links,
+      receivables: throwResult(this.sales.listReceivables()),
+    };
+  }
+
+  private withPaymentsScreen<T extends object>(
+    value: T,
+  ): T & { screen: PaymentsScreenData } {
+    return { ...value, screen: this.paymentsScreenUnlocked() };
+  }
+
+  private creditsScreenUnlocked(): CreditsScreenData {
+    return {
+      students: throwResult(
+        this.roster.listStudents({ includeInactive: true }),
+      ),
+      guardians: throwResult(
+        this.roster.listGuardians({ includeInactive: true }),
+      ),
+      accounts: throwResult(this.sales.listCreditAccounts()),
+    };
+  }
+
+  private withCreditsScreen<T extends object>(
+    value: T,
+  ): T & { screen: CreditsScreenData } {
+    return { ...value, screen: this.creditsScreenUnlocked() };
+  }
+
+  private withAgendaScreen<T extends object>(
+    value: T,
+  ): T & { screen: ReceivableAgenda } {
+    return { ...value, screen: throwResult(this.sales.listReceivables()) };
+  }
+
+  private withReservationScreen(
+    setup: ReservationsSetup,
+  ): ReservationsSetupResult {
+    return {
+      ...setup,
+      screen: {
+        setup,
+        students: throwResult(this.roster.listStudents()),
+      },
+    };
+  }
+
   async listSales(): Promise<Sale[]> {
     this.assertAction('sales.read');
     return throwResult(this.sales.listSales());
@@ -610,14 +728,20 @@ export class FakeAppApi implements AppApi {
     return throwResult(this.sales.getDueDateShortcuts());
   }
 
-  async createPayment(input: CreatePaymentInput): Promise<Payment> {
+  async createPayment(input: CreatePaymentInput): Promise<PaymentResult> {
     this.assertAction('payments.write');
-    return throwResult(this.sales.createPayment(input));
+    return this.withPaymentsScreen(
+      throwResult(this.sales.createPayment(input)),
+    );
   }
 
-  async createFamilyPayment(input: CreateFamilyPaymentInput): Promise<Payment> {
+  async createFamilyPayment(
+    input: CreateFamilyPaymentInput,
+  ): Promise<PaymentResult> {
     this.assertAction('payments.write');
-    return throwResult(this.sales.createFamilyPayment(input));
+    return this.withPaymentsScreen(
+      throwResult(this.sales.createFamilyPayment(input)),
+    );
   }
 
   async listPayments(): Promise<Payment[]> {
@@ -627,16 +751,20 @@ export class FakeAppApi implements AppApi {
 
   async addReceivableInterest(
     input: AddReceivableInterestInput,
-  ): Promise<Receivable> {
+  ): Promise<ReceivableResult> {
     this.assertAction('receivables.adjust');
-    return throwResult(this.sales.addReceivableInterest(input));
+    return this.withAgendaScreen(
+      throwResult(this.sales.addReceivableInterest(input)),
+    );
   }
 
   async renegotiateReceivable(
     input: RenegotiateReceivableInput,
-  ): Promise<Receivable> {
+  ): Promise<ReceivableResult> {
     this.assertAction('receivables.adjust');
-    return throwResult(this.sales.renegotiateReceivable(input));
+    return this.withAgendaScreen(
+      throwResult(this.sales.renegotiateReceivable(input)),
+    );
   }
 
   async listCreditAccounts(): Promise<CreditAccount[]> {
@@ -646,30 +774,38 @@ export class FakeAppApi implements AppApi {
 
   async depositPersonalCredit(
     input: DepositPersonalCreditInput,
-  ): Promise<CreditAccount> {
+  ): Promise<CreditAccountResult> {
     this.assertAction('credits.deposit');
-    return throwResult(this.sales.depositPersonalCredit(input));
+    return this.withCreditsScreen(
+      throwResult(this.sales.depositPersonalCredit(input)),
+    );
   }
 
   async refundPersonalCredit(
     input: RefundPersonalCreditInput,
-  ): Promise<CreditAccount> {
+  ): Promise<CreditAccountResult> {
     this.assertAction('credits.refund');
-    return throwResult(this.sales.refundPersonalCredit(input));
+    return this.withCreditsScreen(
+      throwResult(this.sales.refundPersonalCredit(input)),
+    );
   }
 
   async depositGuardianCredit(
     input: DepositGuardianCreditInput,
-  ): Promise<CreditAccount> {
+  ): Promise<CreditAccountResult> {
     this.assertAction('credits.deposit');
-    return throwResult(this.sales.depositGuardianCredit(input));
+    return this.withCreditsScreen(
+      throwResult(this.sales.depositGuardianCredit(input)),
+    );
   }
 
   async refundGuardianCredit(
     input: RefundGuardianCreditInput,
-  ): Promise<CreditAccount> {
+  ): Promise<CreditAccountResult> {
     this.assertAction('credits.refund');
-    return throwResult(this.sales.refundGuardianCredit(input));
+    return this.withCreditsScreen(
+      throwResult(this.sales.refundGuardianCredit(input)),
+    );
   }
 
   async getCashSetup(): Promise<CashSetup> {
@@ -737,53 +873,67 @@ export class FakeAppApi implements AppApi {
 
   async createReservationSlot(
     input: CreateReservationSlotInput,
-  ): Promise<ReservationsSetup> {
+  ): Promise<ReservationsSetupResult> {
     this.assertAction('reservation_slots.write');
-    return throwResult(this.reservations.createSlot(input));
+    return this.withReservationScreen(
+      throwResult(this.reservations.createSlot(input)),
+    );
   }
 
   async createReservation(
     input: CreateReservationInput,
-  ): Promise<ReservationsSetup> {
+  ): Promise<ReservationsSetupResult> {
     this.assertAction('reservations.write');
-    return throwResult(this.reservations.createReservation(input));
+    return this.withReservationScreen(
+      throwResult(this.reservations.createReservation(input)),
+    );
   }
 
   async cancelReservation(input: {
     reservationId: string;
     reason: string;
-  }): Promise<ReservationsSetup> {
+  }): Promise<ReservationsSetupResult> {
     this.assertAction('reservations.write');
-    return throwResult(this.reservations.cancelReservation(input));
+    return this.withReservationScreen(
+      throwResult(this.reservations.cancelReservation(input)),
+    );
   }
 
   async markReservationNoShow(input: {
     reservationId: string;
     reason: string;
-  }): Promise<ReservationsSetup> {
+  }): Promise<ReservationsSetupResult> {
     this.assertAction('reservations.write');
-    return throwResult(this.reservations.markReservationNoShow(input));
+    return this.withReservationScreen(
+      throwResult(this.reservations.markReservationNoShow(input)),
+    );
   }
 
   async fulfillReservation(input: {
     reservationId: string;
-  }): Promise<ReservationsSetup> {
+  }): Promise<ReservationsSetupResult> {
     this.assertAction('reservations.write');
-    return throwResult(this.reservations.fulfillReservation(input));
+    return this.withReservationScreen(
+      throwResult(this.reservations.fulfillReservation(input)),
+    );
   }
 
   async updateReservation(
     input: UpdateReservationInput,
-  ): Promise<ReservationsSetup> {
+  ): Promise<ReservationsSetupResult> {
     this.assertAction('reservations.write');
-    return throwResult(this.reservations.updateReservation(input));
+    return this.withReservationScreen(
+      throwResult(this.reservations.updateReservation(input)),
+    );
   }
 
   async linkReservationStudent(
     input: LinkReservationStudentInput,
-  ): Promise<ReservationsSetup> {
+  ): Promise<ReservationsSetupResult> {
     this.assertAction('reservations.write');
-    return throwResult(this.reservations.linkStudent(input));
+    return this.withReservationScreen(
+      throwResult(this.reservations.linkStudent(input)),
+    );
   }
 
   async getPublicReservationPortal(): Promise<PublicReservationPortal> {

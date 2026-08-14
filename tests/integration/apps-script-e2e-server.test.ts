@@ -126,7 +126,13 @@ interface ServerContext {
   createStudent(
     sessionToken: string,
     payload: Record<string, unknown>,
-  ): { id: string; fullName: string; active: boolean; ageLabel: string };
+  ): {
+    id: string;
+    fullName: string;
+    active: boolean;
+    ageLabel: string;
+    screen?: { students: Array<{ id: string; fullName: string }> };
+  };
   updateStudent(
     sessionToken: string,
     id: string,
@@ -159,7 +165,14 @@ interface ServerContext {
   createGuardian(
     sessionToken: string,
     payload: Record<string, unknown>,
-  ): { id: string; fullName: string };
+  ): {
+    id: string;
+    fullName: string;
+    screen?: {
+      guardians: Array<{ id: string; fullName: string }>;
+      links: unknown[];
+    };
+  };
   updateGuardian(
     sessionToken: string,
     id: string,
@@ -1811,7 +1824,7 @@ describe('Apps Script E2E server', () => {
     expect(() => server.setRequireGuardianBelowAge(staff, 16)).toThrow(
       'FORBIDDEN',
     );
-    expect(server.setRequireGuardianBelowAge(owner, 16)).toEqual({
+    expect(server.setRequireGuardianBelowAge(owner, 16)).toMatchObject({
       requireGuardianBelowAge: 16,
     });
     expect(() => server.listGuardians('')).toThrow('UNAUTHENTICATED');
@@ -3471,6 +3484,50 @@ describe('Apps Script E2E server', () => {
     expect(
       removed.screen?.categories.some((item) => item.name === 'Lanches perf'),
     ).toBe(false);
+  });
+
+  it('returns students screen from createStudent and family links from createGuardian', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const classroom = server.listClassrooms(owner)[0];
+    const created = server.createStudent(owner, {
+      fullName: 'Aluno tela agregada',
+      approximateAge: 9,
+      approximateAgeReferenceYear: 2026,
+      classroomId: classroom && classroom.id,
+      startedOn: '2026-08-13',
+    });
+    expect(
+      created.screen?.students.some((item) => item.id === created.id),
+    ).toBe(true);
+    const guardian = server.createGuardian(owner, {
+      fullName: 'Responsável tela agregada',
+      relationLabel: 'mãe',
+    });
+    expect(
+      guardian.screen?.guardians.some((item) => item.id === guardian.id),
+    ).toBe(true);
+    expect(Array.isArray(guardian.screen?.links)).toBe(true);
+    const coxinha = server
+      .listProducts(owner)
+      .find((item) => item.name === 'Coxinha');
+    if (!coxinha) {
+      throw new Error('Coxinha ausente');
+    }
+    const adjusted = server.adjustInventory(owner, {
+      productId: coxinha.id,
+      quantityDelta: 1,
+      reason: 'Ajuste de teste',
+    });
+    expect(
+      adjusted.items.find((item) => item.productName === 'Coxinha')
+        ?.physicalQuantity,
+    ).toBe(11);
   });
 
   it('does not let catalog cache change fiado remaining cents', () => {

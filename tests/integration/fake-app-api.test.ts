@@ -179,7 +179,7 @@ describe('FakeAppApi', () => {
     );
 
     await api.loginE2E('owner');
-    expect(await api.setRequireGuardianBelowAge(16)).toEqual({
+    expect(await api.setRequireGuardianBelowAge(16)).toMatchObject({
       requireGuardianBelowAge: 16,
     });
   });
@@ -1484,12 +1484,55 @@ describe('FakeAppApi', () => {
     await api.loginE2E('owner');
     const created = await api.createCategory('Lanches perf');
     expect(
-      created.screen?.categories.some((item) => item.id === created.id),
+      created.screen?.categories.some((item) => item.name === 'Lanches perf'),
     ).toBe(true);
     const removed = await api.deleteCategory(created.id);
     expect(
-      removed.screen?.categories.some((item) => item.id === created.id),
+      removed.screen?.categories.some((item) => item.name === 'Lanches perf'),
     ).toBe(false);
+  });
+
+  it('returns students and family screens from mutations', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const created = await api.createStudent({
+      fullName: 'Aluno tela agregada',
+      approximateAge: 9,
+      approximateAgeReferenceYear: 2026,
+      classroomId: (await api.listClassrooms())[0]?.id,
+      startedOn: '2026-08-13',
+    });
+    expect(
+      created.screen?.students.some((item) => item.id === created.id),
+    ).toBe(true);
+    const guardian = await api.createGuardian({
+      fullName: 'Responsável tela agregada',
+      relationLabel: 'mãe',
+    });
+    expect(
+      guardian.screen?.guardians.some((item) => item.id === guardian.id),
+    ).toBe(true);
+    expect(guardian.screen?.links).toBeDefined();
+  });
+
+  it('returns inventory balances from adjustInventory without a second read', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const coxinha = (await api.listProducts()).find(
+      (item) => item.name === 'Coxinha',
+    );
+    if (!coxinha) {
+      throw new Error('Coxinha ausente');
+    }
+    const adjusted = await api.adjustInventory({
+      productId: coxinha.id,
+      quantityDelta: 1,
+      reason: 'Ajuste de teste',
+    });
+    expect(
+      adjusted.items.find((item) => item.productId === coxinha.id)
+        ?.physicalQuantity,
+    ).toBe(11);
   });
 
   it('loads the sale screen in one aggregated payload', async () => {
