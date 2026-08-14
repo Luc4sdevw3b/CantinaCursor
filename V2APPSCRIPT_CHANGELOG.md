@@ -9,6 +9,42 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-14 09:38 — Seed fictício gravado na planilha de teste
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 26
+
+### Pedido / objetivo
+
+- Depois que o Web App abriu na planilha de teste, carregar dados fictícios para poder clicar nas telas.
+
+### Tentativa / implementação
+
+- `seedE2E` rodou no script preso à planilha de teste: alunos (Ana, Bruno), responsáveis, cardápio (Coxinha, suco), estoque do dia e recreios.
+- Conferido no Web App: health da planilha, Coxinha no cardápio e estoque `Coxinha • 10`.
+
+### Resultado
+
+- A planilha de teste tem o mesmo seed fictício do ambiente E2E. Recarregar o app mostra os dados.
+
+### Diferenças do pedido
+
+- Nenhuma.
+
+### Impacto técnico
+
+- O seed apaga e regrava as abas de negócio dessa planilha. Não mexeu na planilha E2E nem em PROD.
+
+### Testes
+
+- Smoke manual no Web App da planilha de teste: health, cardápio e estoque.
+
+### Pendências / próxima versão
+
+- Nenhuma para este pedido.
+
 ## 2026-08-14 09:10 — Playground DEV numa planilha de teste (parcial)
 
 **Origem:** Pedido do usuário
