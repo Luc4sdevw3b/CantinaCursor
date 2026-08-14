@@ -81,11 +81,17 @@ scripts/
 
 Definir `AppApi` com funções específicas do domínio, nunca ranges/SQL/Sheets genéricos.
 
-Até a Fase 26 o contrato `AppApi` inclui sessão, cadastro, cardápio, estoque diário, vendas, agenda, pagamento parcial, juros, renegociação, crédito pessoal, crédito de responsável, pagamento familiar, venda na conta do irmão, caixa físico, reservas internas, o portal público (`getPublicReservationPortal` / `createPublicReservation`) sem cadastro privado, e `createSale` com `sourceReservationId` / `overrideReservationId`. Sem envio de WhatsApp.
+Até a Fase 26.5 o contrato `AppApi` inclui sessão, cadastro, cardápio, estoque diário, vendas, agenda, pagamento parcial, juros, renegociação, crédito pessoal, crédito de responsável, pagamento familiar, venda na conta do irmão, caixa físico, reservas internas, o portal público (`getPublicReservationPortal` / `createPublicReservation`) sem cadastro privado, `createSale` com `sourceReservationId` / `overrideReservationId`, e payloads agregados de tela (`getSaleScreenData`, `getStudentsScreenData`, `getFamilyScreenData`, `getCatalogScreenData`, `getPaymentsScreenData`, `getCreditsScreenData`, `getReservationScreenData`). `createSale` devolve `screen` para atualizar a UI sem reload. Sem envio de WhatsApp.
 
-A tela privada é uma só: hero com atalhos e uma área visível por vez.
+A tela privada é uma só: hero com atalhos e uma área visível por vez. Só a área ativa é carregada; o botão **Atualizar** relê essa área.
 
 O adapter `google.script.run` é usado no Web App Apps Script (ambiente E2E isolado nesta fase). **E2E local usa somente `FakeAppApi`.** Isso permite Playwright desde o início sem Google.
+
+`google.script.run` é serializado: várias chamadas seguidas somam o tempo de ida e volta. Por isso a UI não dispara servidor em clique de quantidade/filtro e agrupa a montagem de cada tela.
+
+## Cache
+
+`CacheService` guarda só catálogo/categorias (e o flag de schema já aplicado). Planilha continua sendo a fonte da verdade. Depois de criar/editar/excluir produto ou categoria o cache é invalidado. Miss reconstrói a partir do Sheets. Totais de venda, estoque, crédito e fiado nunca saem do cache.
 
 ## Escritas críticas
 

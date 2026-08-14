@@ -119,6 +119,7 @@ Mínimo obrigatório do smoke local:
 41. responsável: cadastrar `Responsável e2e` e **Desativar**; some o botão e a lista mostra `Inativo`.
 42. `#reservation-student-search` `Ana` filtra `#reservation-student` para Ana Souza; `ZZZ` esconde os alunos. Portal público `/?portal=reservas` não mostra esse autocomplete.
 43. `/?e2eBusy=1`: **Salvar aluno** mostra `#busy-banner` `Processando ação…` antes de sumir.
+44. orçamento de chamadas (Fase 26.5): após login, alterar quantidade/produto/meio de pagamento do carrinho não registra chamada `AppApi`; **Confirmar venda** PIX registra só `createSale`. Não afirmar milissegundos de rede Google no CI.
 
 Não confundir com o ambiente Google E2E da Fase 3.
 

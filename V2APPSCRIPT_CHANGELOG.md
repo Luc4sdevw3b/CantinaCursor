@@ -9,6 +9,55 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-14 11:20 — Fase 26.5: performance sem mudar regra de negócio
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 26.5
+
+### Pedido / objetivo
+
+- Operações e atualizações estavam ~4 s.
+- Medir, cortar `google.script.run` de UI, agregar tela, devolver deltas na mutação, cache seguro, Sheets em lote, lock só na escrita, sem full refresh, testes verdes. Não avançar à Fase 27.
+
+### Tentativa / implementação
+
+- Instrumentação: `window.__cantinaPerf` e `Logger.log PERF` (fora de PROD), sem PII.
+- Login carrega só a área ativa. Botão **Atualizar**.
+- `getSaleScreenData` e outras APIs por tela. `createSale` devolve `screen`.
+- Carrinho/quantidade/pagamento/filtros continuam locais (e agora medidos).
+- Cache in-memory por execução + `CacheService` de catálogo; lock solto antes de montar a UI da venda.
+- Baseline em `PERFORMANCE_BASELINE.md`.
+
+### Resultado
+
+- Abrir Vendas: 7 chamadas → 1 (ou 0 se já carregada).
+- PIX: ~10–20 chamadas → 1 `createSale`.
+- Quantidade do carrinho: 0 chamadas remotas.
+
+### Diferenças do pedido
+
+- Não há `getDashboardData` separado: a área Vendas é o dashboard operacional.
+- `createReservation` ainda faz um reload da própria tela (2 chamadas), não um payload único.
+- Sem projeções derivadas: o gargalo medido era round trip, não scan crescente no seed.
+- Sem reescrever a venda em `batchUpdate` nesta fase.
+
+### Impacto técnico
+
+- Skill/arquitetura/convenções: UI local; uma mutação ≈ uma chamada; cache não é SoT financeira.
+- Implementation Plan ganha Fase 26.5. WhatsApp permanece Fase 27.
+
+### Testes
+
+- Vitest + E2E local (orçamento de chamadas, `createSale.screen`, cache miss, totais iguais com/sem cache).
+- Sem assert de milissegundos de rede Google.
+
+### Pendências / próxima versão
+
+- Fase 27 só com pedido explícito.
+- Opcional depois: `batchUpdate` na venda; payload único em reserva/pagamento; projeções se o histórico crescer.
+
 ## 2026-08-14 10:30 — Excluir apaga categoria/produto; Inativar só desativa
 
 **Origem:** Pedido do usuário

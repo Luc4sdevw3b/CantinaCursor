@@ -48,6 +48,8 @@ Trabalhar como engenheiro cuidadoso da Cantina V2 AppScript. Priorizar integrida
 - Nunca alterar saldo, dívida, crédito, estoque ou caixa por sobrescrita silenciosa; usar movimentos/eventos.
 - Estornos preservam o original e criam reversões.
 - Frontend chama apenas funções específicas do domínio; nunca ranges/SQL/Sheets genéricos.
+- Interação só de interface não chama Apps Script; uma mutação de negócio prefere uma única chamada e devolve os dados da tela.
+- `CacheService` nunca é fonte da verdade financeira.
 - Validar novamente no backend.
 - Portal público de reservas nunca expõe cadastro privado.
 - Logs não contêm nomes, telefones, notas, itens comprados, valores individuais, conteúdo de planilha ou secrets.

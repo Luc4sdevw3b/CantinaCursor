@@ -62,3 +62,12 @@ Não converter APIs já estáveis só para usar `Result`. Adotar em operações 
 ## Sessão
 
 Token de sessão é UUID, nunca número da linha. A autorização de papéis (`owner` / `staff`) vale no servidor; esconder botão na UI não autoriza.
+
+## Performance (Fase 26.5)
+
+- Interação só de interface (quantidade, produto, modal, filtro, navegação, carrinho) não chama Apps Script.
+- Uma operação de negócio usa uma chamada de servidor quando possível e devolve os deltas/tela necessários.
+- `CacheService` só para catálogo/categorias/turmas/configurações. Nunca é fonte da verdade financeira.
+- `LockService` cobre só a mutação crítica; leitura de tela não espera lock.
+- Após mutação, atualizar o estado local. Full refresh só no botão **Atualizar**.
+- Não transformar tempo de rede Google em teste CI rígido.

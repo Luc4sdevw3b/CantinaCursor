@@ -324,6 +324,23 @@ E2E remoto obrigatório.
 Invariante:
 20 físico, 3 reservado, 17 disponível → entrega 3 → 17 físico, 0 reservado, 17 disponível.
 
+## Fase 26.5 — Performance
+
+Sem mudar regra de negócio. Objetivo: operações deixarem de parecer ~4s por causa de várias `google.script.run` em série.
+
+- Instrumentar DEV/E2E (sem PII): tempo no browser, Apps Script, espera de lock, leituras/escritas Sheets, contagem de chamadas.
+- Interação só de UI é local.
+- Uma mutação, uma chamada; resposta traz deltas/tela.
+- APIs agregadas por tela (`getSaleScreenData`, etc.), não uma API genérica gigante.
+- `CacheService` só para catálogo/categorias/config; invalidar após escrita; miss continua correto.
+- Sheets em lote (`getValues`/`setValues`); sem `getValue` em loop.
+- Lock só na seção crítica de mutação; medir `lockWaitMs`.
+- Depois da mutação, estado local; botão **Atualizar** explícito.
+- Dashboard/histórico: não recalcular a base inteira se o gargalo medido for scan crescente; projeções só se necessário.
+- Testes de orçamento de chamadas; não afirmar milissegundos de rede Google no CI.
+
+Baseline: `PERFORMANCE_BASELINE.md`.
+
 # Marco H — WhatsApp oficial V2.1
 
 ## Fase 27 — Gateway e webhooks oficiais
