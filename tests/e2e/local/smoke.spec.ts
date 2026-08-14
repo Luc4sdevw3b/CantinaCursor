@@ -1627,6 +1627,93 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     expect(afterCreate.calls).toBe(1);
   });
 
+  test('uses one deleteProduct call when removing a catalog item', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await goToArea(page, 'Cardápio');
+    await page.locator('#product-name').fill('Produto perf excluir');
+    await page.locator('#product-price').fill('2,00');
+    await page.getByRole('button', { name: 'Cadastrar produto' }).click();
+    const extraProduct = page
+      .locator('#products-list')
+      .getByRole('listitem')
+      .filter({ hasText: 'Produto perf excluir' });
+    await expect(extraProduct).toBeVisible();
+    await page.evaluate(() => {
+      const perf = (
+        window as Window & {
+          __cantinaPerf?: { reset: () => void };
+        }
+      ).__cantinaPerf;
+      if (!perf) {
+        throw new Error('__cantinaPerf ausente');
+      }
+      perf.reset();
+    });
+    await extraProduct.getByRole('button', { name: 'Excluir' }).click();
+    await expect(extraProduct).toHaveCount(0);
+    const afterDelete = await page.evaluate(() => {
+      const perf = (
+        window as Window & {
+          __cantinaPerf?: {
+            snapshot: () => { calls: number; methods: string[] };
+          };
+        }
+      ).__cantinaPerf;
+      if (!perf) {
+        throw new Error('__cantinaPerf ausente');
+      }
+      return perf.snapshot();
+    });
+    expect(afterDelete.methods).toEqual(['deleteProduct']);
+    expect(afterDelete.calls).toBe(1);
+  });
+
+  test('uses one deleteCategory call when removing a catalog category', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await goToArea(page, 'Cardápio');
+    await page.locator('#category-name').fill('Categoria perf excluir');
+    await page.getByRole('button', { name: 'Cadastrar categoria' }).click();
+    const extraCategory = page
+      .locator('#categories-list')
+      .getByRole('listitem')
+      .filter({ hasText: 'Categoria perf excluir' });
+    await expect(extraCategory).toBeVisible();
+    await page.evaluate(() => {
+      const perf = (
+        window as Window & {
+          __cantinaPerf?: { reset: () => void };
+        }
+      ).__cantinaPerf;
+      if (!perf) {
+        throw new Error('__cantinaPerf ausente');
+      }
+      perf.reset();
+    });
+    await extraCategory.getByRole('button', { name: 'Excluir' }).click();
+    await expect(extraCategory).toHaveCount(0);
+    const afterDelete = await page.evaluate(() => {
+      const perf = (
+        window as Window & {
+          __cantinaPerf?: {
+            snapshot: () => { calls: number; methods: string[] };
+          };
+        }
+      ).__cantinaPerf;
+      if (!perf) {
+        throw new Error('__cantinaPerf ausente');
+      }
+      return perf.snapshot();
+    });
+    expect(afterDelete.methods).toEqual(['deleteCategory']);
+    expect(afterDelete.calls).toBe(1);
+  });
+
   test('loads alunos with one getStudentsScreenData call', async ({ page }) => {
     await openLocalApp(page);
     await page.getByRole('button', { name: 'Entrar como dona' }).click();

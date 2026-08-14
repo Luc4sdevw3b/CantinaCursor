@@ -1479,6 +1479,19 @@ describe('FakeAppApi', () => {
     expect(screen.classrooms.length).toBeGreaterThan(0);
   });
 
+  it('returns catalog screen from createCategory and deleteCategory', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const created = await api.createCategory('Lanches perf');
+    expect(
+      created.screen?.categories.some((item) => item.id === created.id),
+    ).toBe(true);
+    const removed = await api.deleteCategory(created.id);
+    expect(
+      removed.screen?.categories.some((item) => item.id === created.id),
+    ).toBe(false);
+  });
+
   it('loads the sale screen in one aggregated payload', async () => {
     const api = new FakeAppApi();
     await api.loginE2E('owner');

@@ -67,6 +67,8 @@ import type {
   CreditsScreenData,
   ReservationScreenData,
   ProductResult,
+  CategoryResult,
+  AdHocItemResult,
 } from './app-api';
 
 export const SESSION_TOKEN_STORAGE_KEY = 'cantina.sessionToken';
@@ -531,31 +533,31 @@ export class GoogleScriptAppApi implements AppApi {
     );
   }
 
-  createCategory(name: string): Promise<ProductCategory> {
+  createCategory(name: string): Promise<CategoryResult> {
     return this.callWithToken((runner, token) =>
       runner.createCategory(token, { name }),
     );
   }
 
-  updateCategory(id: string, name: string): Promise<ProductCategory> {
+  updateCategory(id: string, name: string): Promise<CategoryResult> {
     return this.callWithToken((runner, token) =>
       runner.updateCategory(token, id, { name }),
     );
   }
 
-  deactivateCategory(id: string): Promise<ProductCategory> {
+  deactivateCategory(id: string): Promise<CategoryResult> {
     return this.callWithToken((runner, token) =>
       runner.deactivateCategory(token, id),
     );
   }
 
-  activateCategory(id: string): Promise<ProductCategory> {
+  activateCategory(id: string): Promise<CategoryResult> {
     return this.callWithToken((runner, token) =>
       runner.activateCategory(token, id),
     );
   }
 
-  deleteCategory(id: string): Promise<ProductCategory> {
+  deleteCategory(id: string): Promise<CategoryResult> {
     return this.callWithToken((runner, token) =>
       runner.deleteCategory(token, id),
     );
@@ -612,7 +614,7 @@ export class GoogleScriptAppApi implements AppApi {
   createAdHocItem(input: {
     name: string;
     priceCents: number;
-  }): Promise<AdHocItem> {
+  }): Promise<AdHocItemResult> {
     return this.callWithToken((runner, token) =>
       runner.createAdHocItem(token, {
         ...input,

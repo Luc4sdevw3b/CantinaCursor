@@ -16,7 +16,6 @@ import type {
   CatalogScreenData,
   Product,
   ProductCategory,
-  ProductResult,
   Receivable,
   Reservation,
   ReservationsSetup,
@@ -1170,7 +1169,9 @@ function refreshAfterCatalogChange(): Promise<void> {
   return ensureAreaLoaded('products', true);
 }
 
-function applyCatalogResult(result: ProductResult): Promise<void> {
+function applyCatalogResult(result: {
+  screen?: CatalogScreenData;
+}): Promise<void> {
   invalidateAreas('sales', 'inventory', 'reservations');
   if (result.screen) {
     loadedAreas.add('products');
@@ -1919,11 +1920,11 @@ async function renderProducts(
             deactivate,
             'Não foi possível inativar a categoria.',
             () =>
-              api.deactivateCategory(category.id).then(() => {
+              api.deactivateCategory(category.id).then((result) => {
                 if (editingCategoryId === category.id) {
                   fillCategoryForm(null);
                 }
-                return ensureAreaLoaded('products', true);
+                return applyCatalogResult(result);
               }),
           );
         });
@@ -1940,7 +1941,7 @@ async function renderProducts(
             () =>
               api
                 .activateCategory(category.id)
-                .then(() => ensureAreaLoaded('products', true)),
+                .then((result) => applyCatalogResult(result)),
           );
         });
         actions.append(activate);
@@ -1954,11 +1955,11 @@ async function renderProducts(
           remove,
           'Não foi possível excluir a categoria.',
           () =>
-            api.deleteCategory(category.id).then(() => {
+            api.deleteCategory(category.id).then((result) => {
               if (editingCategoryId === category.id) {
                 fillCategoryForm(null);
               }
-              return ensureAreaLoaded('products', true);
+              return applyCatalogResult(result);
             }),
         );
       });
@@ -4574,9 +4575,9 @@ document
       submitButton(event),
       'Não foi possível salvar a categoria.',
       () =>
-        saved.then(() => {
+        saved.then((result) => {
           fillCategoryForm(null);
-          return ensureAreaLoaded('products', true);
+          return applyCatalogResult(result);
         }),
     );
   });
@@ -4608,10 +4609,10 @@ document.querySelector('#ad-hoc-form')?.addEventListener('submit', (event) => {
         name: name.value,
         priceCents: cents.data,
       })
-      .then(() => {
+      .then((result) => {
         name.value = '';
         price.value = '';
-        return ensureAreaLoaded('products', true);
+        return applyCatalogResult(result);
       })
       .catch((error: unknown) => {
         if (adHocStatus) {

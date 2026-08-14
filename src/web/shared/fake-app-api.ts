@@ -75,6 +75,8 @@ import type {
   CreditsScreenData,
   ReservationScreenData,
   ProductResult,
+  CategoryResult,
+  AdHocItemResult,
 } from './app-api';
 
 const LOCAL_HEALTH: AppHealth = {
@@ -324,29 +326,37 @@ export class FakeAppApi implements AppApi {
     return throwResult(this.catalog.listCategories());
   }
 
-  async createCategory(name: string): Promise<ProductCategory> {
+  async createCategory(name: string): Promise<CategoryResult> {
     this.assertAction('products.write');
-    return throwResult(this.catalog.createCategory(name));
+    return this.withCatalogScreen(
+      throwResult(this.catalog.createCategory(name)),
+    );
   }
 
-  async updateCategory(id: string, name: string): Promise<ProductCategory> {
+  async updateCategory(id: string, name: string): Promise<CategoryResult> {
     this.assertAction('products.write');
-    return throwResult(this.catalog.updateCategory(id, name));
+    return this.withCatalogScreen(
+      throwResult(this.catalog.updateCategory(id, name)),
+    );
   }
 
-  async deactivateCategory(id: string): Promise<ProductCategory> {
+  async deactivateCategory(id: string): Promise<CategoryResult> {
     this.assertAction('products.write');
-    return throwResult(this.catalog.deactivateCategory(id));
+    return this.withCatalogScreen(
+      throwResult(this.catalog.deactivateCategory(id)),
+    );
   }
 
-  async activateCategory(id: string): Promise<ProductCategory> {
+  async activateCategory(id: string): Promise<CategoryResult> {
     this.assertAction('products.write');
-    return throwResult(this.catalog.activateCategory(id));
+    return this.withCatalogScreen(
+      throwResult(this.catalog.activateCategory(id)),
+    );
   }
 
-  async deleteCategory(id: string): Promise<ProductCategory> {
+  async deleteCategory(id: string): Promise<CategoryResult> {
     this.assertAction('products.write');
-    return throwResult(this.catalog.deleteCategory(id));
+    return this.withCatalogScreen(throwResult(this.catalog.deleteCategory(id)));
   }
 
   async listProducts(query?: {
@@ -411,9 +421,11 @@ export class FakeAppApi implements AppApi {
   async createAdHocItem(input: {
     name: string;
     priceCents: number;
-  }): Promise<AdHocItem> {
+  }): Promise<AdHocItemResult> {
     this.assertAction('ad_hoc.create');
-    return throwResult(this.catalog.createAdHocItem(input));
+    return this.withCatalogScreen(
+      throwResult(this.catalog.createAdHocItem(input)),
+    );
   }
 
   async listAdHocItems(): Promise<AdHocItem[]> {
@@ -572,8 +584,10 @@ export class FakeAppApi implements AppApi {
     };
   }
 
-  private withCatalogScreen(product: Product): ProductResult {
-    return { ...product, screen: this.catalogScreenUnlocked() };
+  private withCatalogScreen<T extends object>(
+    value: T,
+  ): T & { screen: CatalogScreenData } {
+    return { ...value, screen: this.catalogScreenUnlocked() };
   }
 
   async listSales(): Promise<Sale[]> {

@@ -9,6 +9,49 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-14 11:50 — Excluir no cardápio e varredura de desempenho
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 26.5
+
+### Pedido / objetivo
+
+- Excluir item do cardápio ainda demorava vários segundos.
+- Analisar o app inteiro em desempenho e medir no navegador o tempo de cada ação.
+
+### Tentativa / implementação
+
+- Excluir/criar/editar categoria e item avulso passam a devolver `screen` do cardápio, como produto. A UI não faz segunda chamada.
+- `setupSchema` deixa de reabrir `_meta` quando o schema já está ok nesta execução (vale para venda, aluno, estoque, etc.).
+- `__cantinaPerf` passa a gravar milissegundos por chamada (`timings`), sem PII.
+- Navegador do Cursor: o Web App Google fica num iframe de outro domínio; não dá para clicar nem cronometrar as ações lá. Medição feita pelo grafo de chamadas e E2E local.
+
+### Resultado
+
+- Excluir produto ou categoria: 2 round trips → 1.
+- Mutações que ainda chamavam `setupSchema` completo deixam de reler cabeçalho de schema.
+
+### Diferenças do pedido
+
+- Sem medição de relógio no iframe Google (bloqueio de origem cruzada).
+- Aluno/família/estoque/caixa/pagamento/reserva ainda recarregam a própria aba (próximo corte de round trip).
+
+### Impacto técnico
+
+- Sem schema novo. `PRODUCT_IN_USE` na exclusão de produto continua lendo venda/estoque/reserva na mesma chamada.
+
+### Testes
+
+- Vitest **237** e E2E local **47**: orçamento de 1 chamada em `deleteProduct` e `deleteCategory`; `createCategory.screen`.
+
+### Pendências / próxima versão
+
+- Recarregar o Web App (Ctrl+F5).
+- Fase 27 só com pedido explícito.
+- Opcional: devolver `screen` também em aluno, família, estoque, caixa, pagamento e reserva.
+
 ## 2026-08-14 11:40 — Cadastro de produto e aba Alunos mais rápidos
 
 **Origem:** Pedido do usuário

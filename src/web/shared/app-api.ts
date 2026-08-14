@@ -702,6 +702,14 @@ export interface ProductResult extends Product {
   screen?: CatalogScreenData;
 }
 
+export interface CategoryResult extends ProductCategory {
+  screen?: CatalogScreenData;
+}
+
+export interface AdHocItemResult extends AdHocItem {
+  screen?: CatalogScreenData;
+}
+
 export interface PaymentsScreenData {
   students: StudentSummary[];
   payments: Payment[];
@@ -781,11 +789,11 @@ export interface AppApi {
   getGuardianSettings(): Promise<GuardianSettings>;
   setRequireGuardianBelowAge(age: number): Promise<GuardianSettings>;
   listProductCategories(): Promise<ProductCategory[]>;
-  createCategory(name: string): Promise<ProductCategory>;
-  updateCategory(id: string, name: string): Promise<ProductCategory>;
-  deactivateCategory(id: string): Promise<ProductCategory>;
-  activateCategory(id: string): Promise<ProductCategory>;
-  deleteCategory(id: string): Promise<ProductCategory>;
+  createCategory(name: string): Promise<CategoryResult>;
+  updateCategory(id: string, name: string): Promise<CategoryResult>;
+  deactivateCategory(id: string): Promise<CategoryResult>;
+  activateCategory(id: string): Promise<CategoryResult>;
+  deleteCategory(id: string): Promise<CategoryResult>;
   listProducts(query?: { includeInactive?: boolean }): Promise<Product[]>;
   createProduct(input: ProductFields): Promise<ProductResult>;
   updateProduct(id: string, input: ProductFields): Promise<ProductResult>;
@@ -796,7 +804,7 @@ export interface AppApi {
   createAdHocItem(input: {
     name: string;
     priceCents: number;
-  }): Promise<AdHocItem>;
+  }): Promise<AdHocItemResult>;
   listAdHocItems(): Promise<AdHocItem[]>;
   getInventoryDay(businessDate?: string): Promise<InventoryDay | null>;
   openInventoryDay(input: OpenInventoryDayInput): Promise<InventoryBalances>;

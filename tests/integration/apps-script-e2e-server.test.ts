@@ -213,7 +213,12 @@ interface ServerContext {
   createCategory(
     sessionToken: string,
     payload: Record<string, unknown>,
-  ): { id: string; name: string; active: boolean };
+  ): {
+    id: string;
+    name: string;
+    active: boolean;
+    screen?: { categories: Array<{ name: string }> };
+  };
   updateCategory(
     sessionToken: string,
     id: string,
@@ -230,7 +235,12 @@ interface ServerContext {
   deleteCategory(
     sessionToken: string,
     id: string,
-  ): { id: string; name: string; active: boolean };
+  ): {
+    id: string;
+    name: string;
+    active: boolean;
+    screen?: { categories: Array<{ name: string }> };
+  };
   listProducts(
     sessionToken: string,
     query?: { includeInactive?: boolean },
@@ -3443,6 +3453,24 @@ describe('Apps Script E2E server', () => {
     expect(anas).toHaveLength(2);
     expect(anas.every((item) => item.isHomonym)).toBe(true);
     expect(students.classrooms.length).toBeGreaterThan(0);
+  });
+
+  it('returns catalog screen from deleteCategory', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const created = server.createCategory(owner, { name: 'Lanches perf' });
+    expect(
+      created.screen?.categories.some((item) => item.name === 'Lanches perf'),
+    ).toBe(true);
+    const removed = server.deleteCategory(owner, created.id);
+    expect(
+      removed.screen?.categories.some((item) => item.name === 'Lanches perf'),
+    ).toBe(false);
   });
 
   it('does not let catalog cache change fiado remaining cents', () => {

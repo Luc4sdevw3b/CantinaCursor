@@ -1146,6 +1146,13 @@ function assertKnownMigrations(applied) {
 
 function setupSchema() {
   assertE2EEnvironment();
+  if (schemaEnsured) {
+    return {
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      appliedMigrations: [],
+      environment: CANTINA_ENVIRONMENT,
+    };
+  }
   const spreadsheet = openConfiguredSpreadsheet();
   const meta = getOrCreateSheet(spreadsheet, META_SHEET, META_HEADERS);
   const migrations = getOrCreateSheet(
@@ -3692,9 +3699,11 @@ function loadCatalogUnlocked() {
 }
 
 function createCategory(sessionToken, payload) {
-  requireAction(sessionToken, 'products.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const startedAt = Date.now();
+  resetPerfCounters();
+  const session = requireAction(sessionToken, 'products.write');
+  const category = withScriptLock(function () {
+    ensureSchemaOnce();
     const name = String((payload && payload.name) || '')
       .trim()
       .replace(/\s+/g, ' ');
@@ -3716,12 +3725,17 @@ function createCategory(sessionToken, payload) {
       active: true,
     };
   });
+  category.screen = getCatalogScreenDataUnlocked(session.role);
+  logPerf('createCategory', startedAt);
+  return category;
 }
 
 function updateCategory(sessionToken, id, payload) {
-  requireAction(sessionToken, 'products.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const startedAt = Date.now();
+  resetPerfCounters();
+  const session = requireAction(sessionToken, 'products.write');
+  const category = withScriptLock(function () {
+    ensureSchemaOnce();
     const current = latestCategoryById(id, true);
     const name = String((payload && payload.name) || '')
       .trim()
@@ -3737,12 +3751,17 @@ function updateCategory(sessionToken, id, payload) {
       active: record.active === 'true',
     };
   });
+  category.screen = getCatalogScreenDataUnlocked(session.role);
+  logPerf('updateCategory', startedAt);
+  return category;
 }
 
 function deactivateCategory(sessionToken, id) {
-  requireAction(sessionToken, 'products.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const startedAt = Date.now();
+  resetPerfCounters();
+  const session = requireAction(sessionToken, 'products.write');
+  const category = withScriptLock(function () {
+    ensureSchemaOnce();
     const current = latestCategoryById(id, true);
     if (current.active !== 'true') {
       throw new Error(
@@ -3766,12 +3785,17 @@ function deactivateCategory(sessionToken, id) {
       active: false,
     };
   });
+  category.screen = getCatalogScreenDataUnlocked(session.role);
+  logPerf('deactivateCategory', startedAt);
+  return category;
 }
 
 function activateCategory(sessionToken, id) {
-  requireAction(sessionToken, 'products.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const startedAt = Date.now();
+  resetPerfCounters();
+  const session = requireAction(sessionToken, 'products.write');
+  const category = withScriptLock(function () {
+    ensureSchemaOnce();
     const current = latestCategoryById(id, true);
     if (current.active === 'true') {
       throw new Error('CATEGORY_ALREADY_ACTIVE: Esta categoria já está ativa.');
@@ -3784,12 +3808,17 @@ function activateCategory(sessionToken, id) {
       active: true,
     };
   });
+  category.screen = getCatalogScreenDataUnlocked(session.role);
+  logPerf('activateCategory', startedAt);
+  return category;
 }
 
 function deleteCategory(sessionToken, id) {
-  requireAction(sessionToken, 'products.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const startedAt = Date.now();
+  resetPerfCounters();
+  const session = requireAction(sessionToken, 'products.write');
+  const category = withScriptLock(function () {
+    ensureSchemaOnce();
     const current = latestCategoryById(id, true);
     const products = latestRecordsById(listProductRecords());
     for (let index = 0; index < products.length; index += 1) {
@@ -3812,6 +3841,9 @@ function deleteCategory(sessionToken, id) {
       active: current.active === 'true',
     };
   });
+  category.screen = getCatalogScreenDataUnlocked(session.role);
+  logPerf('deleteCategory', startedAt);
+  return category;
 }
 
 function listProducts(sessionToken, query) {
@@ -4021,9 +4053,11 @@ function listProductPriceHistory(sessionToken, productId) {
 }
 
 function createAdHocItem(sessionToken, payload) {
+  const startedAt = Date.now();
+  resetPerfCounters();
   const session = requireAction(sessionToken, 'ad_hoc.create');
-  return withScriptLock(function () {
-    setupSchema();
+  const item = withScriptLock(function () {
+    ensureSchemaOnce();
     const name = normalizePersonName(
       payload && payload.name ? String(payload.name) : '',
     );
@@ -4054,6 +4088,9 @@ function createAdHocItem(sessionToken, payload) {
       createdAt: record.created_at,
     };
   });
+  item.screen = getCatalogScreenDataUnlocked(session.role);
+  logPerf('createAdHocItem', startedAt);
+  return item;
 }
 
 function listAdHocItems(sessionToken) {

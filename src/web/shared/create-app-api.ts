@@ -18,8 +18,22 @@ function instrumentAppApi(api: AppApi): AppApi {
         return value;
       }
       return (...args: unknown[]) => {
-        recordClientCall(property);
-        return value.apply(target, args);
+        const startedAt = Date.now();
+        const finish = () => recordClientCall(property, Date.now() - startedAt);
+        try {
+          const result = value.apply(target, args) as unknown;
+          if (
+            result &&
+            typeof (result as Promise<unknown>).then === 'function'
+          ) {
+            return (result as Promise<unknown>).finally(finish);
+          }
+          finish();
+          return result;
+        } catch (error) {
+          finish();
+          throw error;
+        }
       };
     },
   });
