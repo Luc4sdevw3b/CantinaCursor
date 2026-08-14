@@ -260,10 +260,22 @@ app.innerHTML = `
     </section>
 
     <section class="students-panel" id="products-panel" hidden>
-      <h2>Produtos</h2>
+      <h2>Cardápio</h2>
       <p id="products-status">Entre para ver o cardápio.</p>
+      <h3>Categorias</h3>
+      <p>Crie a categoria antes do produto, se ela ainda não existir. Use Editar para mudar o nome.</p>
+      <ul id="categories-list"></ul>
+      <form id="category-form" aria-label="Cadastrar categoria">
+        <label>
+          Nome da categoria
+          <input id="category-name" required autocomplete="off" />
+        </label>
+        <button type="submit" id="category-submit">Cadastrar categoria</button>
+        <button type="button" id="category-cancel" hidden>Cancelar</button>
+      </form>
+      <h3>Produtos</h3>
       <ul id="products-list"></ul>
-      <form id="product-form">
+      <form id="product-form" aria-label="Cadastrar produto">
         <label>
           Nome
           <input id="product-name" required />
@@ -290,16 +302,6 @@ app.innerHTML = `
         </label>
         <button type="submit" id="product-submit">Cadastrar produto</button>
         <button type="button" id="product-cancel" hidden>Cancelar</button>
-      </form>
-      <h3>Categorias</h3>
-      <ul id="categories-list"></ul>
-      <form id="category-form">
-        <label>
-          Nome
-          <input id="category-name" required autocomplete="off" />
-        </label>
-        <button type="submit" id="category-submit">Cadastrar categoria</button>
-        <button type="button" id="category-cancel" hidden>Cancelar</button>
       </form>
       <div id="ad-hoc-block">
         <h2>Item avulso</h2>

@@ -111,7 +111,7 @@ Mínimo obrigatório do smoke local:
 33. override presencial: reservar 10 coxinhas; **Vendas** → Coxinha → **Usar unidade reservada** na reserva da Ana → **Confirmar venda**; `Anônima • Coxinha • R$ 5,50`; reserva `… • cancelada`; estoque `Coxinha • 9`. Funcionário não usa unidade reservada.
 34. editar aluno: **Alunos** → **Editar** em Ana ~8 → **Salvar aluno**; criar turma **5º C**.
 35. editar responsável: **Responsáveis** → **Editar** Maria → **Salvar responsável**.
-36. categoria: **Cardápio** → **Cadastrar categoria** `Lanches` → **Editar** → **Salvar categoria** `Lanche da tarde`.
+36. categoria: **Cardápio** abre em **Categorias** no topo; **Cadastrar categoria** `Lanches` → **Editar** → **Salvar categoria** `Lanche da tarde`. Produtos continuam com **Editar** / **Salvar produto**.
 37. enquanto uma ação grava, a tela mostra **Processando…** / **Processando ação…** e o botão fica bloqueado; no fim volta o texto de sucesso ou erro.
 
 Não confundir com o ambiente Google E2E da Fase 3.

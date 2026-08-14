@@ -9,6 +9,42 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-14 10:08 — Categorias no topo do Cardápio
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 26
+
+### Pedido / objetivo
+
+- Criar categoria no Cardápio e editar categorias e produtos já criados.
+
+### Tentativa / implementação
+
+- A tela **Cardápio** passa a abrir em **Categorias** (lista + **Cadastrar categoria** / **Editar** / **Salvar categoria**), depois **Produtos** com **Editar** / **Salvar produto**.
+- A API de categoria já existia; a mudança é de descoberta na tela.
+
+### Resultado
+
+- Dona e funcionário veem criar/editar categoria assim que entram em Cardápio.
+
+### Diferenças do pedido
+
+- Nenhuma.
+
+### Impacto técnico
+
+- Sem schema novo.
+
+### Testes
+
+- E2E local do catálogo e da categoria.
+
+### Pendências / próxima versão
+
+- Publicar no Web App de teste e recarregar.
+
 ## 2026-08-14 09:50 — Cadastro editável, seletor de aluno na reserva e aviso Processando
 
 **Origem:** Pedido do usuário

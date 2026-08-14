@@ -220,6 +220,12 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await page.getByRole('button', { name: 'Entrar como dona' }).click();
     await goToArea(page, 'Cardápio');
     await expect(
+      page.getByRole('heading', { name: 'Cardápio', exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Categorias', exact: true }),
+    ).toBeVisible();
+    await expect(
       page.getByRole('heading', { name: 'Produtos', exact: true }),
     ).toBeVisible();
     await expect(page.getByText('Coxinha • Salgados • R$ 5,50')).toBeVisible();
@@ -319,6 +325,9 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await openLocalApp(page);
     await page.getByRole('button', { name: 'Entrar como dona' }).click();
     await goToArea(page, 'Cardápio');
+    await expect(
+      page.getByRole('button', { name: 'Cadastrar categoria' }),
+    ).toBeVisible();
     await page.locator('#category-name').fill('Lanches');
     await page.getByRole('button', { name: 'Cadastrar categoria' }).click();
     const lanches = page
