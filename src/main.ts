@@ -108,7 +108,6 @@ app.innerHTML = `
       <h2>Reservar recreio</h2>
       <p>Escolha o recreio e o lanche. Não é preciso entrar na cantina.</p>
       <p id="public-portal-status">Carregando recreios…</p>
-      <ul id="public-portal-catalog"></ul>
       <form id="public-portal-form" aria-label="Enviar reserva">
         <label>
           Recreio
@@ -140,6 +139,7 @@ app.innerHTML = `
         </label>
         <button type="submit">Enviar reserva</button>
       </form>
+      <ul id="public-portal-catalog"></ul>
       <p id="public-portal-code" hidden></p>
       <p id="public-portal-confirmation" hidden></p>
     </section>

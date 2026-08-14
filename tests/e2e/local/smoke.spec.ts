@@ -1528,6 +1528,24 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await expect(page.getByRole('button', { name: 'Alunos' })).toHaveCount(0);
     await expect(page.locator('#reservation-student-search')).toBeHidden();
     await expect(page.locator('#reservation-student')).toBeHidden();
+    const portalLayout = await page.evaluate(() => {
+      const form = document.querySelector('#public-portal-form');
+      const catalog = document.querySelector('#public-portal-catalog');
+      if (!(form instanceof HTMLElement) || !(catalog instanceof HTMLElement)) {
+        return null;
+      }
+      return {
+        formComesFirst: Boolean(
+          form.compareDocumentPosition(catalog) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ),
+        overflowY: getComputedStyle(catalog).overflowY,
+      };
+    });
+    expect(portalLayout).toEqual({
+      formComesFirst: true,
+      overflowY: 'auto',
+    });
     await expect(
       page.getByText('Coxinha • R$ 5,50 • disponível 10', { exact: true }),
     ).toBeVisible();

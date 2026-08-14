@@ -23,7 +23,7 @@ Regras:
 
 ### Tentativa / implementação
 
-- Formulários foram movidos para antes de suas listas em Alunos, Responsáveis, Cardápio, Estoque, Reservas, Vendas e Crédito.
+- Formulários foram movidos para antes de suas listas no portal público e em Alunos, Responsáveis, Cardápio, Estoque, Reservas, Vendas e Crédito.
 - Todas as listas das áreas ganharam altura máxima responsiva, rolagem vertical própria, contenção de rolagem e scrollbar discreta.
 - Formulários receberam superfície visual própria para separar claramente a área de ação da área de resultados.
 - Ao editar aluno, turma, responsável, categoria, produto ou recreio, o formulário correspondente entra suavemente em vista.
