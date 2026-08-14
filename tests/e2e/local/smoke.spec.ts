@@ -9,7 +9,7 @@ function isAllowedLocalUrl(url: string): boolean {
   return parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost';
 }
 
-async function openLocalApp(page: Page) {
+async function openLocalApp(page: Page, path = '/') {
   const consoleErrors: string[] = [];
   const pageErrors: string[] = [];
   const externalRequests: string[] = [];
@@ -32,7 +32,7 @@ async function openLocalApp(page: Page) {
     return route.abort();
   });
 
-  await page.goto('/');
+  await page.goto(path);
 
   return { consoleErrors, pageErrors, externalRequests };
 }
@@ -1014,6 +1014,47 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     ).toHaveCount(0);
     await expect(
       page.getByRole('button', { name: 'Confirmar reserva' }),
+    ).toBeVisible();
+  });
+
+  test('creates a public recreio reservation without login or private autocomplete', async ({
+    page,
+  }) => {
+    await openLocalApp(page, '/?portal=reservas');
+    await expect(
+      page.getByRole('heading', { name: 'Reservar recreio' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Entrar como dona' }),
+    ).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Alunos' })).toHaveCount(0);
+    await expect(
+      page.getByText('Coxinha • R$ 5,50 • disponível 10', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Suco de uva • R$ 4,00 • ACABOU', { exact: true }),
+    ).toBeVisible();
+    await page.locator('#public-portal-slot').selectOption({
+      label: 'Recreio tarde • corte 18:00 • retirada 18:15–18:35',
+    });
+    await page.locator('#public-portal-name').fill('Ana Souza');
+    await page.locator('#public-portal-classroom').fill('3º A');
+    await page.locator('#public-portal-contact').fill('11999990000');
+    await page.locator('#public-portal-product').selectOption({
+      label: 'Coxinha • R$ 5,50',
+    });
+    await page.getByRole('button', { name: 'Enviar reserva' }).click();
+    await expect(page.locator('#public-portal-code')).toHaveText(
+      /^Código [A-HJ-NP-Z2-9]{6}$/,
+    );
+    await expect(
+      page.getByText(
+        'Ana Souza • 3º A • Coxinha • R$ 5,50 • Recreio tarde • reservada',
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Coxinha • R$ 5,50 • disponível 9', { exact: true }),
     ).toBeVisible();
   });
 });

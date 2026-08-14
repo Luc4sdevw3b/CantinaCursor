@@ -61,6 +61,8 @@ import type {
   ReservationsSetup,
   CreateReservationSlotInput,
   CreateReservationInput,
+  PublicReservationConfirmation,
+  PublicReservationPortal,
 } from './app-api';
 
 const LOCAL_HEALTH: AppHealth = {
@@ -558,6 +560,25 @@ export class FakeAppApi implements AppApi {
   }): Promise<ReservationsSetup> {
     this.assertAction('reservations.write');
     return throwResult(this.reservations.fulfillReservation(input));
+  }
+
+  async getPublicReservationPortal(): Promise<PublicReservationPortal> {
+    this.ensurePublicDemo();
+    return throwResult(this.reservations.getPublicPortal());
+  }
+
+  async createPublicReservation(
+    input: CreateReservationInput,
+  ): Promise<PublicReservationConfirmation> {
+    this.ensurePublicDemo();
+    throwResult(this.reservations.createReservation(input));
+    return throwResult(this.reservations.toPublicConfirmation(input.requestId));
+  }
+
+  private ensurePublicDemo(): void {
+    this.catalog.ensureDemoCatalog();
+    this.stock.ensureDemoStock();
+    this.reservations.ensureDemoSlots();
   }
 
   private assertSession(): void {

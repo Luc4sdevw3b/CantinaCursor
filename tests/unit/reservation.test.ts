@@ -196,4 +196,44 @@ describe('reservas', () => {
     });
     expect(created.reservations[0]?.status).toBe('reserved');
   });
+
+  it('creates a public reservation without login and labels Suco as ACABOU', async () => {
+    const api = new FakeAppApi();
+    const portal = await api.getPublicReservationPortal();
+    expect(
+      portal.products.find((item) => item.name === 'Suco de uva')?.summaryLabel,
+    ).toBe('Suco de uva • R$ 4,00 • ACABOU');
+    expect(
+      portal.products.find((item) => item.name === 'Coxinha')?.summaryLabel,
+    ).toBe('Coxinha • R$ 5,50 • disponível 10');
+    expect(JSON.stringify(portal)).not.toContain('Ana Souza');
+    const slot = portal.slots.find((item) => item.label === 'Recreio tarde');
+    const coxinha = portal.products.find((item) => item.name === 'Coxinha');
+    if (!slot || !coxinha) {
+      throw new Error('portal público local incompleto');
+    }
+    const created = await api.createPublicReservation({
+      requestId: createRequestId(),
+      slotId: slot.id,
+      studentNameText: 'Ana Souza',
+      classroomText: '3º A',
+      contactOptional: '11999990000',
+      items: [{ productId: coxinha.id, quantity: 1 }],
+    });
+    expect(created.publicCode).toMatch(/^[A-HJ-NP-Z2-9]{6}$/);
+    expect(created.publicCodeLabel).toBe(`Código ${created.publicCode}`);
+    expect(created.summaryLabel).toBe(
+      'Ana Souza • 3º A • Coxinha • R$ 5,50 • Recreio tarde • reservada',
+    );
+    await expect(
+      api.createPublicReservation({
+        requestId: createRequestId(),
+        slotId: slot.id,
+        studentNameText: 'Ana Souza',
+        classroomText: '3º A',
+        website: 'bot',
+        items: [{ productId: coxinha.id, quantity: 1 }],
+      }),
+    ).rejects.toThrow('RESERVATION_REJECTED');
+  });
 });

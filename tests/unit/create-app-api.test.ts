@@ -107,6 +107,8 @@ function runnerWith(
     cancelReservation() {},
     markReservationNoShow() {},
     fulfillReservation() {},
+    getPublicReservationPortal() {},
+    createPublicReservation() {},
     ...extra,
   };
   return runner;

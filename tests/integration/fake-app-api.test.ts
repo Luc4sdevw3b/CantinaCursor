@@ -1167,4 +1167,23 @@ describe('FakeAppApi', () => {
       )?.physicalQuantity,
     ).toBe(10);
   });
+
+  it('creates a public reservation without a session', async () => {
+    const api = new FakeAppApi();
+    const portal = await api.getPublicReservationPortal();
+    const slot = portal.slots.find((item) => item.label === 'Recreio tarde');
+    const coxinha = portal.products.find((item) => item.name === 'Coxinha');
+    if (!slot || !coxinha) {
+      throw new Error('portal público local incompleto');
+    }
+    const created = await api.createPublicReservation({
+      requestId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee26',
+      slotId: slot.id,
+      studentNameText: 'Ana Souza',
+      classroomText: '3º A',
+      items: [{ productId: coxinha.id, quantity: 1 }],
+    });
+    expect(created.publicCodeLabel).toMatch(/^Código [A-HJ-NP-Z2-9]{6}$/);
+    expect(created.summaryLabel).toContain('Recreio tarde • reservada');
+  });
 });

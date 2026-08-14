@@ -607,11 +607,36 @@ export interface CreateReservationInput {
   contactOptional?: string;
   note?: string;
   items: Array<{ productId: string; quantity: number }>;
+  website?: string;
+}
+
+export interface PublicReservationProduct {
+  id: string;
+  name: string;
+  priceCents: number;
+  availableQuantity: number;
+  soldOut: boolean;
+  summaryLabel: string;
+}
+
+export interface PublicReservationPortal {
+  slots: Array<{
+    id: string;
+    label: string;
+    summaryLabel: string;
+  }>;
+  products: PublicReservationProduct[];
+}
+
+export interface PublicReservationConfirmation {
+  publicCode: string;
+  publicCodeLabel: string;
+  summaryLabel: string;
 }
 
 /**
- * Contrato técnico da Fase 23.
- * Sem portal público nem envio de WhatsApp.
+ * Contrato técnico da Fase 24.
+ * Portal público não expõe cadastro privado. Sem envio de WhatsApp.
  */
 export interface AppApi {
   getHealth(): Promise<AppHealth>;
@@ -735,4 +760,8 @@ export interface AppApi {
   fulfillReservation(input: {
     reservationId: string;
   }): Promise<ReservationsSetup>;
+  getPublicReservationPortal(): Promise<PublicReservationPortal>;
+  createPublicReservation(
+    input: CreateReservationInput,
+  ): Promise<PublicReservationConfirmation>;
 }

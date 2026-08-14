@@ -21,7 +21,7 @@ interface E2EHealth {
 }
 
 interface ServerContext {
-  doGet(): unknown;
+  doGet(e?: { parameter?: { portal?: string } }): unknown;
   getHealth(): E2EHealth;
   configureE2EEnvironment(spreadsheetId?: string): E2EHealth;
   resetE2E(sessionToken: string): { reset: true; environment: string };
@@ -393,6 +393,20 @@ interface ServerContext {
     reservations: Array<{ summaryLabel: string }>;
     availability: Array<{ productName: string; reservedQuantity: number }>;
   };
+  getPublicReservationPortal(): {
+    slots: Array<{ id: string; label: string; summaryLabel: string }>;
+    products: Array<{
+      id: string;
+      name: string;
+      summaryLabel: string;
+      soldOut: boolean;
+    }>;
+  };
+  createPublicReservation(payload: Record<string, unknown>): {
+    publicCode: string;
+    publicCodeLabel: string;
+    summaryLabel: string;
+  };
 }
 
 interface DriveMockFile {
@@ -476,7 +490,20 @@ function loadServer(
     setTitle: vi.fn(() => output),
     addMetaTag: vi.fn(() => output),
     setXFrameOptionsMode: vi.fn(() => output),
+    getContent: vi.fn(() => '<html><head></head><body id="app"></body></html>'),
   };
+  const portalOutput = {
+    setTitle: vi.fn(() => portalOutput),
+    addMetaTag: vi.fn(() => portalOutput),
+    setXFrameOptionsMode: vi.fn(() => portalOutput),
+    getContent: vi.fn(() => ''),
+    html: '',
+  };
+  const createHtmlOutput = vi.fn((html: string) => {
+    portalOutput.html = html;
+    portalOutput.getContent = vi.fn(() => html);
+    return portalOutput;
+  });
   const batchUpdate = vi.fn(
     (resource: {
       requests: Array<{
@@ -552,6 +579,7 @@ function loadServer(
     parseInt,
     HtmlService: {
       createHtmlOutputFromFile: vi.fn(() => output),
+      createHtmlOutput,
       XFrameOptionsMode: { ALLOWALL: 'ALLOWALL' },
     },
     PropertiesService: {
@@ -2768,5 +2796,71 @@ describe('Apps Script E2E server', () => {
         .listInventoryBalances(owner)
         .items.find((item) => item.productName === 'Coxinha')?.physicalQuantity,
     ).toBe(10);
+  });
+
+  it('serves the public portal without login and hides private roster data', () => {
+    const { server, output } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    expect(server.doGet()).toBe(output);
+    const portalPage = server.doGet({
+      parameter: { portal: 'reservas' },
+    }) as { getContent: () => string };
+    expect(portalPage.getContent()).toContain(
+      'window.__CANTINA_PUBLIC_PORTAL__=true',
+    );
+    const portal = server.getPublicReservationPortal();
+    expect(portal.slots.length).toBeGreaterThan(0);
+    expect(
+      portal.products.find((item) => item.name === 'Suco de uva')?.summaryLabel,
+    ).toBe('Suco de uva • R$ 4,00 • ACABOU');
+    expect(
+      portal.products.find((item) => item.name === 'Coxinha')?.soldOut,
+    ).toBe(false);
+    expect(JSON.stringify(portal)).not.toContain('Ana Souza');
+    expect(JSON.stringify(portal)).not.toContain('Maria Souza');
+    expect(JSON.stringify(portal)).not.toContain('physicalQuantity');
+    expect(JSON.stringify(portal)).not.toContain('reservedQuantity');
+    const coxinha = portal.products.find((item) => item.name === 'Coxinha');
+    const slot = portal.slots[0];
+    if (!coxinha || !slot) {
+      throw new Error('portal público incompleto');
+    }
+    expect(() =>
+      server.createReservation('missing-token', {
+        requestId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee24',
+        slotId: slot.id,
+        studentNameText: 'Ana Souza',
+        classroomText: '3º A',
+        items: [{ productId: coxinha.id, quantity: 1 }],
+      }),
+    ).toThrow('UNAUTHENTICATED');
+    const created = server.createPublicReservation({
+      requestId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee24',
+      slotId: slot.id,
+      studentNameText: 'Ana Souza',
+      classroomText: '3º A',
+      contactOptional: '11999990000',
+      items: [{ productId: coxinha.id, quantity: 1 }],
+    });
+    expect(created.publicCode).toMatch(/^[A-HJ-NP-Z2-9]{6}$/);
+    expect(created.publicCodeLabel).toBe(`Código ${created.publicCode}`);
+    expect(created.summaryLabel).toContain(
+      'Ana Souza • 3º A • Coxinha • R$ 5,50',
+    );
+    expect(created.summaryLabel).toContain('reservada');
+    expect(JSON.stringify(created)).not.toContain('linked_student_id');
+    expect(() =>
+      server.createPublicReservation({
+        requestId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee25',
+        slotId: slot.id,
+        studentNameText: 'Ana Souza',
+        classroomText: '3º A',
+        website: 'https://spam.example',
+        items: [{ productId: coxinha.id, quantity: 1 }],
+      }),
+    ).toThrow('RESERVATION_REJECTED');
   });
 });

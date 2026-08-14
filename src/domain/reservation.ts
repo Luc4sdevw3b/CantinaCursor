@@ -4,6 +4,7 @@ import {
   parseCivilDate,
 } from './civil-date';
 import { isImmutableId, isSheetRowNumber } from './ids';
+import { SOLD_OUT_LABEL } from './inventory';
 import { formatBrl } from './money';
 import { isRequestId } from './request-id';
 import { err, ok, type Result } from './result';
@@ -73,6 +74,12 @@ export const RESERVATION_CUTOFF_PASSED_ERROR = {
 export const RESERVATION_ITEMS_REQUIRED_ERROR = {
   code: 'RESERVATION_ITEMS_REQUIRED',
   message: 'Informe ao menos um item para reservar.',
+  retryable: false,
+} as const;
+
+export const RESERVATION_REJECTED_ERROR = {
+  code: 'RESERVATION_REJECTED',
+  message: 'Não foi possível concluir a reserva.',
   retryable: false,
 } as const;
 
@@ -361,6 +368,29 @@ export function availabilitySummaryLabel(input: {
   reservedQuantity: number;
 }): string {
   return `${input.productName} • disponível ${input.availableQuantity} • reservado ${input.reservedQuantity}`;
+}
+
+export function publicProductSummaryLabel(input: {
+  name: string;
+  priceCents: number;
+  availableQuantity: number;
+  soldOut: boolean;
+}): string {
+  if (input.soldOut) {
+    return `${input.name} • ${formatBrl(input.priceCents)} • ${SOLD_OUT_LABEL}`;
+  }
+  return `${input.name} • ${formatBrl(input.priceCents)} • disponível ${input.availableQuantity}`;
+}
+
+export function publicReservationCodeLabel(code: string): string {
+  return `Código ${code}`;
+}
+
+export function rejectPublicHoneypot(value: unknown): Result<void> {
+  if (typeof value === 'string' && value.trim()) {
+    return err(RESERVATION_REJECTED_ERROR);
+  }
+  return ok(undefined);
 }
 
 export function createPublicCode(random: () => number = Math.random): string {

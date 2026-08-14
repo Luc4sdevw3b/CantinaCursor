@@ -41,7 +41,7 @@ Estratégia de autenticação deve ser implementada/testada antes de PROD.
 Preferir identidade Google quando viável; se usar PIN/sessão própria, documentar e proteger.
 Nunca usar senha mestra/backdoor.
 
-Na Fase 7: papéis `owner` (dona) e `staff` (funcionário). `loginWithGoogle` usa o e-mail da sessão Google só como `google_subject` e não devolve e-mail. `loginE2E` cria sessão fictícia só se `ENVIRONMENT=E2E` e recusa PROD; não é backdoor. Token de sessão é UUID no `sessionStorage` do adapter, fora da UI. Funções públicas: `doGet`, `getHealth`. Trigger `runScheduledBackup` corre como a conta do deploy, sem token de browser.
+Na Fase 7: papéis `owner` (dona) e `staff` (funcionário). `loginWithGoogle` usa o e-mail da sessão Google só como `google_subject` e não devolve e-mail. `loginE2E` cria sessão fictícia só se `ENVIRONMENT=E2E` e recusa PROD; não é backdoor. Token de sessão é UUID no `sessionStorage` do adapter, fora da UI. Funções públicas: `doGet`, `getHealth`, `getPublicReservationPortal`, `createPublicReservation`. Trigger `runScheduledBackup` corre como a conta do deploy, sem token de browser.
 
 ## Secrets
 

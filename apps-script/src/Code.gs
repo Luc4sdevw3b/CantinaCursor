@@ -459,6 +459,7 @@ const RESERVATION_STATUS_NO_SHOW = 'no_show';
 const RESERVATION_PAYMENT_UNPAID = 'unpaid';
 const RESERVATION_CREATE_OPERATION = 'reservation.create';
 const PUBLIC_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const PUBLIC_ACTOR_ID = 'aaaaaaaa-bbbb-4ccc-8ddd-000000000098';
 const CASH_STATUS_OPEN = 'open';
 const CASH_STATUS_CLOSED = 'closed';
 const CASH_KIND_RECEIVED = 'cash_received';
@@ -580,12 +581,26 @@ const REQUEST_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SCRIPT_LOCK_TIMEOUT_MS = 30000;
 
-function doGet() {
+function doGet(e) {
   ensureE2EConfigured();
-  return HtmlService.createHtmlOutputFromFile('Index')
+  const output = HtmlService.createHtmlOutputFromFile('Index')
     .setTitle(CANTINA_APP_NAME)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  if (e && e.parameter && String(e.parameter.portal) === 'reservas') {
+    return HtmlService.createHtmlOutput(
+      output
+        .getContent()
+        .replace(
+          '<head>',
+          '<head>\n    <script>window.__CANTINA_PUBLIC_PORTAL__=true;</script>',
+        ),
+    )
+      .setTitle(CANTINA_APP_NAME)
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+  return output;
 }
 
 function getScriptEnvironment() {
@@ -8269,6 +8284,144 @@ function fulfillReservation(sessionToken, payload) {
       String((payload && payload.reservationId) || ''),
       RESERVATION_STATUS_FULFILLED,
       'Retirada no recreio',
+    );
+  });
+}
+
+function ensureE2EPublicCatalogUnlocked() {
+  if (getScriptEnvironment() !== CANTINA_ENVIRONMENT) {
+    return;
+  }
+  setupSchema();
+  if (!latestRecordsById(listProductRecords()).length) {
+    seedE2EProductsUnlocked();
+  }
+  const today = todayCivil();
+  if (!findInventoryDayGs(today)) {
+    seedE2EInventoryUnlocked();
+  }
+  const slotsToday = latestRecordsById(listReservationSlotRecords()).filter(
+    function (item) {
+      return item.business_date === today;
+    },
+  );
+  if (!slotsToday.length) {
+    seedE2ESlotsUnlocked();
+  }
+  const nowMs = Date.parse(new Date().toISOString());
+  const openSlots = latestRecordsById(listReservationSlotRecords()).filter(
+    function (item) {
+      return (
+        item.business_date === today &&
+        item.active === 'true' &&
+        Date.parse(item.cutoff_at) > nowMs
+      );
+    },
+  );
+  if (!openSlots.length) {
+    const actor = 'aaaaaaaa-bbbb-4ccc-8ddd-000000000099';
+    const now = new Date().toISOString();
+    openNamedSheet(
+      RESERVATION_SLOTS_SHEET,
+      RESERVATION_SLOTS_HEADERS,
+    ).appendRow([
+      Utilities.getUuid(),
+      today,
+      'Recreio extra',
+      combineCivilTimeSaoPauloGs(today, '23:51'),
+      combineCivilTimeSaoPauloGs(today, '23:59'),
+      combineCivilTimeSaoPauloGs(today, '23:50'),
+      'true',
+      actor,
+      now,
+    ]);
+  }
+}
+
+function toPublicPortalGs() {
+  const setup = toReservationsSetupGs();
+  const availabilityByProduct = {};
+  setup.availability.forEach(function (item) {
+    availabilityByProduct[item.productId] = item;
+  });
+  return {
+    slots: setup.slots
+      .filter(function (item) {
+        return item.openForReservations;
+      })
+      .map(function (item) {
+        return {
+          id: item.id,
+          label: item.label,
+          summaryLabel: item.summaryLabel,
+        };
+      }),
+    products: setup.reservableProducts.map(function (product) {
+      const availability = availabilityByProduct[product.id];
+      const availableQuantity = availability
+        ? Number(availability.availableQuantity)
+        : 0;
+      const soldOut = !availability || availableQuantity <= 0;
+      return {
+        id: product.id,
+        name: product.name,
+        priceCents: product.priceCents,
+        availableQuantity: availableQuantity,
+        soldOut: soldOut,
+        summaryLabel: soldOut
+          ? product.name +
+            ' • ' +
+            formatBrlGs(product.priceCents) +
+            ' • ' +
+            SOLD_OUT_LABEL
+          : product.name +
+            ' • ' +
+            formatBrlGs(product.priceCents) +
+            ' • disponível ' +
+            availableQuantity,
+      };
+    }),
+  };
+}
+
+function toPublicConfirmationGs(requestId) {
+  const reservation = latestRecordsById(listReservationRecords()).filter(
+    function (item) {
+      return item.request_id === requestId;
+    },
+  )[0];
+  if (!reservation) {
+    throw new Error('RESERVATION_NOT_FOUND: Reserva não encontrada.');
+  }
+  const view = toReservationViewGs(reservation);
+  return {
+    publicCode: view.publicCode,
+    publicCodeLabel: 'Código ' + view.publicCode,
+    summaryLabel: view.summaryLabel,
+  };
+}
+
+function getPublicReservationPortal() {
+  setupSchema();
+  ensureE2EPublicCatalogUnlocked();
+  return toPublicPortalGs();
+}
+
+function createPublicReservation(payload) {
+  const bait = String(
+    (payload && (payload.website || payload.company)) || '',
+  ).trim();
+  if (bait) {
+    throw new Error(
+      'RESERVATION_REJECTED: Não foi possível concluir a reserva.',
+    );
+  }
+  return withScriptLock(function () {
+    setupSchema();
+    ensureE2EPublicCatalogUnlocked();
+    createReservationUnlocked(PUBLIC_ACTOR_ID, payload || {});
+    return toPublicConfirmationGs(
+      payload && payload.requestId ? String(payload.requestId) : '',
     );
   });
 }

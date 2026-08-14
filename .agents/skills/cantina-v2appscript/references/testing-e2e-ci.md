@@ -105,6 +105,7 @@ Mínimo obrigatório do smoke local:
 27. estorno sem retorno: PIX Coxinha; **Não, manter fora do estoque**; estoque permanece `Coxinha • 9`. Funcionário vê a auditoria e não vê **Confirmar estorno da venda**.
 28. reserva do recreio: **Reservas** → Recreio tarde → Ana Souza / 3º A / Coxinha → **Confirmar reserva**; lista `Ana Souza • 3º A • Coxinha • R$ 5,50 • Recreio tarde • reservada`; disponibilidade `Coxinha • disponível 9 • reservado 1`; estoque físico `Coxinha • 10`.
 29. funcionário vê **Confirmar reserva** e não vê **Criar recreio**.
+30. portal público: `/?portal=reservas` sem login; catálogo `Coxinha • R$ 5,50 • disponível 10` e `Suco de uva • R$ 4,00 • ACABOU`; Ana Souza / 3º A / Coxinha → **Enviar reserva**; `Código` de 6 caracteres e `Ana Souza • 3º A • Coxinha • R$ 5,50 • Recreio tarde • reservada`. Sem **Entrar como dona** e sem área Alunos.
 
 Não confundir com o ambiente Google E2E da Fase 3.
 
@@ -116,7 +117,7 @@ Quando o deployment E2E da Fase 3 existir:
 - Spreadsheet E2E isolada;
 - `resetE2E` / `seedE2E` abortam se `ENVIRONMENT !== E2E` e nunca em PROD;
 - dados somente fictícios;
-- smoke Playwright: `npm run test:e2e:remote` (health público, sem exigir login).
+- smoke Playwright: `npm run test:e2e:remote` (health público e reserva pública, sem exigir login).
 
 Sem `E2E_BASE_URL` os testes remotos são ignorados. O CI da fundação não executa E2E remoto e não usa secrets.
 

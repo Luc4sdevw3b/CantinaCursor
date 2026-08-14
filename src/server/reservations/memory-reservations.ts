@@ -3,6 +3,9 @@ import {
   availabilitySummaryLabel,
   buildSlotTimes,
   createPublicCode,
+  publicProductSummaryLabel,
+  publicReservationCodeLabel,
+  rejectPublicHoneypot,
   isActiveReservationStatus,
   parseClassroomText,
   parseImmutableId,
@@ -88,6 +91,30 @@ export interface ReservableProductView {
   id: string;
   name: string;
   priceCents: number;
+}
+
+export interface PublicReservationProductView {
+  id: string;
+  name: string;
+  priceCents: number;
+  availableQuantity: number;
+  soldOut: boolean;
+  summaryLabel: string;
+}
+
+export interface PublicReservationPortalView {
+  slots: Array<{
+    id: string;
+    label: string;
+    summaryLabel: string;
+  }>;
+  products: PublicReservationProductView[];
+}
+
+export interface PublicReservationConfirmationView {
+  publicCode: string;
+  publicCodeLabel: string;
+  summaryLabel: string;
 }
 
 export interface ReservationsSetupView {
@@ -276,6 +303,60 @@ export class MemoryReservations {
     });
   }
 
+  getPublicPortal(): Result<PublicReservationPortalView> {
+    const setup = this.getSetup();
+    if (!setup.ok) {
+      return err(setup.error);
+    }
+    const availabilityByProduct = new Map(
+      setup.data.availability.map((item) => [item.productId, item]),
+    );
+    return ok({
+      slots: setup.data.slots
+        .filter((item) => item.openForReservations)
+        .map((item) => ({
+          id: item.id,
+          label: item.label,
+          summaryLabel: item.summaryLabel,
+        })),
+      products: setup.data.reservableProducts.map((product) => {
+        const availability = availabilityByProduct.get(product.id);
+        const availableQuantity = availability?.availableQuantity ?? 0;
+        const soldOut = !availability || availableQuantity <= 0;
+        return {
+          id: product.id,
+          name: product.name,
+          priceCents: product.priceCents,
+          availableQuantity,
+          soldOut,
+          summaryLabel: publicProductSummaryLabel({
+            name: product.name,
+            priceCents: product.priceCents,
+            availableQuantity,
+            soldOut,
+          }),
+        };
+      }),
+    });
+  }
+
+  toPublicConfirmation(
+    requestId: string,
+  ): Result<PublicReservationConfirmationView> {
+    const reservation = latestById(this.reservations).find(
+      (item) => item.request_id === requestId,
+    );
+    if (!reservation) {
+      return err(RESERVATION_NOT_FOUND_ERROR);
+    }
+    const view = this.toReservation(reservation);
+    return ok({
+      publicCode: view.publicCode,
+      publicCodeLabel: publicReservationCodeLabel(view.publicCode),
+      summaryLabel: view.summaryLabel,
+    });
+  }
+
   createSlot(input: {
     label?: unknown;
     businessDate?: unknown;
@@ -322,7 +403,12 @@ export class MemoryReservations {
     status?: unknown;
     items?: unknown;
     partialPickup?: unknown;
+    website?: unknown;
   }): Result<ReservationsSetupView> {
+    const honeypot = rejectPublicHoneypot(input.website);
+    if (!honeypot.ok) {
+      return err(honeypot.error);
+    }
     const prepared = rejectPreparedStatus(input.status);
     if (!prepared.ok) {
       return err(prepared.error);

@@ -54,6 +54,8 @@ import type {
   ReservationsSetup,
   CreateReservationSlotInput,
   CreateReservationInput,
+  PublicReservationConfirmation,
+  PublicReservationPortal,
 } from './app-api';
 
 export const SESSION_TOKEN_STORAGE_KEY = 'cantina.sessionToken';
@@ -141,6 +143,8 @@ export interface GoogleScriptRunner {
   cancelReservation(token: string, payload: unknown): void;
   markReservationNoShow(token: string, payload: unknown): void;
   fulfillReservation(token: string, payload: unknown): void;
+  getPublicReservationPortal(): void;
+  createPublicReservation(payload: unknown): void;
 }
 
 export type SessionTokenStorage = Pick<
@@ -767,6 +771,22 @@ export class GoogleScriptAppApi implements AppApi {
   }): Promise<ReservationsSetup> {
     return this.callWithToken((runner, token) =>
       runner.fulfillReservation(token, input),
+    );
+  }
+
+  getPublicReservationPortal(): Promise<PublicReservationPortal> {
+    return this.call(
+      (runner) => runner.getPublicReservationPortal(),
+      (value) => value as PublicReservationPortal,
+    );
+  }
+
+  createPublicReservation(
+    input: CreateReservationInput,
+  ): Promise<PublicReservationConfirmation> {
+    return this.call(
+      (runner) => runner.createPublicReservation(input),
+      (value) => value as PublicReservationConfirmation,
     );
   }
 

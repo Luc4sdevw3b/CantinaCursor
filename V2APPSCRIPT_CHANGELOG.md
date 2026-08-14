@@ -9,6 +9,42 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-14 07:45 — Implementada a Fase 24: portal público de reservas
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 24
+
+### Pedido / objetivo
+
+- Executar a Fase 24: catálogo reservável, `ACABOU`, nome digitado, turma, contato opcional, sem autocomplete privado e código público. E2E remoto obrigatório.
+
+### Tentativa / implementação
+
+- Superfície `?portal=reservas` (e `doGet` no Apps Script injeta o modo portal). Sem login, sem alunos, sem dívidas e sem créditos.
+- `getPublicReservationPortal` e `createPublicReservation` são públicos. Preço e disponibilidade são recalculados no servidor, com lock e `request_id`.
+- Catálogo mostra `Coxinha • R$ 5,50 • disponível 10` e `Suco de uva • R$ 4,00 • ACABOU`. Depois da reserva, o código público de 6 caracteres aparece para a retirada.
+- Campo honeypot escondido recusa envio automático. Confirmar venda não muda de rótulo.
+
+### Resultado
+
+- Fase 24 concluída sobre o ambiente E2E isolado e o preview local.
+- Gestão da dona é a Fase 25. Reserva→venda permanece na Fase 26.
+
+### Diferenças do pedido
+
+- O portal não pesquisa reserva pelo código; só mostra o código na confirmação.
+
+### Impacto técnico
+
+- Sem migration nova. O portal reusa as abas da Fase 23 e não devolve a lista interna de reservas.
+
+### Testes
+
+- typecheck, lint, format, Vitest (207) e E2E local (34) passaram.
+- E2E remoto: health smoke e reserva pública no deployment novo após `clasp push` + `clasp deploy`.
+
 ## 2026-08-13 19:10 — Implementada a Fase 23: recreios e reservas
 
 **Origem:** Pedido do usuário

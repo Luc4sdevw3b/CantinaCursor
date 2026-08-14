@@ -47,7 +47,7 @@ app.innerHTML = `
         <p class="eyebrow">Web App em preparação</p>
         <div class="hero-title-row">
           <h1 id="page-title">Cantina V2 AppScript</h1>
-          <span class="phase-badge">Fase 23</span>
+          <span class="phase-badge">Fase 24</span>
         </div>
         <p class="intro">
           Uma base simples e confiável para a operação diária da cantina.
@@ -86,6 +86,46 @@ app.innerHTML = `
         <button type="button" data-area="products">Cardápio</button>
         <button type="button" data-area="adjust" data-owner-only>Juros</button>
       </nav>
+    </section>
+
+    <section class="students-panel" id="public-portal" hidden>
+      <h2>Reservar recreio</h2>
+      <p>Escolha o recreio e o lanche. Não é preciso entrar na cantina.</p>
+      <p id="public-portal-status">Carregando recreios…</p>
+      <ul id="public-portal-catalog"></ul>
+      <form id="public-portal-form" aria-label="Enviar reserva">
+        <label>
+          Recreio
+          <select id="public-portal-slot" aria-label="Recreio da reserva pública"></select>
+        </label>
+        <label>
+          Nome para retirada
+          <input id="public-portal-name" required autocomplete="off" />
+        </label>
+        <label>
+          Turma
+          <input id="public-portal-classroom" required autocomplete="off" />
+        </label>
+        <label>
+          Contato (opcional)
+          <input id="public-portal-contact" autocomplete="off" />
+        </label>
+        <label>
+          Produto
+          <select id="public-portal-product" aria-label="Produto da reserva pública"></select>
+        </label>
+        <label>
+          Quantidade
+          <input id="public-portal-quantity" type="number" min="1" max="20" value="1" required />
+        </label>
+        <label class="sr-only" aria-hidden="true">
+          Empresa
+          <input id="public-portal-honeypot" tabindex="-1" autocomplete="off" />
+        </label>
+        <button type="submit">Enviar reserva</button>
+      </form>
+      <p id="public-portal-code" hidden></p>
+      <p id="public-portal-confirmation" hidden></p>
     </section>
 
     <div class="workspace" id="workspace">
@@ -808,6 +848,21 @@ let activeArea: AppArea = DEFAULT_AREA;
 
 function isAppArea(value: string | undefined): value is AppArea {
   return Boolean(value && value in AREA_PANELS);
+}
+
+function isPublicPortal(): boolean {
+  const injected = (globalThis as { __CANTINA_PUBLIC_PORTAL__?: boolean })
+    .__CANTINA_PUBLIC_PORTAL__;
+  if (injected === true) {
+    return true;
+  }
+  try {
+    return (
+      new URLSearchParams(window.location.search).get('portal') === 'reservas'
+    );
+  } catch {
+    return false;
+  }
 }
 
 function syncWorkspace(session: AppSession | null): void {
@@ -1698,6 +1753,66 @@ function fillSelect(
   }
   if (options.some((item) => item.value === current)) {
     select.value = current;
+  }
+}
+
+async function renderPublicPortal(): Promise<void> {
+  const panel = document.querySelector('#public-portal');
+  const status = document.querySelector('#public-portal-status');
+  const catalog = document.querySelector('#public-portal-catalog');
+  const form = document.querySelector('#public-portal-form');
+  if (
+    !(panel instanceof HTMLElement) ||
+    !status ||
+    !(catalog instanceof HTMLElement)
+  ) {
+    return;
+  }
+  panel.hidden = false;
+  if (form instanceof HTMLElement) {
+    form.hidden = false;
+  }
+  catalog.replaceChildren();
+  try {
+    const portal = await api.getPublicReservationPortal();
+    for (const item of portal.products) {
+      const row = document.createElement('li');
+      row.textContent = item.summaryLabel;
+      catalog.append(row);
+    }
+    fillSelect(
+      document.querySelector('#public-portal-slot'),
+      portal.slots.map((item) => ({
+        value: item.id,
+        label: item.summaryLabel,
+      })),
+      'Escolha o recreio',
+    );
+    fillSelect(
+      document.querySelector('#public-portal-product'),
+      portal.products
+        .filter((item) => !item.soldOut)
+        .map((item) => ({
+          value: item.id,
+          label: `${item.name} • ${formatBrl(item.priceCents)}`,
+        })),
+      'Escolha o produto',
+    );
+    if (portal.slots.length === 0) {
+      status.textContent = 'Nenhum recreio aberto para reserva agora.';
+      if (form instanceof HTMLElement) {
+        form.hidden = true;
+      }
+      return;
+    }
+    status.textContent = portal.products.some((item) => !item.soldOut)
+      ? 'Preencha o nome e a turma para reservar.'
+      : 'Os lanches reserváveis estão em ACABOU.';
+  } catch (error: unknown) {
+    status.textContent =
+      error instanceof Error
+        ? error.message.replace(/^[A-Z_]+:\s*/, '')
+        : 'Não foi possível carregar o portal.';
   }
 }
 
@@ -4117,6 +4232,75 @@ reservationsList?.addEventListener('click', (event) => {
     });
 });
 
+document
+  .querySelector('#public-portal-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const slot = document.querySelector('#public-portal-slot');
+    const name = document.querySelector('#public-portal-name');
+    const classroom = document.querySelector('#public-portal-classroom');
+    const contact = document.querySelector('#public-portal-contact');
+    const product = document.querySelector('#public-portal-product');
+    const quantity = document.querySelector('#public-portal-quantity');
+    const honeypot = document.querySelector('#public-portal-honeypot');
+    const status = document.querySelector('#public-portal-status');
+    const code = document.querySelector('#public-portal-code');
+    const confirmation = document.querySelector('#public-portal-confirmation');
+    if (
+      !(slot instanceof HTMLSelectElement) ||
+      !(name instanceof HTMLInputElement) ||
+      !(classroom instanceof HTMLInputElement) ||
+      !(contact instanceof HTMLInputElement) ||
+      !(product instanceof HTMLSelectElement) ||
+      !(quantity instanceof HTMLInputElement)
+    ) {
+      return;
+    }
+    void api
+      .createPublicReservation({
+        requestId: createRequestId(),
+        slotId: slot.value,
+        studentNameText: name.value,
+        classroomText: classroom.value,
+        contactOptional: contact.value,
+        website: honeypot instanceof HTMLInputElement ? honeypot.value : '',
+        items: [
+          {
+            productId: product.value,
+            quantity: Number(quantity.value),
+          },
+        ],
+      })
+      .then((created) => {
+        name.value = '';
+        classroom.value = '';
+        contact.value = '';
+        quantity.value = '1';
+        if (code instanceof HTMLElement) {
+          code.hidden = false;
+          code.textContent = created.publicCodeLabel;
+        }
+        if (confirmation instanceof HTMLElement) {
+          confirmation.hidden = false;
+          confirmation.textContent = created.summaryLabel;
+        }
+        return renderPublicPortal().then(() => {
+          if (status) {
+            status.textContent =
+              'Reserva enviada. Guarde o código para a retirada.';
+          }
+        });
+      })
+      .catch((error: unknown) => {
+        if (status) {
+          status.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível enviar a reserva.';
+        }
+      });
+  });
+
 void api
   .getHealth()
   .then(async (health) => {
@@ -4138,6 +4322,12 @@ void api
 
     const canLogin =
       health.environment === 'LOCAL' || health.environment === 'E2E';
+    if (isPublicPortal()) {
+      renderSession(null, false);
+      syncWorkspace(null);
+      await renderPublicPortal();
+      return;
+    }
     const session = canLogin ? await api.getSession() : null;
     if (canLogin) {
       await showAuthenticated(session);

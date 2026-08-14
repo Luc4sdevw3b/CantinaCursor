@@ -177,7 +177,7 @@ Venda/pagamento estornados ganham uma linha posterior com o mesmo id e `status=r
 
 `_reservation_status_history`: id, reservation_id, from_status, to_status, actor_id, created_at, reason. Mudança de status é append com o mesmo id da reserva.
 
-Reserva ativa aumenta reservado e reduz disponível. Cancelar, não retirada e retirada (status) liberam reservado sem baixar o físico. Converter reserva em venda fica na Fase 26. Portal público fica na Fase 24.
+Reserva ativa aumenta reservado e reduz disponível. Cancelar, não retirada e retirada (status) liberam reservado sem baixar o físico. Converter reserva em venda fica na Fase 26. O portal público (`?portal=reservas`) usa as mesmas abas, sem devolver cadastro privado.
 
 ## Notas
 
