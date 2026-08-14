@@ -97,6 +97,7 @@ test.describe('E2E remoto (Apps Script E2E + planilha isolada)', () => {
     await app.getByRole('button', { name: 'Enviar reserva' }).click();
     await expect(app.locator('#public-portal-code')).toHaveText(
       /^Código [A-HJ-NP-Z2-9]{6}$/,
+      { timeout: 30_000 },
     );
     await expect(
       app.getByText(
