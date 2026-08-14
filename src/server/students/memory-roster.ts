@@ -505,7 +505,10 @@ export class MemoryRoster {
 
   updateStudent(
     id: string,
-    input: StudentProfileFields,
+    input: StudentProfileFields & {
+      classroomId?: string | null;
+      startedOn?: string | null;
+    },
   ): Result<StudentDetailView> {
     const current = this.getStudent(id);
     if (!current.ok) {
@@ -528,6 +531,15 @@ export class MemoryRoster {
       ...profile.data,
       updated_at: this.nowIso(),
     });
+    if (input.classroomId) {
+      const enrolled = this.enrollStudent(id, {
+        classroomId: input.classroomId,
+        startedOn: input.startedOn || civilDateFromTimestamp(this.nowIso()),
+      });
+      if (!enrolled.ok) {
+        return enrolled;
+      }
+    }
     return this.getStudent(id);
   }
 

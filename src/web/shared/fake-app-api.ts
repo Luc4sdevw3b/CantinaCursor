@@ -56,8 +56,8 @@ import type {
   SiblingAuthorization,
   StudentDetail,
   StudentGuardianLink,
-  StudentProfileFields,
   StudentSummary,
+  UpdateStudentInput,
   ReservationsSetup,
   CreateReservationSlotInput,
   CreateReservationInput,
@@ -157,7 +157,11 @@ export class FakeAppApi implements AppApi {
     this.catalog.ensureDemoCatalog();
     this.stock.ensureDemoStock();
     this.reservations.ensureDemoSlots();
-    return { role };
+    return {
+      role,
+      screen: this.saleScreenUnlocked(),
+      roster: this.rosterScreenUnlocked(),
+    };
   }
 
   async logout(): Promise<void> {
@@ -221,7 +225,7 @@ export class FakeAppApi implements AppApi {
 
   async updateStudent(
     id: string,
-    input: StudentProfileFields,
+    input: UpdateStudentInput,
   ): Promise<StudentResult> {
     this.assertSession();
     return this.withStudentsScreen(
@@ -597,13 +601,30 @@ export class FakeAppApi implements AppApi {
     return { ...value, screen: this.catalogScreenUnlocked() };
   }
 
-  private studentsScreenUnlocked(): StudentsScreenData {
+  private rosterScreenUnlocked(): StudentsScreenData {
+    const students = throwResult(
+      this.roster.listStudents({ includeInactive: true }),
+    );
+    const links: StudentGuardianLink[] = [];
+    for (const student of students) {
+      links.push(...throwResult(this.roster.getStudentGuardians(student.id)));
+    }
     return {
-      students: throwResult(
-        this.roster.listStudents({ includeInactive: true }),
-      ),
+      students,
       classrooms: throwResult(this.roster.listClassrooms()),
+      guardians: throwResult(
+        this.roster.listGuardians({ includeInactive: true }),
+      ),
+      siblingAuthorizations: throwResult(
+        this.roster.listSiblingAuthorizations(),
+      ),
+      settings: throwResult(this.roster.getGuardianSettings()),
+      links,
     };
+  }
+
+  private studentsScreenUnlocked(): StudentsScreenData {
+    return this.rosterScreenUnlocked();
   }
 
   private withStudentsScreen<T extends object>(
@@ -613,24 +634,7 @@ export class FakeAppApi implements AppApi {
   }
 
   private familyScreenUnlocked(): FamilyScreenData {
-    const students = throwResult(
-      this.roster.listStudents({ includeInactive: true }),
-    );
-    const links: StudentGuardianLink[] = [];
-    for (const student of students) {
-      links.push(...throwResult(this.roster.getStudentGuardians(student.id)));
-    }
-    return {
-      guardians: throwResult(
-        this.roster.listGuardians({ includeInactive: true }),
-      ),
-      students,
-      siblingAuthorizations: throwResult(
-        this.roster.listSiblingAuthorizations(),
-      ),
-      settings: throwResult(this.roster.getGuardianSettings()),
-      links,
-    };
+    return this.rosterScreenUnlocked();
   }
 
   private withFamilyScreen<T extends object>(
@@ -648,20 +652,12 @@ export class FakeAppApi implements AppApi {
   }
 
   private paymentsScreenUnlocked(): PaymentsScreenData {
-    const students = throwResult(
-      this.roster.listStudents({ includeInactive: true }),
-    );
-    const links: StudentGuardianLink[] = [];
-    for (const student of students) {
-      links.push(...throwResult(this.roster.getStudentGuardians(student.id)));
-    }
+    const roster = this.rosterScreenUnlocked();
     return {
-      students,
+      students: roster.students,
       payments: throwResult(this.sales.listPayments()),
-      guardians: throwResult(
-        this.roster.listGuardians({ includeInactive: true }),
-      ),
-      links,
+      guardians: roster.guardians,
+      links: roster.links,
       receivables: throwResult(this.sales.listReceivables()),
     };
   }
@@ -673,13 +669,10 @@ export class FakeAppApi implements AppApi {
   }
 
   private creditsScreenUnlocked(): CreditsScreenData {
+    const roster = this.rosterScreenUnlocked();
     return {
-      students: throwResult(
-        this.roster.listStudents({ includeInactive: true }),
-      ),
-      guardians: throwResult(
-        this.roster.listGuardians({ includeInactive: true }),
-      ),
+      students: roster.students,
+      guardians: roster.guardians,
       accounts: throwResult(this.sales.listCreditAccounts()),
     };
   }

@@ -9,7 +9,52 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-14 13:20 — Corrigir o restante da auditoria de lentidão
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 26.5
+
+### Pedido / objetivo
+
+- Corrigir tudo o que a auditoria e as análises encontraram.
+
+### Tentativa / implementação
+
+- Login (`loginE2E` / `loginWithGoogle`) devolve `screen` (Vendas) e `roster` (Alunos/Responsáveis) depois do lock. A UI não faz uma segunda ida para montar Vendas.
+- Vendas/estornos: itens, settlements, dívidas, alocações e alunos/responsáveis/produtos viram mapa uma vez por execução, em vez de filtrar a aba inteira por linha.
+- Alunos e Responsáveis passam a devolver o mesmo cadastro completo; a UI reusa depois do login.
+- Pagamentos e crédito, com cadastro já em memória, pedem só `listPayments` / `listCreditAccounts`.
+- Trocar turma no aluno entra no mesmo `updateStudent` (`classroomId`), sem `enrollStudent` extra.
+- Cardápio ~3,5 s e o piso de ~3 s de `google.script.run` continuam intrínsecos.
+
+### Resultado
+
+- Login + Vendas: 1 chamada. Alunos e Responsáveis depois do login: 0. Pagamentos/crédito: 1 lista cada. Salvar aluno com turma nova: 1 `updateStudent`.
+
+### Diferenças do pedido
+
+- Não dá para zerar o piso de uma ida fria ao Google (~3 s). Cardápio em cache já está nesse piso.
+- Estornos ainda é 1 chamada na primeira abertura; o corte é de CPU dentro da chamada, não de round trip.
+
+### Impacto técnico
+
+- `AppSession` pode trazer `screen` e `roster` só no login; `getSession` continua só com o papel.
+- Índices derivados seguem o mesmo ciclo do cache de abas: desligados sob lock.
+
+### Testes
+
+- Vitest: login com `screen`/`roster`; `updateStudent` com turma; alunos e família com o mesmo cadastro.
+- E2E local: login = `loginE2E`; Alunos/Responsáveis 0 chamadas; Pagamentos/Crédito = listas; turma nova = 1 `updateStudent`.
+
+### Pendências / próxima versão
+
+- Publicar o Web App DEV para a dona sentir o corte no Google.
+- Fase 27 (WhatsApp) continua fora.
+
 ## 2026-08-14 12:40 — Cortar laços do Sheets e reusar Vendas
+
 
 **Origem:** Pedido do usuário
 **Status:** Implementado

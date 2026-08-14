@@ -48,7 +48,7 @@ import type {
   SiblingAuthorization,
   StudentDetail,
   StudentGuardianLink,
-  StudentProfileFields,
+  UpdateStudentInput,
   StudentSummary,
   ReservationsSetup,
   CreateReservationSlotInput,
@@ -321,12 +321,24 @@ export class GoogleScriptAppApi implements AppApi {
         if (!value || typeof value !== 'object') {
           throw new Error('Login E2E inválido.');
         }
-        const payload = value as { token?: unknown; role?: unknown };
+        const payload = value as {
+          token?: unknown;
+          role?: unknown;
+          screen?: unknown;
+          roster?: unknown;
+        };
         if (typeof payload.token !== 'string' || !isUserRole(payload.role)) {
           throw new Error('Login E2E inválido.');
         }
         this.storage?.setItem(SESSION_TOKEN_STORAGE_KEY, payload.token);
-        return { role: payload.role };
+        const session: AppSession = { role: payload.role };
+        if (payload.screen && typeof payload.screen === 'object') {
+          session.screen = payload.screen as SaleScreenData;
+        }
+        if (payload.roster && typeof payload.roster === 'object') {
+          session.roster = payload.roster as StudentsScreenData;
+        }
+        return session;
       },
     );
   }
@@ -405,7 +417,7 @@ export class GoogleScriptAppApi implements AppApi {
 
   updateStudent(
     id: string,
-    input: StudentProfileFields,
+    input: UpdateStudentInput,
   ): Promise<StudentResult> {
     return this.callWithToken((runner, token) =>
       runner.updateStudent(token, id, {

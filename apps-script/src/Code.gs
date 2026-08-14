@@ -594,6 +594,16 @@ var derivedPhysicalByDay = {};
 var derivedReservedByKey = {};
 var derivedRemainingByIgnore = {};
 var derivedCashMovementsBySession = null;
+var derivedStudentById = null;
+var derivedGuardianById = null;
+var derivedProductById = null;
+var derivedSaleItemsBySale = null;
+var derivedSettlementsBySale = null;
+var derivedReceivablesBySale = null;
+var derivedAllocationsByPayment = null;
+var derivedCreditAllocationsByPayment = null;
+var derivedCreditAccountById = null;
+var derivedEffectsByReversal = null;
 var perfCounters = {
   sheetReads: 0,
   sheetWrites: 0,
@@ -605,6 +615,163 @@ function clearDerivedPerfCaches() {
   derivedReservedByKey = {};
   derivedRemainingByIgnore = {};
   derivedCashMovementsBySession = null;
+  derivedStudentById = null;
+  derivedGuardianById = null;
+  derivedProductById = null;
+  derivedSaleItemsBySale = null;
+  derivedSettlementsBySale = null;
+  derivedReceivablesBySale = null;
+  derivedAllocationsByPayment = null;
+  derivedCreditAllocationsByPayment = null;
+  derivedCreditAccountById = null;
+  derivedEffectsByReversal = null;
+}
+
+function groupRecordsByField(records, field) {
+  const grouped = {};
+  records.forEach(function (item) {
+    const key = item[field] || '';
+    if (!grouped[key]) {
+      grouped[key] = [];
+    }
+    grouped[key].push(item);
+  });
+  return grouped;
+}
+
+function indexLatestRecordsById(records) {
+  const map = {};
+  latestRecordsById(records).forEach(function (item) {
+    map[item.id] = item;
+  });
+  return map;
+}
+
+function studentRecordByIdMapGs() {
+  if (sheetRecordsCacheEnabled && derivedStudentById) {
+    return derivedStudentById;
+  }
+  const map = indexLatestRecordsById(
+    listSheetRecords(
+      openNamedSheet(STUDENTS_SHEET, STUDENTS_HEADERS),
+      STUDENTS_HEADERS,
+    ),
+  );
+  if (sheetRecordsCacheEnabled) {
+    derivedStudentById = map;
+  }
+  return map;
+}
+
+function guardianRecordByIdMapGs() {
+  if (sheetRecordsCacheEnabled && derivedGuardianById) {
+    return derivedGuardianById;
+  }
+  const map = indexLatestRecordsById(listGuardianRecords());
+  if (sheetRecordsCacheEnabled) {
+    derivedGuardianById = map;
+  }
+  return map;
+}
+
+function productRecordByIdMapGs() {
+  if (sheetRecordsCacheEnabled && derivedProductById) {
+    return derivedProductById;
+  }
+  const map = indexLatestRecordsById(listProductRecords());
+  if (sheetRecordsCacheEnabled) {
+    derivedProductById = map;
+  }
+  return map;
+}
+
+function saleItemsBySaleGs() {
+  if (sheetRecordsCacheEnabled && derivedSaleItemsBySale) {
+    return derivedSaleItemsBySale;
+  }
+  const grouped = groupRecordsByField(listSaleItemRecords(), 'sale_id');
+  if (sheetRecordsCacheEnabled) {
+    derivedSaleItemsBySale = grouped;
+  }
+  return grouped;
+}
+
+function settlementsBySaleGs() {
+  if (sheetRecordsCacheEnabled && derivedSettlementsBySale) {
+    return derivedSettlementsBySale;
+  }
+  const grouped = groupRecordsByField(listSettlementRecords(), 'sale_id');
+  if (sheetRecordsCacheEnabled) {
+    derivedSettlementsBySale = grouped;
+  }
+  return grouped;
+}
+
+function receivablesBySaleGs() {
+  if (sheetRecordsCacheEnabled && derivedReceivablesBySale) {
+    return derivedReceivablesBySale;
+  }
+  const grouped = groupRecordsByField(listReceivableRecords(), 'source_sale_id');
+  if (sheetRecordsCacheEnabled) {
+    derivedReceivablesBySale = grouped;
+  }
+  return grouped;
+}
+
+function allocationsByPaymentGs() {
+  if (sheetRecordsCacheEnabled && derivedAllocationsByPayment) {
+    return derivedAllocationsByPayment;
+  }
+  const grouped = groupRecordsByField(
+    listPaymentAllocationRecords(),
+    'payment_id',
+  );
+  if (sheetRecordsCacheEnabled) {
+    derivedAllocationsByPayment = grouped;
+  }
+  return grouped;
+}
+
+function creditAllocationsByPaymentGs() {
+  if (sheetRecordsCacheEnabled && derivedCreditAllocationsByPayment) {
+    return derivedCreditAllocationsByPayment;
+  }
+  const grouped = groupRecordsByField(
+    listPaymentCreditAllocationRecords(),
+    'payment_id',
+  );
+  if (sheetRecordsCacheEnabled) {
+    derivedCreditAllocationsByPayment = grouped;
+  }
+  return grouped;
+}
+
+function creditAccountByIdMapGs() {
+  if (sheetRecordsCacheEnabled && derivedCreditAccountById) {
+    return derivedCreditAccountById;
+  }
+  const map = {};
+  listCreditAccountRecords().forEach(function (entry) {
+    map[entry.id] = entry;
+  });
+  if (sheetRecordsCacheEnabled) {
+    derivedCreditAccountById = map;
+  }
+  return map;
+}
+
+function effectsByReversalGs() {
+  if (sheetRecordsCacheEnabled && derivedEffectsByReversal) {
+    return derivedEffectsByReversal;
+  }
+  const grouped = groupRecordsByField(
+    listReversalEffectRecords(),
+    'reversal_id',
+  );
+  if (sheetRecordsCacheEnabled) {
+    derivedEffectsByReversal = grouped;
+  }
+  return grouped;
 }
 
 function resetPerfCounters() {
@@ -852,12 +1019,27 @@ function requireAction(sessionToken, action) {
   return session;
 }
 
+function attachLoginPayload(session) {
+  try {
+    session.screen = getSaleScreenDataUnlocked(session.role);
+  } catch (error) {
+    const message = error && error.message ? String(error.message) : '';
+    if (message.indexOf('INVENTORY_DAY_NOT_OPEN') === -1) {
+      throw error;
+    }
+  }
+  session.roster = getRosterScreenDataUnlocked();
+  return session;
+}
+
 function loginE2E(role) {
   assertE2EEnvironment();
   if (!isUserRole(role)) {
     throw new Error('INVALID_ROLE: informe dona ou funcionário.');
   }
-  return withScriptLock(function () {
+  const startedAt = Date.now();
+  resetPerfCounters();
+  const session = withScriptLock(function () {
     ensureE2EUsers();
     const subject = role === 'owner' ? E2E_OWNER_SUBJECT : E2E_STAFF_SUBJECT;
     const user = findLatestByField(
@@ -867,6 +1049,9 @@ function loginE2E(role) {
     );
     return createSessionForUser(user);
   });
+  attachLoginPayload(session);
+  logPerf('loginE2E', startedAt);
+  return session;
 }
 
 function loginWithGoogle() {
@@ -880,7 +1065,7 @@ function loginWithGoogle() {
   if (!email) {
     throwAuthError('UNAUTHENTICATED', 'Entre para continuar.');
   }
-  return withScriptLock(function () {
+  const session = withScriptLock(function () {
     setupSchema();
     const user = findLatestByField(
       listSheetRecords(openUsersSheet(), USERS_HEADERS),
@@ -895,6 +1080,7 @@ function loginWithGoogle() {
     }
     return createSessionForUser(user);
   });
+  return attachLoginPayload(session);
 }
 
 function getSession(sessionToken) {
@@ -2250,14 +2436,7 @@ function latestStudentById(id) {
       'INVALID_ID: ID deve ser UUID imutável, nunca número da linha.',
     );
   }
-  const student = latestRecordsById(
-    listSheetRecords(
-      openNamedSheet(STUDENTS_SHEET, STUDENTS_HEADERS),
-      STUDENTS_HEADERS,
-    ),
-  ).filter(function (item) {
-    return item.id === id;
-  })[0];
+  const student = studentRecordByIdMapGs()[id];
   if (!student) {
     throw new Error('STUDENT_NOT_FOUND: Aluno não encontrado.');
   }
@@ -2780,7 +2959,7 @@ function createStudent(sessionToken, payload) {
 }
 
 function updateStudent(sessionToken, id, payload) {
-  requireAction(sessionToken, 'students.write');
+  const session = requireAction(sessionToken, 'students.write');
   const student = withScriptLock(function () {
     ensureSchemaOnce();
     const previous = latestStudentById(id);
@@ -2789,6 +2968,14 @@ function updateStudent(sessionToken, id, payload) {
       updated_at: new Date().toISOString(),
     });
     appendStudentRecord(record);
+    if (payload && payload.classroomId) {
+      enrollStudentUnlocked(
+        record.id,
+        payload.classroomId,
+        payload.startedOn || todayCivil(),
+        session.user_id,
+      );
+    }
     return toStudentDetailGs(record);
   });
   student.screen = getStudentsScreenDataUnlocked();
@@ -3001,11 +3188,7 @@ function latestGuardianById(id, required) {
       'INVALID_ID: ID deve ser UUID imutável, nunca número da linha.',
     );
   }
-  const guardian = latestRecordsById(listGuardianRecords()).filter(
-    function (item) {
-      return item.id === id;
-    },
-  )[0];
+  const guardian = guardianRecordByIdMapGs()[id];
   if (!guardian && required) {
     throw new Error('GUARDIAN_NOT_FOUND: Responsável não encontrado.');
   }
@@ -3556,11 +3739,7 @@ function latestProductById(id) {
       'INVALID_ID: ID deve ser UUID imutável, nunca número da linha.',
     );
   }
-  const product = latestRecordsById(listProductRecords()).filter(
-    function (item) {
-      return item.id === id;
-    },
-  )[0];
+  const product = productRecordByIdMapGs()[id];
   if (!product) {
     throw new Error('PRODUCT_NOT_FOUND: Produto não encontrado.');
   }
@@ -5532,23 +5711,17 @@ function saleSummaryLabelGs(
 }
 
 function toSaleViewGs(sale) {
-  const items = listSaleItemRecords()
-    .filter(function (item) {
-      return item.sale_id === sale.id;
-    })
-    .map(function (item) {
-      return {
-        id: item.id,
-        description: item.description_snapshot,
-        quantity: Number(item.quantity),
-        unitPriceCents: Number(item.unit_price_cents),
-        discountAmountCents: Number(item.discount_amount_cents),
-        lineNetCents: Number(item.line_net_total_cents),
-      };
-    });
-  const settlementRows = listSettlementRecords().filter(function (item) {
-    return item.sale_id === sale.id;
+  const items = (saleItemsBySaleGs()[sale.id] || []).map(function (item) {
+    return {
+      id: item.id,
+      description: item.description_snapshot,
+      quantity: Number(item.quantity),
+      unitPriceCents: Number(item.unit_price_cents),
+      discountAmountCents: Number(item.discount_amount_cents),
+      lineNetCents: Number(item.line_net_total_cents),
+    };
   });
+  const settlementRows = settlementsBySaleGs()[sale.id] || [];
   const paymentKind = paymentKindFromSettlementsGs(settlementRows);
   const cashTenderedCents = settlementRows
     .filter(function (item) {
@@ -5578,13 +5751,9 @@ function toSaleViewGs(sale) {
   const descriptions = items.map(function (item) {
     return item.description;
   });
-  const dueDates = listReceivableRecords()
-    .filter(function (item) {
-      return item.source_sale_id === sale.id;
-    })
-    .map(function (item) {
-      return item.due_date;
-    });
+  const dueDates = (receivablesBySaleGs()[sale.id] || []).map(function (item) {
+    return item.due_date;
+  });
   const dueDateLabel = dueDateLabelForDatesGs(dueDates);
   const creditCents = settlementRows
     .filter(function (item) {
@@ -6322,10 +6491,7 @@ function getStudentsScreenData(sessionToken) {
 }
 
 function getStudentsScreenDataUnlocked() {
-  return {
-    students: listStudentsUnlocked(true),
-    classrooms: listClassroomsUnlocked(),
-  };
+  return getRosterScreenDataUnlocked();
 }
 
 function getFamilyScreenData(sessionToken) {
@@ -6333,14 +6499,19 @@ function getFamilyScreenData(sessionToken) {
   return getFamilyScreenDataUnlocked();
 }
 
-function getFamilyScreenDataUnlocked() {
+function getRosterScreenDataUnlocked() {
   return {
-    guardians: listGuardiansUnlocked(true),
     students: listStudentsUnlocked(true),
+    classrooms: listClassroomsUnlocked(),
+    guardians: listGuardiansUnlocked(true),
     siblingAuthorizations: listSiblingAuthorizationsUnlocked(null),
     settings: { requireGuardianBelowAge: requireGuardianBelowAgeGs() },
     links: latestRecordsById(listGuardianLinkRecords()).map(toGuardianLinkGs),
   };
+}
+
+function getFamilyScreenDataUnlocked() {
+  return getRosterScreenDataUnlocked();
 }
 
 function withFamilyScreen(result) {
@@ -8118,16 +8289,20 @@ function chargeCentsGs(receivableId) {
 }
 
 function toReversalsSetupGs() {
+  const itemsBySale = saleItemsBySaleGs();
+  const settlementsBySale = settlementsBySaleGs();
+  const allocationsByPayment = allocationsByPaymentGs();
+  const creditAllocationsByPayment = creditAllocationsByPaymentGs();
+  const accountsById = creditAccountByIdMapGs();
+  const effectsByReversal = effectsByReversalGs();
   const sales = latestRecordsById(listSaleRecords())
     .slice()
     .reverse()
     .map(function (sale) {
       const view = toSaleViewGs(sale);
-      const settlementRows = listSettlementRecords().filter(function (item) {
-        return item.sale_id === sale.id;
-      });
-      const tracked = listSaleItemRecords().some(function (item) {
-        if (item.sale_id !== sale.id || !item.product_id) {
+      const settlementRows = settlementsBySale[sale.id] || [];
+      const tracked = (itemsBySale[sale.id] || []).some(function (item) {
+        if (!item.product_id) {
           return false;
         }
         const product = latestProductById(item.product_id);
@@ -8161,20 +8336,18 @@ function toReversalsSetupGs() {
     .slice()
     .reverse()
     .map(function (payment) {
-      const debtCents = listPaymentAllocationRecords()
-        .filter(function (item) {
-          return item.payment_id === payment.id;
-        })
-        .reduce(function (total, item) {
+      const debtCents = (allocationsByPayment[payment.id] || []).reduce(
+        function (total, item) {
           return total + Number(item.amount_cents);
-        }, 0);
-      const creditCents = listPaymentCreditAllocationRecords()
-        .filter(function (item) {
-          return item.payment_id === payment.id;
-        })
-        .reduce(function (total, item) {
+        },
+        0,
+      );
+      const creditCents = (creditAllocationsByPayment[payment.id] || []).reduce(
+        function (total, item) {
           return total + Number(item.amount_cents);
-        }, 0);
+        },
+        0,
+      );
       const payerName = payment.payer_guardian_id
         ? latestGuardianById(payment.payer_guardian_id).full_name
         : saleConsumerLabelGs(payment.payer_student_id);
@@ -8203,9 +8376,7 @@ function toReversalsSetupGs() {
     .slice()
     .reverse()
     .map(function (item) {
-      const account = listCreditAccountRecords().filter(function (entry) {
-        return entry.id === item.credit_account_id;
-      })[0];
+      const account = accountsById[item.credit_account_id];
       const ownerType =
         account && account.owner_type === CREDIT_OWNER_GUARDIAN
           ? CREDIT_OWNER_GUARDIAN
@@ -8228,28 +8399,24 @@ function toReversalsSetupGs() {
     .slice()
     .reverse()
     .map(function (item) {
-      const effects = listReversalEffectRecords()
-        .filter(function (effect) {
-          return effect.reversal_id === item.id;
-        })
-        .map(function (effect) {
-          const amount =
-            effect.amount_delta_cents === ''
-              ? null
-              : Number(effect.amount_delta_cents);
-          const quantity =
-            effect.quantity_delta === '' ? null : Number(effect.quantity_delta);
-          return {
-            type: effect.effect_type,
-            amountDeltaCents: amount,
-            quantityDelta: quantity,
-            summaryLabel: reversalEffectSummaryGs(
-              effect.effect_type,
-              effect.amount_delta_cents,
-              effect.quantity_delta,
-            ),
-          };
-        });
+      const effects = (effectsByReversal[item.id] || []).map(function (effect) {
+        const amount =
+          effect.amount_delta_cents === ''
+            ? null
+            : Number(effect.amount_delta_cents);
+        const quantity =
+          effect.quantity_delta === '' ? null : Number(effect.quantity_delta);
+        return {
+          type: effect.effect_type,
+          amountDeltaCents: amount,
+          quantityDelta: quantity,
+          summaryLabel: reversalEffectSummaryGs(
+            effect.effect_type,
+            effect.amount_delta_cents,
+            effect.quantity_delta,
+          ),
+        };
+      });
       return {
         id: item.id,
         operationType: item.operation_type,

@@ -19,6 +19,8 @@ export interface AppHealth {
 
 export interface AppSession {
   role: UserRole;
+  screen?: SaleScreenData;
+  roster?: StudentsScreenData;
 }
 
 export interface SchoolYear {
@@ -86,6 +88,11 @@ export interface CreateStudentInput extends StudentProfileFields {
   classroomId?: string | null;
   startedOn?: string | null;
 }
+
+export type UpdateStudentInput = StudentProfileFields & {
+  classroomId?: string | null;
+  startedOn?: string | null;
+};
 
 export interface ReactivateStudentInput extends StudentProfileFields {
   reviewed: boolean;
@@ -683,15 +690,13 @@ export interface SaleResult extends Sale {
 export interface StudentsScreenData {
   students: StudentSummary[];
   classrooms: Classroom[];
-}
-
-export interface FamilyScreenData {
   guardians: Guardian[];
-  students: StudentSummary[];
   siblingAuthorizations: SiblingAuthorization[];
   settings: GuardianSettings;
   links: StudentGuardianLink[];
 }
+
+export type FamilyScreenData = StudentsScreenData;
 
 export interface CatalogScreenData {
   categories: ProductCategory[];
@@ -788,7 +793,7 @@ export interface AppApi {
   createStudent(input: CreateStudentInput): Promise<StudentResult>;
   updateStudent(
     id: string,
-    input: StudentProfileFields,
+    input: UpdateStudentInput,
   ): Promise<StudentResult>;
   deactivateStudent(id: string): Promise<StudentResult>;
   reactivateStudent(

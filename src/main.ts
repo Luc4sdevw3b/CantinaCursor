@@ -942,9 +942,23 @@ let currentSession: AppSession | null = null;
 let activeArea: AppArea = DEFAULT_AREA;
 const loadedAreas = new Set<AppArea>();
 let saleScreenShare: SaleScreenData | null = null;
+let rosterShare: StudentsScreenData | null = null;
 
 function rememberSaleScreen(screen: SaleScreenData): void {
   saleScreenShare = screen;
+}
+
+function rememberRoster(data: StudentsScreenData | FamilyScreenData): void {
+  if (
+    !Array.isArray(data.classrooms) ||
+    !Array.isArray(data.guardians) ||
+    !Array.isArray(data.links) ||
+    !Array.isArray(data.siblingAuthorizations) ||
+    !data.settings
+  ) {
+    return;
+  }
+  rosterShare = data;
 }
 
 function sharedSaleSlice<K extends keyof SaleScreenData>(
@@ -1131,6 +1145,7 @@ async function ensureAreaLoaded(area: AppArea, force = false): Promise<void> {
   if (!currentSession) {
     loadedAreas.clear();
     saleScreenShare = null;
+    rosterShare = null;
     return;
   }
   if (!force && loadedAreas.has(area)) {
@@ -1147,13 +1162,16 @@ async function renderArea(
 ): Promise<void> {
   switch (area) {
     case 'sales':
-      await renderSales(session);
+      await renderSales(
+        session,
+        allowShare ? (saleScreenShare ?? undefined) : undefined,
+      );
       return;
     case 'students':
-      await renderStudents(Boolean(session));
+      await renderStudents(Boolean(session), undefined, allowShare);
       return;
     case 'family':
-      await renderFamily(session);
+      await renderFamily(session, undefined, allowShare);
       return;
     case 'products':
       await renderProducts(session);
@@ -1186,10 +1204,10 @@ async function renderArea(
       );
       return;
     case 'payments':
-      await renderPayments(session);
+      await renderPayments(session, undefined, allowShare);
       return;
     case 'credits':
-      await renderCredits(session);
+      await renderCredits(session, undefined, allowShare);
       return;
     case 'adjust':
       if (!loadedAreas.has('agenda')) {
@@ -1208,6 +1226,9 @@ async function renderArea(
 
 function invalidateAreas(...areas: AppArea[]): void {
   saleScreenShare = null;
+  if (areas.includes('students') || areas.includes('family')) {
+    rosterShare = null;
+  }
   for (const area of areas) {
     loadedAreas.delete(area);
   }
@@ -1418,13 +1439,25 @@ async function loginAs(role: UserRole): Promise<void> {
 async function showAuthenticated(session: AppSession | null): Promise<void> {
   loadedAreas.clear();
   saleScreenShare = null;
+  rosterShare = null;
   if (!session) {
     activeArea = DEFAULT_AREA;
     fillProductForm(null);
   }
+  if (session?.screen) {
+    rememberSaleScreen(session.screen);
+  }
+  if (session?.roster) {
+    rememberRoster(session.roster);
+  }
   syncWorkspace(session);
   renderSession(session, true);
   if (session) {
+    if (session.screen && activeArea === 'sales') {
+      await renderSales(session, session.screen);
+      loadedAreas.add('sales');
+      return;
+    }
     await ensureAreaLoaded(activeArea, true);
   }
 }
@@ -1537,6 +1570,7 @@ function fillClassroomForm(classroom: Classroom | null): void {
 async function renderStudents(
   authenticated: boolean,
   preloaded?: StudentsScreenData,
+  allowShare = true,
 ): Promise<void> {
   if (
     !(studentsPanel instanceof HTMLElement) ||
@@ -1554,7 +1588,14 @@ async function renderStudents(
     return;
   }
 
-  const data = preloaded ?? (await api.getStudentsScreenData());
+  let data = preloaded;
+  if (!data && allowShare) {
+    data = rosterShare ?? undefined;
+  }
+  if (!data) {
+    data = await api.getStudentsScreenData();
+  }
+  rememberRoster(data);
   const students = data.students;
   const classrooms = data.classrooms;
   studentsScreenCache = data;
@@ -1769,6 +1810,7 @@ function fillGuardianForm(guardian: Guardian | null): void {
 async function renderFamily(
   session: AppSession | null,
   preloaded?: FamilyScreenData,
+  allowShare = true,
 ): Promise<void> {
   if (
     !(familyPanel instanceof HTMLElement) ||
@@ -1787,7 +1829,14 @@ async function renderFamily(
     return;
   }
 
-  const data = preloaded ?? (await api.getFamilyScreenData());
+  let data = preloaded;
+  if (!data && allowShare) {
+    data = rosterShare ?? undefined;
+  }
+  if (!data) {
+    data = await api.getFamilyScreenData();
+  }
+  rememberRoster(data);
   const guardians = data.guardians;
   const students = data.students;
   const authorizations = data.siblingAuthorizations;
@@ -3343,6 +3392,7 @@ function renderFamilyPaymentDebts(): void {
 async function renderPayments(
   session: AppSession | null,
   preloaded?: PaymentsScreenData,
+  allowShare = true,
 ): Promise<void> {
   const panel = document.querySelector('#payments-panel');
   const status = document.querySelector('#payments-status');
@@ -3380,7 +3430,20 @@ async function renderPayments(
     return;
   }
   try {
-    const data = preloaded ?? (await api.getPaymentsScreenData());
+    const sharedReceivables = allowShare
+      ? sharedSaleSlice('receivables')
+      : undefined;
+    const data =
+      preloaded ??
+      (allowShare && rosterShare && sharedReceivables
+        ? {
+            students: rosterShare.students,
+            payments: await api.listPayments(),
+            guardians: rosterShare.guardians,
+            links: rosterShare.links,
+            receivables: sharedReceivables,
+          }
+        : await api.getPaymentsScreenData());
     const students = data.students;
     const payments = data.payments;
     const guardians = data.guardians;
@@ -3468,6 +3531,7 @@ function syncInterestFields(): void {
 async function renderCredits(
   session: AppSession | null,
   preloaded?: CreditsScreenData,
+  allowShare = true,
 ): Promise<void> {
   const panel = document.querySelector('#credits-panel');
   const status = document.querySelector('#credits-status');
@@ -3511,7 +3575,15 @@ async function renderCredits(
     return;
   }
   try {
-    const data = preloaded ?? (await api.getCreditsScreenData());
+    const data =
+      preloaded ??
+      (allowShare && rosterShare
+        ? {
+            students: rosterShare.students,
+            guardians: rosterShare.guardians,
+            accounts: await api.listCreditAccounts(),
+          }
+        : await api.getCreditsScreenData());
     const students = data.students;
     const guardians = data.guardians;
     const accounts = data.accounts;
@@ -4534,14 +4606,10 @@ document.querySelector('#student-form')?.addEventListener('submit', (event) => {
       : 'Não foi possível cadastrar o aluno.',
     () => {
       const saved = editingStudentId
-        ? api.updateStudent(editingStudentId, profile).then((student) => {
-            if (classroomId && classroomId !== editingStudentClassroomId) {
-              return api.enrollStudent(student.id, {
-                classroomId,
-                startedOn: '2026-08-13',
-              });
-            }
-            return student;
+        ? api.updateStudent(editingStudentId, {
+            ...profile,
+            classroomId,
+            startedOn: '2026-08-13',
           })
         : api.createStudent({
             ...profile,

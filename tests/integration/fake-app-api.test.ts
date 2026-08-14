@@ -31,9 +31,17 @@ describe('FakeAppApi', () => {
     const api = new FakeAppApi();
 
     expect(await api.getSession()).toBeNull();
-    expect(await api.loginE2E('owner')).toEqual({ role: 'owner' });
+    const owner = await api.loginE2E('owner');
+    expect(owner.role).toBe('owner');
+    expect(owner.screen?.products.some((item) => item.name === 'Coxinha')).toBe(
+      true,
+    );
+    expect(owner.roster?.students.length).toBeGreaterThan(0);
+    expect(owner).not.toHaveProperty('token');
     expect(await api.getSession()).toEqual({ role: 'owner' });
-    expect(await api.loginE2E('staff')).toEqual({ role: 'staff' });
+    const staff = await api.loginE2E('staff');
+    expect(staff.role).toBe('staff');
+    expect(staff.screen).toBeDefined();
     await api.logout();
     expect(await api.getSession()).toBeNull();
   });
@@ -1546,5 +1554,41 @@ describe('FakeAppApi', () => {
     expect(screen.inventory.items.length).toBeGreaterThan(0);
     expect(screen.reservations.availability.length).toBeGreaterThan(0);
     expect(screen.cash.businessDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('returns the same roster from students and family screens', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const students = await api.getStudentsScreenData();
+    const family = await api.getFamilyScreenData();
+    expect(students.guardians.length).toBe(family.guardians.length);
+    expect(students.links.length).toBe(family.links.length);
+    expect(students.classrooms.length).toBe(family.classrooms.length);
+  });
+
+  it('moves a student classroom in a single updateStudent call', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const ana = (await api.listStudents()).find(
+      (student) => student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+    );
+    const second = (await api.listClassrooms()).find(
+      (room) => room.name === '2º B',
+    );
+    if (!ana || !second) {
+      throw new Error('cadastro local incompleto');
+    }
+    const updated = await api.updateStudent(ana.id, {
+      fullName: 'Ana Souza',
+      approximateAge: 8,
+      approximateAgeReferenceYear: 2026,
+      classroomId: second.id,
+      startedOn: '2026-08-13',
+    });
+    expect(
+      updated.enrollments.some(
+        (item) => item.classroomId === second.id && item.endedOn === null,
+      ),
+    ).toBe(true);
   });
 });

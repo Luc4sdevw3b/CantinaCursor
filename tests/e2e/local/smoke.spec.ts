@@ -44,6 +44,38 @@ async function goToArea(page: Page, name: string) {
     .click();
 }
 
+type CantinaPerfSnapshot = { calls: number; methods: string[] };
+
+async function resetCantinaPerf(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const perf = (
+      window as Window & {
+        __cantinaPerf?: { reset: () => void };
+      }
+    ).__cantinaPerf;
+    if (!perf) {
+      throw new Error('__cantinaPerf ausente');
+    }
+    perf.reset();
+  });
+}
+
+async function snapshotCantinaPerf(page: Page): Promise<CantinaPerfSnapshot> {
+  return page.evaluate(() => {
+    const perf = (
+      window as Window & {
+        __cantinaPerf?: {
+          snapshot: () => { calls: number; methods: string[] };
+        };
+      }
+    ).__cantinaPerf;
+    if (!perf) {
+      throw new Error('__cantinaPerf ausente');
+    }
+    return perf.snapshot();
+  });
+}
+
 async function fillInternalReservationStudent(page: Page) {
   await page.locator('#reservation-student-search').fill('Ana Souza');
   await page.locator('#reservation-student').selectOption({
@@ -1839,40 +1871,20 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     expect(afterOpen.calls).toBe(1);
   });
 
-  test('loads alunos with one getStudentsScreenData call', async ({ page }) => {
+  test('loads alunos from the login roster without another server call', async ({
+    page,
+  }) => {
     await openLocalApp(page);
     await page.getByRole('button', { name: 'Entrar como dona' }).click();
     await expect(
       page.getByRole('heading', { name: 'Vendas', exact: true }),
     ).toBeVisible();
-    await page.evaluate(() => {
-      const perf = (
-        window as Window & {
-          __cantinaPerf?: { reset: () => void };
-        }
-      ).__cantinaPerf;
-      if (!perf) {
-        throw new Error('__cantinaPerf ausente');
-      }
-      perf.reset();
-    });
+    await resetCantinaPerf(page);
     await goToArea(page, 'Alunos');
     await expect(page.getByText('Ana Souza • ~8 • 3º A')).toBeVisible();
-    const afterStudents = await page.evaluate(() => {
-      const perf = (
-        window as Window & {
-          __cantinaPerf?: {
-            snapshot: () => { calls: number; methods: string[] };
-          };
-        }
-      ).__cantinaPerf;
-      if (!perf) {
-        throw new Error('__cantinaPerf ausente');
-      }
-      return perf.snapshot();
-    });
-    expect(afterStudents.methods).toEqual(['getStudentsScreenData']);
-    expect(afterStudents.calls).toBe(1);
+    const afterStudents = await snapshotCantinaPerf(page);
+    expect(afterStudents.methods).toEqual([]);
+    expect(afterStudents.calls).toBe(0);
   });
 
   test('reuses the sale screen for estoque, agenda, reservas and caixa', async ({
@@ -1923,5 +1935,75 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     });
     expect(afterTabs.methods).toEqual([]);
     expect(afterTabs.calls).toBe(0);
+  });
+
+  test('logs in with a single loginE2E call that already fills Vendas', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await expect(page.getByText('Ambiente local funcionando')).toBeVisible();
+    await resetCantinaPerf(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Vendas', exact: true }),
+    ).toBeVisible();
+    const afterLogin = await snapshotCantinaPerf(page);
+    expect(afterLogin.methods).toEqual(['loginE2E']);
+    expect(afterLogin.calls).toBe(1);
+  });
+
+  test('reuses the login roster for responsáveis, pagamentos and crédito', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Vendas', exact: true }),
+    ).toBeVisible();
+    await resetCantinaPerf(page);
+    await goToArea(page, 'Responsáveis');
+    await expect(
+      page.getByRole('heading', { name: 'Responsáveis', exact: true }),
+    ).toBeVisible();
+    await expect(page.locator('#family-status')).not.toHaveText(
+      'Entre para ver os responsáveis.',
+    );
+    await goToArea(page, 'Pagamentos');
+    await expect(
+      page.getByRole('heading', { name: 'Pagamentos', exact: true }),
+    ).toBeVisible();
+    await goToArea(page, 'Crédito');
+    await expect(
+      page.getByRole('heading', { name: 'Crédito pessoal' }),
+    ).toBeVisible();
+    const afterTabs = await snapshotCantinaPerf(page);
+    expect(afterTabs.methods).toEqual(['listPayments', 'listCreditAccounts']);
+    expect(afterTabs.calls).toBe(2);
+  });
+
+  test('uses one updateStudent call when changing classroom', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await goToArea(page, 'Alunos');
+    await expect(page.getByText('Ana Souza • ~8 • 3º A')).toBeVisible();
+    const ana = page
+      .locator('#students-list')
+      .getByRole('listitem')
+      .filter({ hasText: 'Ana Souza • ~8 • 3º A' });
+    await ana.getByRole('button', { name: 'Editar' }).click();
+    await expect(page.locator('#student-name')).toHaveValue('Ana Souza');
+    await resetCantinaPerf(page);
+    await page.locator('#student-classroom').selectOption({ label: '2º B' });
+    await page.getByRole('button', { name: 'Salvar aluno' }).click();
+    await expect(
+      page
+        .locator('#students-list')
+        .getByText('Ana Souza • ~8 • 2º B', { exact: false }),
+    ).toBeVisible();
+    const afterSave = await snapshotCantinaPerf(page);
+    expect(afterSave.methods).toEqual(['updateStudent']);
+    expect(afterSave.calls).toBe(1);
   });
 });

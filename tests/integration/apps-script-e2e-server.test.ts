@@ -62,8 +62,23 @@ interface ServerContext {
     snapshotValid: true;
     currentBackupCreated: true;
   };
-  loginE2E(role: 'owner' | 'staff'): { token: string; role: 'owner' | 'staff' };
-  loginWithGoogle(): { token: string; role: 'owner' | 'staff' };
+  loginE2E(role: 'owner' | 'staff'): {
+    token: string;
+    role: 'owner' | 'staff';
+    screen?: { products: Array<{ name: string }>; sales: unknown[] };
+    roster?: {
+      students: Array<{ fullName: string }>;
+      classrooms: Array<{ name: string }>;
+      guardians: Array<{ fullName: string }>;
+      links: unknown[];
+    };
+  };
+  loginWithGoogle(): {
+    token: string;
+    role: 'owner' | 'staff';
+    screen?: { products: Array<{ name: string }> };
+    roster?: { students: Array<{ fullName: string }> };
+  };
   getSession(sessionToken: string): { role: 'owner' | 'staff' };
   logout(sessionToken: string): { loggedOut: true };
   listSchoolYears(sessionToken: string): Array<{
@@ -394,6 +409,10 @@ interface ServerContext {
       ageLabel: string;
     }>;
     classrooms: Array<{ name: string }>;
+    guardians: Array<{ fullName: string }>;
+    links: unknown[];
+    siblingAuthorizations: unknown[];
+    settings: { requireGuardianBelowAge: number };
   };
   listSales(
     sessionToken: string,
@@ -3514,6 +3533,9 @@ describe('Apps Script E2E server', () => {
     expect(anas).toHaveLength(2);
     expect(anas.every((item) => item.isHomonym)).toBe(true);
     expect(students.classrooms.length).toBeGreaterThan(0);
+    expect(students.guardians.length).toBeGreaterThan(0);
+    expect(students.links).toBeDefined();
+    expect(students.settings.requireGuardianBelowAge).toBeGreaterThan(0);
   });
 
   it('returns catalog screen from deleteCategory', () => {
@@ -3629,5 +3651,57 @@ describe('Apps Script E2E server', () => {
       installments: [{ dueDate: shortcuts.tomorrow }],
     });
     expect(withoutCache.netTotalCents).toBe(550);
+  });
+
+  it('returns sale screen and roster from loginE2E', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const login = server.loginE2E('owner');
+    const sale = server.getSaleScreenData(login.token);
+    expect(login.screen?.products.length).toBe(sale.products.length);
+    expect(login.roster?.students.length).toBeGreaterThan(0);
+    expect(login.roster?.guardians.length).toBeGreaterThan(0);
+    expect(login.roster?.classrooms.length).toBeGreaterThan(0);
+    const roster = server.getStudentsScreenData(login.token);
+    expect(login.roster?.students.length).toBe(roster.students.length);
+    expect(server.getSession(login.token)).toEqual({ role: 'owner' });
+  });
+
+  it('enrolls the classroom inside updateStudent', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const ana = server
+      .listStudents(owner)
+      .find(
+        (student) =>
+          student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+      );
+    const second = server
+      .listClassrooms(owner)
+      .find((room) => room.name === '2º B');
+    if (!ana || !second) {
+      throw new Error('cadastro E2E incompleto');
+    }
+    const updated = server.updateStudent(owner, ana.id, {
+      fullName: 'Ana Souza',
+      approximateAge: 8,
+      approximateAgeReferenceYear: 2026,
+      classroomId: second.id,
+      startedOn: '2026-08-13',
+    });
+    expect(
+      updated.enrollments.some(
+        (item) => item.classroomId === second.id && item.endedOn === null,
+      ),
+    ).toBe(true);
   });
 });
