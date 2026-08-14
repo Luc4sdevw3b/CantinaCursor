@@ -74,6 +74,7 @@ import type {
   PaymentsScreenData,
   CreditsScreenData,
   ReservationScreenData,
+  ProductResult,
 } from './app-api';
 
 const LOCAL_HEALTH: AppHealth = {
@@ -355,27 +356,38 @@ export class FakeAppApi implements AppApi {
     return throwResult(this.catalog.listProducts(query));
   }
 
-  async createProduct(input: ProductFields): Promise<Product> {
+  async createProduct(input: ProductFields): Promise<ProductResult> {
     this.assertAction('products.write');
-    return throwResult(this.catalog.createProduct(input));
+    return this.withCatalogScreen(
+      throwResult(this.catalog.createProduct(input)),
+    );
   }
 
-  async updateProduct(id: string, input: ProductFields): Promise<Product> {
+  async updateProduct(
+    id: string,
+    input: ProductFields,
+  ): Promise<ProductResult> {
     this.assertAction('products.write');
-    return throwResult(this.catalog.updateProduct(id, input));
+    return this.withCatalogScreen(
+      throwResult(this.catalog.updateProduct(id, input)),
+    );
   }
 
-  async deactivateProduct(id: string): Promise<Product> {
+  async deactivateProduct(id: string): Promise<ProductResult> {
     this.assertAction('products.write');
-    return throwResult(this.catalog.deactivateProduct(id));
+    return this.withCatalogScreen(
+      throwResult(this.catalog.deactivateProduct(id)),
+    );
   }
 
-  async activateProduct(id: string): Promise<Product> {
+  async activateProduct(id: string): Promise<ProductResult> {
     this.assertAction('products.write');
-    return throwResult(this.catalog.activateProduct(id));
+    return this.withCatalogScreen(
+      throwResult(this.catalog.activateProduct(id)),
+    );
   }
 
-  async deleteProduct(id: string): Promise<Product> {
+  async deleteProduct(id: string): Promise<ProductResult> {
     this.assertAction('products.write');
     if (
       this.sales.productIsReferenced(id) ||
@@ -386,7 +398,7 @@ export class FakeAppApi implements AppApi {
         `${PRODUCT_IN_USE_ERROR.code}: ${PRODUCT_IN_USE_ERROR.message}`,
       );
     }
-    return throwResult(this.catalog.deleteProduct(id));
+    return this.withCatalogScreen(throwResult(this.catalog.deleteProduct(id)));
   }
 
   async listProductPriceHistory(
@@ -486,16 +498,7 @@ export class FakeAppApi implements AppApi {
 
   async getCatalogScreenData(): Promise<CatalogScreenData> {
     this.assertAction('products.read');
-    return {
-      categories: throwResult(this.catalog.listCategories()),
-      products: throwResult(
-        this.catalog.listProducts({ includeInactive: true }),
-      ),
-      adHocItems:
-        this.session?.role === 'owner'
-          ? throwResult(this.catalog.listAdHocItems())
-          : [],
-    };
+    return this.catalogScreenUnlocked();
   }
 
   async getPaymentsScreenData(): Promise<PaymentsScreenData> {
@@ -554,6 +557,23 @@ export class FakeAppApi implements AppApi {
       receivables: throwResult(this.sales.listReceivables()),
       cash: throwResult(this.cash.getSetup()),
     };
+  }
+
+  private catalogScreenUnlocked(): CatalogScreenData {
+    return {
+      categories: throwResult(this.catalog.listCategories()),
+      products: throwResult(
+        this.catalog.listProducts({ includeInactive: true }),
+      ),
+      adHocItems:
+        this.session?.role === 'owner'
+          ? throwResult(this.catalog.listAdHocItems())
+          : [],
+    };
+  }
+
+  private withCatalogScreen(product: Product): ProductResult {
+    return { ...product, screen: this.catalogScreenUnlocked() };
   }
 
   async listSales(): Promise<Sale[]> {

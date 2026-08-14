@@ -1583,4 +1583,83 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     expect(afterSale.methods).toEqual(['createSale']);
     expect(afterSale.calls).toBe(1);
   });
+
+  test('uses one createProduct call when registering a catalog item', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await goToArea(page, 'Cardápio');
+    await expect(
+      page.getByRole('heading', { name: 'Cardápio', exact: true }),
+    ).toBeVisible();
+    await page.evaluate(() => {
+      const perf = (
+        window as Window & {
+          __cantinaPerf?: { reset: () => void };
+        }
+      ).__cantinaPerf;
+      if (!perf) {
+        throw new Error('__cantinaPerf ausente');
+      }
+      perf.reset();
+    });
+    await page.locator('#product-name').fill('Produto perf cadastro');
+    await page.locator('#product-price').fill('2,00');
+    await page.getByRole('button', { name: 'Cadastrar produto' }).click();
+    await expect(
+      page.locator('#products-list').getByText('Produto perf cadastro'),
+    ).toBeVisible();
+    const afterCreate = await page.evaluate(() => {
+      const perf = (
+        window as Window & {
+          __cantinaPerf?: {
+            snapshot: () => { calls: number; methods: string[] };
+          };
+        }
+      ).__cantinaPerf;
+      if (!perf) {
+        throw new Error('__cantinaPerf ausente');
+      }
+      return perf.snapshot();
+    });
+    expect(afterCreate.methods).toEqual(['createProduct']);
+    expect(afterCreate.calls).toBe(1);
+  });
+
+  test('loads alunos with one getStudentsScreenData call', async ({ page }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Vendas', exact: true }),
+    ).toBeVisible();
+    await page.evaluate(() => {
+      const perf = (
+        window as Window & {
+          __cantinaPerf?: { reset: () => void };
+        }
+      ).__cantinaPerf;
+      if (!perf) {
+        throw new Error('__cantinaPerf ausente');
+      }
+      perf.reset();
+    });
+    await goToArea(page, 'Alunos');
+    await expect(page.getByText('Ana Souza • ~8 • 3º A')).toBeVisible();
+    const afterStudents = await page.evaluate(() => {
+      const perf = (
+        window as Window & {
+          __cantinaPerf?: {
+            snapshot: () => { calls: number; methods: string[] };
+          };
+        }
+      ).__cantinaPerf;
+      if (!perf) {
+        throw new Error('__cantinaPerf ausente');
+      }
+      return perf.snapshot();
+    });
+    expect(afterStudents.methods).toEqual(['getStudentsScreenData']);
+    expect(afterStudents.calls).toBe(1);
+  });
 });

@@ -81,7 +81,7 @@ scripts/
 
 Definir `AppApi` com funções específicas do domínio, nunca ranges/SQL/Sheets genéricos.
 
-Até a Fase 26.5 o contrato `AppApi` inclui sessão, cadastro, cardápio, estoque diário, vendas, agenda, pagamento parcial, juros, renegociação, crédito pessoal, crédito de responsável, pagamento familiar, venda na conta do irmão, caixa físico, reservas internas, o portal público (`getPublicReservationPortal` / `createPublicReservation`) sem cadastro privado, `createSale` com `sourceReservationId` / `overrideReservationId`, e payloads agregados de tela (`getSaleScreenData`, `getStudentsScreenData`, `getFamilyScreenData`, `getCatalogScreenData`, `getPaymentsScreenData`, `getCreditsScreenData`, `getReservationScreenData`). `createSale` devolve `screen` para atualizar a UI sem reload. Sem envio de WhatsApp.
+Até a Fase 26.5 o contrato `AppApi` inclui sessão, cadastro, cardápio, estoque diário, vendas, agenda, pagamento parcial, juros, renegociação, crédito pessoal, crédito de responsável, pagamento familiar, venda na conta do irmão, caixa físico, reservas internas, o portal público (`getPublicReservationPortal` / `createPublicReservation`) sem cadastro privado, `createSale` com `sourceReservationId` / `overrideReservationId`, e payloads agregados de tela (`getSaleScreenData`, `getStudentsScreenData`, `getFamilyScreenData`, `getCatalogScreenData`, `getPaymentsScreenData`, `getCreditsScreenData`, `getReservationScreenData`). `createSale` e as mutações de produto (`createProduct` / `updateProduct` / inativar / reativar / excluir) devolvem `screen` para atualizar a UI sem reload. Sem envio de WhatsApp.
 
 A tela privada é uma só: hero com atalhos e uma área visível por vez. Só a área ativa é carregada; o botão **Atualizar** relê essa área.
 

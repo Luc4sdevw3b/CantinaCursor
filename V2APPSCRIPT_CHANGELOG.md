@@ -9,6 +9,51 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-14 11:40 — Cadastro de produto e aba Alunos mais rápidos
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 26.5
+
+### Pedido / objetivo
+
+- Entender e reduzir os ~4–5 s para cadastrar um produto (e o custo de cadastrar 10).
+- A aba Alunos demorava para listar os cadastrados.
+
+### Tentativa / implementação
+
+- Causa do cadastro: duas idas serializadas ao Google (`createProduct` + `getCatalogScreenData`), mais `setupSchema`/leitura de cabeçalho em cada aba.
+- Mutação de produto agora devolve `screen` do cardápio na mesma chamada, como a venda. A UI não relê o catálogo.
+- Leituras pulam checagem de cabeçalho quando o schema já está aplicado; sessões/usuários usam o mesmo cache de abas.
+- Lista de alunos monta matrícula/turma/responsável uma vez, não por aluno.
+
+### Resultado
+
+- Cadastrar produto: 2 round trips → 1.
+- Dez produtos: 20 idas → 10 (ainda uma por item; cada uma deixa de pagar o reload extra).
+- Alunos: continua 1 chamada, com menos trabalho no Sheets.
+
+### Diferenças do pedido
+
+- Sem cadastro em lote de 10 produtos numa chamada só.
+- Uma `google.script.run` fria ainda custa centenas de ms a ~2 s.
+
+### Impacto técnico
+
+- Sem schema novo. Regras de produto/aluno iguais.
+- `CacheService` continua só catálogo/schema; nomes de alunos não vão para cache.
+
+### Testes
+
+- Vitest: `createProduct.screen` e homônimos em `getStudentsScreenData`.
+- E2E local: orçamento de 1 chamada em cadastrar produto e em abrir Alunos.
+
+### Pendências / próxima versão
+
+- Fase 27 só com pedido explícito.
+- Recarregar o Web App (Ctrl+F5) depois do deploy.
+
 ## 2026-08-14 11:15 — Produto ativo do cardápio aparece no estoque
 
 **Origem:** Pedido do usuário

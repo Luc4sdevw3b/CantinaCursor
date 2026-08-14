@@ -246,7 +246,12 @@ interface ServerContext {
   createProduct(
     sessionToken: string,
     payload: Record<string, unknown>,
-  ): { id: string; name: string; priceCents: number };
+  ): {
+    id: string;
+    name: string;
+    priceCents: number;
+    screen?: { products: Array<{ id: string; name: string }> };
+  };
   updateProduct(
     sessionToken: string,
     id: string,
@@ -347,6 +352,14 @@ interface ServerContext {
     inventory: {
       items: Array<{ productName: string; physicalQuantity: number }>;
     };
+  };
+  getStudentsScreenData(sessionToken: string): {
+    students: Array<{
+      fullName: string;
+      isHomonym: boolean;
+      ageLabel: string;
+    }>;
+    classrooms: Array<{ name: string }>;
   };
   listSales(
     sessionToken: string,
@@ -3399,6 +3412,37 @@ describe('Apps Script E2E server', () => {
     });
     expect(second.netTotalCents).toBe(550);
     expect(second.summaryLabel).toBe('Anônima • Coxinha • R$ 5,50');
+  });
+
+  it('returns catalog screen from createProduct and lists homonyms on students screen', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const salgados = server
+      .listProductCategories(owner)
+      .find((item) => item.name === 'Salgados');
+    if (!salgados) {
+      throw new Error('categoria Salgados ausente');
+    }
+    const created = server.createProduct(owner, {
+      name: 'Pão de queijo',
+      categoryId: salgados.id,
+      priceCents: 450,
+    });
+    expect(
+      created.screen?.products.some((item) => item.id === created.id),
+    ).toBe(true);
+    const students = server.getStudentsScreenData(owner);
+    const anas = students.students.filter(
+      (item) => item.fullName === 'Ana Souza',
+    );
+    expect(anas).toHaveLength(2);
+    expect(anas.every((item) => item.isHomonym)).toBe(true);
+    expect(students.classrooms.length).toBeGreaterThan(0);
   });
 
   it('does not let catalog cache change fiado remaining cents', () => {

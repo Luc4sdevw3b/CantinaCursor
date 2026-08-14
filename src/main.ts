@@ -13,8 +13,10 @@ import type {
   DueDateShortcuts,
   Guardian,
   InventoryBalanceItem,
+  CatalogScreenData,
   Product,
   ProductCategory,
+  ProductResult,
   Receivable,
   Reservation,
   ReservationsSetup,
@@ -1168,6 +1170,15 @@ function refreshAfterCatalogChange(): Promise<void> {
   return ensureAreaLoaded('products', true);
 }
 
+function applyCatalogResult(result: ProductResult): Promise<void> {
+  invalidateAreas('sales', 'inventory', 'reservations');
+  if (result.screen) {
+    loadedAreas.add('products');
+    return renderProducts(currentSession, result.screen);
+  }
+  return refreshAfterCatalogChange();
+}
+
 function renderTheme(): void {
   applyTheme(document.documentElement, theme, systemTheme.matches);
   document
@@ -1833,7 +1844,10 @@ function fillCategoryForm(category: ProductCategory | null): void {
   }
 }
 
-async function renderProducts(session: AppSession | null): Promise<void> {
+async function renderProducts(
+  session: AppSession | null,
+  preloaded?: CatalogScreenData,
+): Promise<void> {
   if (
     !(productsPanel instanceof HTMLElement) ||
     !productsStatus ||
@@ -1853,7 +1867,7 @@ async function renderProducts(session: AppSession | null): Promise<void> {
     return;
   }
 
-  const catalog = await api.getCatalogScreenData();
+  const catalog = preloaded ?? (await api.getCatalogScreenData());
   const categories = catalog.categories;
   const products = catalog.products;
   productsStatus.textContent =
@@ -1979,11 +1993,11 @@ async function renderProducts(session: AppSession | null): Promise<void> {
           deactivate,
           'Não foi possível inativar o produto.',
           () =>
-            api.deactivateProduct(product.id).then(() => {
+            api.deactivateProduct(product.id).then((result) => {
               if (editingProductId === product.id) {
                 fillProductForm(null);
               }
-              return refreshAfterCatalogChange();
+              return applyCatalogResult(result);
             }),
         );
       });
@@ -2000,7 +2014,7 @@ async function renderProducts(session: AppSession | null): Promise<void> {
           () =>
             api
               .activateProduct(product.id)
-              .then(() => refreshAfterCatalogChange()),
+              .then((result) => applyCatalogResult(result)),
         );
       });
       actions.append(activate);
@@ -2014,11 +2028,11 @@ async function renderProducts(session: AppSession | null): Promise<void> {
         remove,
         'Não foi possível excluir o produto.',
         () =>
-          api.deleteProduct(product.id).then(() => {
+          api.deleteProduct(product.id).then((result) => {
             if (editingProductId === product.id) {
               fillProductForm(null);
             }
-            return refreshAfterCatalogChange();
+            return applyCatalogResult(result);
           }),
       );
     });
@@ -4533,9 +4547,9 @@ document.querySelector('#product-form')?.addEventListener('submit', (event) => {
     submitButton(event),
     'Não foi possível salvar o produto.',
     () =>
-      saved.then(() => {
+      saved.then((result) => {
         fillProductForm(null);
-        return refreshAfterCatalogChange();
+        return applyCatalogResult(result);
       }),
   );
 });

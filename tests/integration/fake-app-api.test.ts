@@ -1447,6 +1447,38 @@ describe('FakeAppApi', () => {
     expect(sale.netTotalCents).toBe(550);
   });
 
+  it('returns catalog screen from createProduct', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const salgados = (await api.listProductCategories()).find(
+      (item) => item.name === 'Salgados',
+    );
+    if (!salgados) {
+      throw new Error('categoria Salgados ausente');
+    }
+    const created = await api.createProduct({
+      name: 'Pão de queijo',
+      categoryId: salgados.id,
+      priceCents: 450,
+    });
+    expect(created.screen).toBeDefined();
+    expect(
+      created.screen?.products.some((item) => item.id === created.id),
+    ).toBe(true);
+  });
+
+  it('loads students screen with homonyms in one payload', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const screen = await api.getStudentsScreenData();
+    const anas = screen.students.filter(
+      (item) => item.fullName === 'Ana Souza',
+    );
+    expect(anas).toHaveLength(2);
+    expect(anas.every((item) => item.isHomonym)).toBe(true);
+    expect(screen.classrooms.length).toBeGreaterThan(0);
+  });
+
   it('loads the sale screen in one aggregated payload', async () => {
     const api = new FakeAppApi();
     await api.loginE2E('owner');

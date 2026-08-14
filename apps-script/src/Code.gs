@@ -756,19 +756,11 @@ function findLatestByField(records, field, value) {
 }
 
 function openUsersSheet() {
-  return getOrCreateSheet(
-    openConfiguredSpreadsheet(),
-    USERS_SHEET,
-    USERS_HEADERS,
-  );
+  return openNamedSheet(USERS_SHEET, USERS_HEADERS);
 }
 
 function openSessionsSheet() {
-  return getOrCreateSheet(
-    openConfiguredSpreadsheet(),
-    SESSIONS_SHEET,
-    SESSIONS_HEADERS,
-  );
+  return openNamedSheet(SESSIONS_SHEET, SESSIONS_HEADERS);
 }
 
 function ensureE2EUsers() {
@@ -2007,7 +1999,15 @@ function openNamedSheet(name, headers) {
   if (namedSheetCache[name]) {
     return namedSheetCache[name];
   }
-  const sheet = getOrCreateSheet(openConfiguredSpreadsheet(), name, headers);
+  const spreadsheet = openConfiguredSpreadsheet();
+  if (schemaEnsured) {
+    const existing = spreadsheet.getSheetByName(name);
+    if (existing) {
+      namedSheetCache[name] = existing;
+      return existing;
+    }
+  }
+  const sheet = getOrCreateSheet(spreadsheet, name, headers);
   namedSheetCache[name] = sheet;
   return sheet;
 }
@@ -3828,9 +3828,11 @@ function listProducts(sessionToken, query) {
 }
 
 function createProduct(sessionToken, payload) {
+  const startedAt = Date.now();
+  resetPerfCounters();
   const session = requireAction(sessionToken, 'products.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const product = withScriptLock(function () {
+    ensureSchemaOnce();
     const profile = validateProductProfileGs(payload || {});
     const category = latestCategoryById(profile.category_id, true);
     if (category.active !== 'true') {
@@ -3857,12 +3859,17 @@ function createProduct(sessionToken, payload) {
     );
     return toProductGs(record);
   });
+  product.screen = getCatalogScreenDataUnlocked(session.role);
+  logPerf('createProduct', startedAt);
+  return product;
 }
 
 function updateProduct(sessionToken, id, payload) {
+  const startedAt = Date.now();
+  resetPerfCounters();
   const session = requireAction(sessionToken, 'products.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const product = withScriptLock(function () {
+    ensureSchemaOnce();
     const previous = latestProductById(id);
     const profile = validateProductProfileGs(payload || {});
     const category = latestCategoryById(profile.category_id, true);
@@ -3882,12 +3889,17 @@ function updateProduct(sessionToken, id, payload) {
     );
     return toProductGs(record);
   });
+  product.screen = getCatalogScreenDataUnlocked(session.role);
+  logPerf('updateProduct', startedAt);
+  return product;
 }
 
 function deactivateProduct(sessionToken, id) {
-  requireAction(sessionToken, 'products.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const startedAt = Date.now();
+  resetPerfCounters();
+  const session = requireAction(sessionToken, 'products.write');
+  const product = withScriptLock(function () {
+    ensureSchemaOnce();
     const previous = latestProductById(id);
     if (previous.active !== 'true') {
       throw new Error(
@@ -3901,12 +3913,17 @@ function deactivateProduct(sessionToken, id) {
     appendProductRecord(record);
     return toProductGs(record);
   });
+  product.screen = getCatalogScreenDataUnlocked(session.role);
+  logPerf('deactivateProduct', startedAt);
+  return product;
 }
 
 function activateProduct(sessionToken, id) {
-  requireAction(sessionToken, 'products.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const startedAt = Date.now();
+  resetPerfCounters();
+  const session = requireAction(sessionToken, 'products.write');
+  const product = withScriptLock(function () {
+    ensureSchemaOnce();
     const previous = latestProductById(id);
     if (previous.active === 'true') {
       throw new Error('PRODUCT_ALREADY_ACTIVE: Este produto já está ativo.');
@@ -3924,6 +3941,9 @@ function activateProduct(sessionToken, id) {
     appendProductRecord(record);
     return toProductGs(record);
   });
+  product.screen = getCatalogScreenDataUnlocked(session.role);
+  logPerf('activateProduct', startedAt);
+  return product;
 }
 
 function productIsReferencedGs(productId) {
@@ -3948,9 +3968,11 @@ function productIsReferencedGs(productId) {
 }
 
 function deleteProduct(sessionToken, id) {
-  requireAction(sessionToken, 'products.write');
-  return withScriptLock(function () {
-    setupSchema();
+  const startedAt = Date.now();
+  resetPerfCounters();
+  const session = requireAction(sessionToken, 'products.write');
+  const product = withScriptLock(function () {
+    ensureSchemaOnce();
     const previous = latestProductById(id);
     if (productIsReferencedGs(id)) {
       throw new Error(
@@ -3973,6 +3995,9 @@ function deleteProduct(sessionToken, id) {
     );
     return toProductGs(previous);
   });
+  product.screen = getCatalogScreenDataUnlocked(session.role);
+  logPerf('deleteProduct', startedAt);
+  return product;
 }
 
 function listProductPriceHistory(sessionToken, productId) {
@@ -6011,16 +6036,71 @@ function listProductsUnlocked(includeInactive) {
 }
 
 function listStudentsUnlocked(includeInactive) {
-  const summaries = latestRecordsById(
+  const students = latestRecordsById(
     listSheetRecords(
       openNamedSheet(STUDENTS_SHEET, STUDENTS_HEADERS),
       STUDENTS_HEADERS,
     ),
-  )
-    .filter(function (student) {
-      return includeInactive || student.active === 'true';
-    })
-    .map(toStudentSummaryGs);
+  ).filter(function (student) {
+    return includeInactive || student.active === 'true';
+  });
+  const currentByStudent = {};
+  listSheetRecords(
+    openNamedSheet(STUDENT_ENROLLMENTS_SHEET, STUDENT_ENROLLMENTS_HEADERS),
+    STUDENT_ENROLLMENTS_HEADERS,
+  ).forEach(function (record) {
+    if (record.ended_on === '') {
+      currentByStudent[record.student_id] = record;
+    }
+  });
+  const classrooms = {};
+  latestRecordsById(
+    listSheetRecords(
+      openNamedSheet(CLASSROOMS_SHEET, CLASSROOMS_HEADERS),
+      CLASSROOMS_HEADERS,
+    ),
+  ).forEach(function (room) {
+    classrooms[room.id] = room;
+  });
+  const years = {};
+  latestRecordsById(
+    listSheetRecords(
+      openNamedSheet(SCHOOL_YEARS_SHEET, SCHOOL_YEARS_HEADERS),
+      SCHOOL_YEARS_HEADERS,
+    ),
+  ).forEach(function (year) {
+    years[year.id] = year;
+  });
+  const primaryByStudent = {};
+  latestActiveLinksGs().forEach(function (record) {
+    if (record.is_primary === 'true' && !primaryByStudent[record.student_id]) {
+      primaryByStudent[record.student_id] = record.guardian_id;
+    }
+  });
+  const guardians = {};
+  latestRecordsById(listGuardianRecords()).forEach(function (guardian) {
+    guardians[guardian.id] = guardian;
+  });
+  const requireAge = requireGuardianBelowAgeGs();
+  const summaries = students.map(function (student) {
+    const enrollment = currentByStudent[student.id] || null;
+    const classroom = enrollment ? classrooms[enrollment.classroom_id] : null;
+    const year = classroom ? years[classroom.school_year_id] : null;
+    const primaryId = primaryByStudent[student.id] || null;
+    const primary = primaryId ? guardians[primaryId] : null;
+    const ageYears = studentAgeYearsGs(student);
+    return {
+      id: student.id,
+      fullName: student.full_name,
+      active: student.active === 'true',
+      ageLabel: studentAgeLabelGs(student),
+      classroomName: classroom ? classroom.name : null,
+      schoolYearLabel: year ? year.label : null,
+      isHomonym: false,
+      primaryGuardianName: primary ? primary.full_name : null,
+      needsGuardian: ageYears < requireAge && !primaryId,
+    };
+  });
   return markHomonymsGs(summaries);
 }
 
@@ -6100,11 +6180,15 @@ function listSales(sessionToken) {
 }
 
 function getStudentsScreenData(sessionToken) {
+  const startedAt = Date.now();
+  resetPerfCounters();
   requireAction(sessionToken, 'students.read');
-  return {
+  const data = {
     students: listStudentsUnlocked(true),
     classrooms: listClassroomsUnlocked(),
   };
+  logPerf('getStudentsScreenData', startedAt);
+  return data;
 }
 
 function getFamilyScreenData(sessionToken) {
@@ -6118,13 +6202,21 @@ function getFamilyScreenData(sessionToken) {
 }
 
 function getCatalogScreenData(sessionToken) {
+  const startedAt = Date.now();
+  resetPerfCounters();
   const session = requireAction(sessionToken, 'products.read');
+  const data = getCatalogScreenDataUnlocked(session.role);
+  logPerf('getCatalogScreenData', startedAt);
+  return data;
+}
+
+function getCatalogScreenDataUnlocked(role) {
   const cached = readCatalogCache();
   const catalog = cached || loadCatalogUnlocked();
   return {
     categories: catalog.categories,
     products: catalog.products,
-    adHocItems: session.role === 'owner' ? listAdHocItemsUnlocked() : [],
+    adHocItems: role === 'owner' ? listAdHocItemsUnlocked() : [],
   };
 }
 

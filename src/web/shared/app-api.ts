@@ -698,6 +698,10 @@ export interface CatalogScreenData {
   adHocItems: AdHocItem[];
 }
 
+export interface ProductResult extends Product {
+  screen?: CatalogScreenData;
+}
+
 export interface PaymentsScreenData {
   students: StudentSummary[];
   payments: Payment[];
@@ -783,11 +787,11 @@ export interface AppApi {
   activateCategory(id: string): Promise<ProductCategory>;
   deleteCategory(id: string): Promise<ProductCategory>;
   listProducts(query?: { includeInactive?: boolean }): Promise<Product[]>;
-  createProduct(input: ProductFields): Promise<Product>;
-  updateProduct(id: string, input: ProductFields): Promise<Product>;
-  deactivateProduct(id: string): Promise<Product>;
-  activateProduct(id: string): Promise<Product>;
-  deleteProduct(id: string): Promise<Product>;
+  createProduct(input: ProductFields): Promise<ProductResult>;
+  updateProduct(id: string, input: ProductFields): Promise<ProductResult>;
+  deactivateProduct(id: string): Promise<ProductResult>;
+  activateProduct(id: string): Promise<ProductResult>;
+  deleteProduct(id: string): Promise<ProductResult>;
   listProductPriceHistory(productId: string): Promise<ProductPriceHistory[]>;
   createAdHocItem(input: {
     name: string;

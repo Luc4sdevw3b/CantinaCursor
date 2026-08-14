@@ -66,6 +66,7 @@ import type {
   PaymentsScreenData,
   CreditsScreenData,
   ReservationScreenData,
+  ProductResult,
 } from './app-api';
 
 export const SESSION_TOKEN_STORAGE_KEY = 'cantina.sessionToken';
@@ -566,7 +567,7 @@ export class GoogleScriptAppApi implements AppApi {
     );
   }
 
-  createProduct(input: ProductFields): Promise<Product> {
+  createProduct(input: ProductFields): Promise<ProductResult> {
     return this.callWithToken((runner, token) =>
       runner.createProduct(token, {
         ...input,
@@ -575,7 +576,7 @@ export class GoogleScriptAppApi implements AppApi {
     );
   }
 
-  updateProduct(id: string, input: ProductFields): Promise<Product> {
+  updateProduct(id: string, input: ProductFields): Promise<ProductResult> {
     return this.callWithToken((runner, token) =>
       runner.updateProduct(token, id, {
         ...input,
@@ -584,19 +585,19 @@ export class GoogleScriptAppApi implements AppApi {
     );
   }
 
-  deactivateProduct(id: string): Promise<Product> {
+  deactivateProduct(id: string): Promise<ProductResult> {
     return this.callWithToken((runner, token) =>
       runner.deactivateProduct(token, id),
     );
   }
 
-  activateProduct(id: string): Promise<Product> {
+  activateProduct(id: string): Promise<ProductResult> {
     return this.callWithToken((runner, token) =>
       runner.activateProduct(token, id),
     );
   }
 
-  deleteProduct(id: string): Promise<Product> {
+  deleteProduct(id: string): Promise<ProductResult> {
     return this.callWithToken((runner, token) =>
       runner.deleteProduct(token, id),
     );
