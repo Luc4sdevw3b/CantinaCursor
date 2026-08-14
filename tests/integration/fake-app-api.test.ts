@@ -1186,4 +1186,51 @@ describe('FakeAppApi', () => {
     expect(created.publicCodeLabel).toMatch(/^Código [A-HJ-NP-Z2-9]{6}$/);
     expect(created.summaryLabel).toContain('Recreio tarde • reservada');
   });
+
+  it('lets the owner update, link and fulfill a recreio reservation without changing physical stock', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const setup = await api.getReservationsSetup();
+    const slot = setup.slots.find((item) => item.label === 'Recreio tarde');
+    const coxinha = setup.reservableProducts.find(
+      (item) => item.name === 'Coxinha',
+    );
+    const ana = (await api.listStudents()).find(
+      (item) => item.fullName === 'Ana Souza' && item.ageLabel === '~8',
+    );
+    if (!slot || !coxinha || !ana) {
+      throw new Error('fila da dona local incompleta');
+    }
+    const created = await api.createReservation({
+      requestId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee27',
+      slotId: slot.id,
+      studentNameText: 'Ana Souza',
+      classroomText: '3º A',
+      items: [{ productId: coxinha.id, quantity: 1 }],
+    });
+    const reservationId = created.reservations[0]?.id ?? '';
+    expect(created.production[0]?.summaryLabel).toBe('Coxinha • 1');
+    const updated = await api.updateReservation({
+      requestId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee28',
+      reservationId,
+      studentNameText: 'Ana Souza',
+      classroomText: '4º B',
+    });
+    expect(updated.reservations[0]?.summaryLabel).toContain('4º B');
+    const linked = await api.linkReservationStudent({
+      reservationId,
+      studentId: ana.id,
+    });
+    expect(linked.reservations[0]?.linkedStudentLabel).toBe(
+      'vinculada a Ana Souza • ~8',
+    );
+    const fulfilled = await api.fulfillReservation({ reservationId });
+    expect(fulfilled.reservations[0]?.status).toBe('fulfilled');
+    expect(fulfilled.production).toEqual([]);
+    expect(
+      (await api.listInventoryBalances()).items.find(
+        (item) => item.productName === 'Coxinha',
+      )?.physicalQuantity,
+    ).toBe(10);
+  });
 });

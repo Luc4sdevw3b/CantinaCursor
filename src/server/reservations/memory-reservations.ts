@@ -1,8 +1,10 @@
 import { todayCivilSaoPaulo } from '../../domain/civil-date';
 import {
   availabilitySummaryLabel,
+  buildProductionSummary,
   buildSlotTimes,
   createPublicCode,
+  linkedReservationStudentLabel,
   publicProductSummaryLabel,
   publicReservationCodeLabel,
   rejectPublicHoneypot,
@@ -30,7 +32,10 @@ import {
   RESERVATION_STATUS_FULFILLED,
   RESERVATION_STATUS_NO_SHOW,
   RESERVATION_STATUS_RESERVED,
+  RESERVATION_STUDENT_INACTIVE_ERROR,
+  RESERVATION_STUDENT_NOT_FOUND_ERROR,
   RESERVATION_UNAVAILABLE_ERROR,
+  RESERVATION_UPDATE_OPERATION,
   reservationSummaryLabel,
   SLOT_INACTIVE_ERROR,
   SLOT_NOT_FOUND_ERROR,
@@ -40,6 +45,7 @@ import {
 import { err, ok, type AppError, type Result } from '../../domain/result';
 import type { MemoryCatalog } from '../products/memory-catalog';
 import type { MemoryStock } from '../inventory/memory-stock';
+import type { MemoryRoster } from '../students/memory-roster';
 
 const LOCAL_ACTOR_ID = 'aaaaaaaa-bbbb-4ccc-8ddd-000000000099';
 
@@ -66,16 +72,27 @@ export interface ReservationItemView {
 export interface ReservationView {
   id: string;
   publicCode: string;
+  publicCodeLabel: string;
   slotId: string;
   slotLabel: string;
   studentNameText: string;
   classroomText: string;
+  contactOptional: string;
+  linkedStudentId: string | null;
+  linkedStudentLabel: string;
   status: string;
   paymentStatus: string;
   totalCents: number;
   summaryLabel: string;
   items: ReservationItemView[];
   createdAt: string;
+}
+
+export interface ReservationProductionView {
+  productId: string;
+  productName: string;
+  quantity: number;
+  summaryLabel: string;
 }
 
 export interface ReservationAvailabilityView {
@@ -122,6 +139,7 @@ export interface ReservationsSetupView {
   reservations: ReservationView[];
   availability: ReservationAvailabilityView[];
   reservableProducts: ReservableProductView[];
+  production: ReservationProductionView[];
 }
 
 interface SlotRecord {
@@ -210,6 +228,7 @@ export class MemoryReservations {
   constructor(
     private readonly catalog: MemoryCatalog,
     private readonly stock: MemoryStock,
+    private readonly roster: MemoryRoster | null = null,
     private readonly nowIso: () => string = () => new Date().toISOString(),
     private readonly createId: () => string = () => crypto.randomUUID(),
   ) {}
@@ -300,6 +319,7 @@ export class MemoryReservations {
       reservations,
       availability,
       reservableProducts,
+      production: buildProductionSummary(reservations),
     });
   }
 
@@ -613,6 +633,110 @@ export class MemoryReservations {
     );
   }
 
+  updateReservation(input: {
+    requestId?: unknown;
+    reservationId?: unknown;
+    studentNameText?: unknown;
+    classroomText?: unknown;
+    contactOptional?: unknown;
+  }): Result<ReservationsSetupView> {
+    const requestId = parseReservationRequestId(input.requestId);
+    if (!requestId.ok) {
+      return err(requestId.error);
+    }
+    const existing = this.operations.find(
+      (item) => item.request_id === requestId.data,
+    );
+    if (existing) {
+      if (existing.operation_type !== RESERVATION_UPDATE_OPERATION) {
+        return err({
+          code: 'REQUEST_CONFLICT',
+          message: 'Este request_id já foi usado em outra operação.',
+          retryable: false,
+        });
+      }
+      return this.getSetup();
+    }
+    const reservation = this.activeReservation(input.reservationId);
+    if (!reservation.ok) {
+      return err(reservation.error);
+    }
+    const studentName = parseReservationName(input.studentNameText);
+    if (!studentName.ok) {
+      return err(studentName.error);
+    }
+    const classroom = parseClassroomText(input.classroomText);
+    if (!classroom.ok) {
+      return err(classroom.error);
+    }
+    const contact = parseOptionalContact(input.contactOptional);
+    if (!contact.ok) {
+      return err(contact.error);
+    }
+    const now = this.nowIso();
+    this.reservations.push({
+      ...reservation.data,
+      student_name_text: studentName.data,
+      requester_name: studentName.data,
+      classroom_text: classroom.data,
+      contact_optional: contact.data,
+      updated_at: now,
+    });
+    this.operations.push({
+      request_id: requestId.data,
+      operation_type: RESERVATION_UPDATE_OPERATION,
+      result_entity_id: reservation.data.id,
+    });
+    return this.getSetup();
+  }
+
+  linkStudent(input: {
+    reservationId?: unknown;
+    studentId?: unknown;
+  }): Result<ReservationsSetupView> {
+    const reservation = this.activeReservation(input.reservationId);
+    if (!reservation.ok) {
+      return err(reservation.error);
+    }
+    const studentId = parseImmutableId(input.studentId);
+    if (!studentId.ok) {
+      return err(studentId.error);
+    }
+    if (!this.roster) {
+      return err(RESERVATION_STUDENT_NOT_FOUND_ERROR);
+    }
+    const student = this.roster.getStudent(studentId.data);
+    if (!student.ok) {
+      return err(RESERVATION_STUDENT_NOT_FOUND_ERROR);
+    }
+    if (!student.data.active) {
+      return err(RESERVATION_STUDENT_INACTIVE_ERROR);
+    }
+    this.reservations.push({
+      ...reservation.data,
+      linked_student_id: student.data.id,
+      updated_at: this.nowIso(),
+    });
+    return this.getSetup();
+  }
+
+  private activeReservation(reservationId: unknown): Result<ReservationRecord> {
+    const id = parseImmutableId(reservationId);
+    if (!id.ok) {
+      return err(id.error);
+    }
+    const reservation = latestById(this.reservations).find(
+      (item) => item.id === id.data,
+    );
+    if (!reservation) {
+      return err(RESERVATION_NOT_FOUND_ERROR);
+    }
+    if (!isActiveReservationStatus(reservation.status)) {
+      return err(RESERVATION_NOT_ACTIVE_ERROR);
+    }
+    return ok(reservation);
+  }
+
   private transition(
     reservationId: unknown,
     nextStatus: string,
@@ -700,13 +824,28 @@ export class MemoryReservations {
         lineTotalCents: Number(item.line_total_cents),
       }));
     const slotLabel = slot?.label ?? '';
+    const linkedStudentId = reservation.linked_student_id || null;
+    let linkedStudentLabel = '';
+    if (linkedStudentId && this.roster) {
+      const student = this.roster.getStudent(linkedStudentId);
+      if (student.ok) {
+        linkedStudentLabel = linkedReservationStudentLabel(
+          student.data.fullName,
+          student.data.ageLabel,
+        );
+      }
+    }
     return {
       id: reservation.id,
       publicCode: reservation.public_code,
+      publicCodeLabel: publicReservationCodeLabel(reservation.public_code),
       slotId: reservation.slot_id,
       slotLabel,
       studentNameText: reservation.student_name_text,
       classroomText: reservation.classroom_text,
+      contactOptional: reservation.contact_optional,
+      linkedStudentId,
+      linkedStudentLabel,
       status: reservation.status,
       paymentStatus: reservation.payment_status,
       totalCents: Number(reservation.total_cents),

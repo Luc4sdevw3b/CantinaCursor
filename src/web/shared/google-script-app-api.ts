@@ -54,6 +54,8 @@ import type {
   ReservationsSetup,
   CreateReservationSlotInput,
   CreateReservationInput,
+  UpdateReservationInput,
+  LinkReservationStudentInput,
   PublicReservationConfirmation,
   PublicReservationPortal,
 } from './app-api';
@@ -143,6 +145,8 @@ export interface GoogleScriptRunner {
   cancelReservation(token: string, payload: unknown): void;
   markReservationNoShow(token: string, payload: unknown): void;
   fulfillReservation(token: string, payload: unknown): void;
+  updateReservation(token: string, payload: unknown): void;
+  linkReservationStudent(token: string, payload: unknown): void;
   getPublicReservationPortal(): void;
   createPublicReservation(payload: unknown): void;
 }
@@ -771,6 +775,20 @@ export class GoogleScriptAppApi implements AppApi {
   }): Promise<ReservationsSetup> {
     return this.callWithToken((runner, token) =>
       runner.fulfillReservation(token, input),
+    );
+  }
+
+  updateReservation(input: UpdateReservationInput): Promise<ReservationsSetup> {
+    return this.callWithToken((runner, token) =>
+      runner.updateReservation(token, input),
+    );
+  }
+
+  linkReservationStudent(
+    input: LinkReservationStudentInput,
+  ): Promise<ReservationsSetup> {
+    return this.callWithToken((runner, token) =>
+      runner.linkReservationStudent(token, input),
     );
   }
 

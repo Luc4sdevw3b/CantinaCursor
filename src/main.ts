@@ -3,12 +3,18 @@ import { APP_VERSION } from './app-version';
 import { createRequestId } from './domain/request-id';
 import { roleLabel, type UserRole } from './domain/auth';
 import { formatBrl, parseReaisToCents } from './domain/money';
+import {
+  buildProductionSummary,
+  reservationMatchesOwnerSearch,
+} from './domain/reservation';
 import type {
   AppSession,
   DueDateShortcuts,
   InventoryBalanceItem,
   Product,
   Receivable,
+  Reservation,
+  ReservationsSetup,
   ReversalsSetup,
   SiblingAuthorization,
   StudentSummary,
@@ -360,6 +366,38 @@ app.innerHTML = `
         </label>
         <button type="submit">Confirmar reserva</button>
       </form>
+      <h3>Fila do recreio</h3>
+      <label>
+        Recreio
+        <select id="reservation-filter-slot" aria-label="Filtrar recreio"></select>
+      </label>
+      <label>
+        Pesquisar reserva
+        <input id="reservation-search" autocomplete="off" aria-label="Pesquisar reserva" />
+      </label>
+      <h3>Produção</h3>
+      <ul id="reservation-production"></ul>
+      <form id="reservation-edit-form">
+        <h3>Alterar reserva</h3>
+        <input id="reservation-edit-id" type="hidden" />
+        <label>
+          Nome para retirada
+          <input id="reservation-edit-name" required autocomplete="off" />
+        </label>
+        <label>
+          Turma
+          <input id="reservation-edit-classroom" required autocomplete="off" />
+        </label>
+        <label>
+          Contato
+          <input id="reservation-edit-contact" autocomplete="off" />
+        </label>
+        <button type="submit">Alterar reserva</button>
+      </form>
+      <label>
+        Aluno do cadastro
+        <select id="reservation-link-student" aria-label="Aluno para vincular"></select>
+      </label>
       <label>
         Motivo do cancelamento ou não retirada
         <input id="reservation-action-reason" />
@@ -1517,6 +1555,119 @@ const reservationCreateForm = document.querySelector(
 const reservationSlotId = document.querySelector('#reservation-slot-id');
 const reservationProduct = document.querySelector('#reservation-product');
 const reservationsList = document.querySelector('#reservations-list');
+const reservationProduction = document.querySelector('#reservation-production');
+const reservationFilterSlot = document.querySelector(
+  '#reservation-filter-slot',
+);
+const reservationSearch = document.querySelector('#reservation-search');
+const reservationEditForm = document.querySelector('#reservation-edit-form');
+const reservationLinkStudent = document.querySelector(
+  '#reservation-link-student',
+);
+let reservationsSetup: ReservationsSetup | null = null;
+
+function reservationQueueQuery(): { slotId: string; search: string } {
+  return {
+    slotId:
+      reservationFilterSlot instanceof HTMLSelectElement
+        ? reservationFilterSlot.value
+        : '',
+    search:
+      reservationSearch instanceof HTMLInputElement
+        ? reservationSearch.value
+        : '',
+  };
+}
+
+function visibleOwnerReservations(setup: ReservationsSetup): Reservation[] {
+  const query = reservationQueueQuery();
+  return setup.reservations.filter((entry) => {
+    if (query.slotId && entry.slotId !== query.slotId) {
+      return false;
+    }
+    return reservationMatchesOwnerSearch(entry, query.search);
+  });
+}
+
+function paintReservationQueue(): void {
+  if (
+    !(reservationProduction instanceof HTMLElement) ||
+    !(reservationsList instanceof HTMLElement)
+  ) {
+    return;
+  }
+  reservationProduction.replaceChildren();
+  reservationsList.replaceChildren();
+  if (!reservationsSetup) {
+    return;
+  }
+  const visible = visibleOwnerReservations(reservationsSetup);
+  const production = buildProductionSummary(visible);
+  if (production.length === 0) {
+    const empty = document.createElement('li');
+    empty.textContent = 'Nada a produzir.';
+    reservationProduction.append(empty);
+  }
+  for (const item of production) {
+    const row = document.createElement('li');
+    row.textContent = item.summaryLabel;
+    reservationProduction.append(row);
+  }
+  if (visible.length === 0) {
+    const empty = document.createElement('li');
+    empty.textContent =
+      reservationsSetup.reservations.length === 0
+        ? 'Nenhuma reserva registrada.'
+        : 'Nenhuma reserva encontrada.';
+    reservationsList.append(empty);
+    return;
+  }
+  for (const entry of visible) {
+    const row = document.createElement('li');
+    const details = document.createElement('div');
+    const label = document.createElement('span');
+    label.textContent = entry.summaryLabel;
+    details.append(label);
+    const code = document.createElement('span');
+    code.textContent = entry.publicCodeLabel;
+    details.append(code);
+    if (entry.linkedStudentLabel) {
+      const linked = document.createElement('span');
+      linked.textContent = entry.linkedStudentLabel;
+      details.append(linked);
+    }
+    row.append(details);
+    if (entry.status === 'reserved') {
+      const fulfill = document.createElement('button');
+      fulfill.type = 'button';
+      fulfill.textContent = 'Entregar reserva';
+      fulfill.dataset.reservationId = entry.id;
+      fulfill.dataset.reservationAction = 'fulfill';
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.textContent = 'Alterar reserva';
+      edit.dataset.reservationId = entry.id;
+      edit.dataset.reservationAction = 'edit';
+      const link = document.createElement('button');
+      link.type = 'button';
+      link.textContent = 'Vincular aluno';
+      link.dataset.reservationId = entry.id;
+      link.dataset.reservationAction = 'link';
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.textContent = 'Cancelar reserva';
+      cancel.dataset.reservationId = entry.id;
+      cancel.dataset.reservationAction = 'cancel';
+      const noShow = document.createElement('button');
+      noShow.type = 'button';
+      noShow.textContent = 'Não retirada';
+      noShow.dataset.reservationId = entry.id;
+      noShow.dataset.reservationAction = 'no-show';
+      row.append(fulfill, edit, link, cancel, noShow);
+    }
+    reservationsList.append(row);
+  }
+}
 
 async function renderReservations(session: AppSession | null): Promise<void> {
   if (
@@ -1528,24 +1679,35 @@ async function renderReservations(session: AppSession | null): Promise<void> {
     return;
   }
   reservationAvailability.replaceChildren();
-  reservationsList.replaceChildren();
+  reservationsSetup = null;
   if (reservationSlotForm instanceof HTMLElement) {
     reservationSlotForm.hidden = true;
   }
   if (reservationCreateForm instanceof HTMLElement) {
     reservationCreateForm.hidden = true;
   }
+  if (reservationEditForm instanceof HTMLElement) {
+    reservationEditForm.hidden = true;
+  }
+  paintReservationQueue();
   if (!session) {
     reservationsStatus.textContent = 'Entre para ver as reservas.';
     return;
   }
   try {
-    const setup = await api.getReservationsSetup();
+    const [setup, students] = await Promise.all([
+      api.getReservationsSetup(),
+      api.listStudents(),
+    ]);
+    reservationsSetup = setup;
     if (reservationSlotForm instanceof HTMLElement) {
       reservationSlotForm.hidden = session.role !== 'owner';
     }
     if (reservationCreateForm instanceof HTMLElement) {
       reservationCreateForm.hidden = false;
+    }
+    if (reservationEditForm instanceof HTMLElement) {
+      reservationEditForm.hidden = false;
     }
     fillSelect(
       reservationSlotId,
@@ -1555,12 +1717,27 @@ async function renderReservations(session: AppSession | null): Promise<void> {
       'Escolha o recreio',
     );
     fillSelect(
+      reservationFilterSlot,
+      setup.slots.map((item) => ({ value: item.id, label: item.label })),
+      'Todos os recreios',
+    );
+    fillSelect(
       reservationProduct,
       setup.reservableProducts.map((item) => ({
         value: item.id,
         label: `${item.name} • ${formatBrl(item.priceCents)}`,
       })),
       'Escolha o produto',
+    );
+    fillSelect(
+      reservationLinkStudent,
+      students
+        .filter((item) => item.active)
+        .map((item) => ({
+          value: item.id,
+          label: `${item.fullName} • ${item.ageLabel}`,
+        })),
+      'Escolha o aluno',
     );
     for (const item of setup.availability) {
       const row = document.createElement('li');
@@ -1572,31 +1749,7 @@ async function renderReservations(session: AppSession | null): Promise<void> {
     ).length;
     reservationsStatus.textContent =
       activeCount === 1 ? '1 reserva ativa' : `${activeCount} reservas ativas`;
-    if (setup.reservations.length === 0) {
-      const empty = document.createElement('li');
-      empty.textContent = 'Nenhuma reserva registrada.';
-      reservationsList.append(empty);
-    }
-    for (const entry of setup.reservations) {
-      const row = document.createElement('li');
-      const label = document.createElement('span');
-      label.textContent = entry.summaryLabel;
-      row.append(label);
-      if (entry.status === 'reserved') {
-        const cancel = document.createElement('button');
-        cancel.type = 'button';
-        cancel.textContent = 'Cancelar reserva';
-        cancel.dataset.reservationId = entry.id;
-        cancel.dataset.reservationAction = 'cancel';
-        const noShow = document.createElement('button');
-        noShow.type = 'button';
-        noShow.textContent = 'Não retirada';
-        noShow.dataset.reservationId = entry.id;
-        noShow.dataset.reservationAction = 'no-show';
-        row.append(cancel, noShow);
-      }
-      reservationsList.append(row);
-    }
+    paintReservationQueue();
   } catch (error: unknown) {
     reservationsStatus.textContent =
       error instanceof Error
@@ -4197,26 +4350,97 @@ reservationsList?.addEventListener('click', (event) => {
   if (!(target instanceof HTMLButtonElement) || !target.dataset.reservationId) {
     return;
   }
+  const reservationId = target.dataset.reservationId;
+  const action = target.dataset.reservationAction;
+  if (action === 'edit') {
+    const entry = reservationsSetup?.reservations.find(
+      (item) => item.id === reservationId,
+    );
+    const editId = document.querySelector('#reservation-edit-id');
+    const editName = document.querySelector('#reservation-edit-name');
+    const editClassroom = document.querySelector('#reservation-edit-classroom');
+    const editContact = document.querySelector('#reservation-edit-contact');
+    if (
+      entry &&
+      editId instanceof HTMLInputElement &&
+      editName instanceof HTMLInputElement &&
+      editClassroom instanceof HTMLInputElement &&
+      editContact instanceof HTMLInputElement
+    ) {
+      editId.value = entry.id;
+      editName.value = entry.studentNameText;
+      editClassroom.value = entry.classroomText;
+      editContact.value = entry.contactOptional;
+    }
+    if (reservationsStatus) {
+      reservationsStatus.textContent = 'Altere os dados e confirme.';
+    }
+    return;
+  }
+  if (action === 'link') {
+    if (
+      !(reservationLinkStudent instanceof HTMLSelectElement) ||
+      !reservationLinkStudent.value
+    ) {
+      if (reservationsStatus) {
+        reservationsStatus.textContent = 'Escolha o aluno do cadastro.';
+      }
+      return;
+    }
+    void api
+      .linkReservationStudent({
+        reservationId,
+        studentId: reservationLinkStudent.value,
+      })
+      .then(() => refreshAfterReservation('Aluno vinculado à reserva.'))
+      .catch((error: unknown) => {
+        if (reservationsStatus) {
+          reservationsStatus.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível vincular o aluno.';
+        }
+      });
+    return;
+  }
+  if (action === 'fulfill') {
+    void api
+      .fulfillReservation({ reservationId })
+      .then(() =>
+        refreshAfterReservation(
+          'Reserva entregue; a disponibilidade foi liberada.',
+        ),
+      )
+      .catch((error: unknown) => {
+        if (reservationsStatus) {
+          reservationsStatus.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível entregar a reserva.';
+        }
+      });
+    return;
+  }
   const reasonInput = document.querySelector('#reservation-action-reason');
   const reason =
     reasonInput instanceof HTMLInputElement ? reasonInput.value : '';
-  const action =
-    target.dataset.reservationAction === 'no-show'
+  const request =
+    action === 'no-show'
       ? api.markReservationNoShow({
-          reservationId: target.dataset.reservationId,
+          reservationId,
           reason,
         })
       : api.cancelReservation({
-          reservationId: target.dataset.reservationId,
+          reservationId,
           reason,
         });
-  void action
+  void request
     .then(() => {
       if (reasonInput instanceof HTMLInputElement) {
         reasonInput.value = '';
       }
       return refreshAfterReservation(
-        target.dataset.reservationAction === 'no-show'
+        action === 'no-show'
           ? 'Não retirada registrada; a disponibilidade foi liberada.'
           : 'Reserva cancelada; a disponibilidade foi liberada.',
       );
@@ -4227,6 +4451,55 @@ reservationsList?.addEventListener('click', (event) => {
           error instanceof Error
             ? error.message.replace(/^[A-Z_]+:\s*/, '')
             : 'Não foi possível atualizar a reserva.';
+      }
+    });
+});
+
+reservationFilterSlot?.addEventListener('change', () => {
+  paintReservationQueue();
+});
+reservationSearch?.addEventListener('input', () => {
+  paintReservationQueue();
+});
+
+reservationEditForm?.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const editId = document.querySelector('#reservation-edit-id');
+  const editName = document.querySelector('#reservation-edit-name');
+  const editClassroom = document.querySelector('#reservation-edit-classroom');
+  const editContact = document.querySelector('#reservation-edit-contact');
+  if (
+    !(editId instanceof HTMLInputElement) ||
+    !(editName instanceof HTMLInputElement) ||
+    !(editClassroom instanceof HTMLInputElement) ||
+    !(editContact instanceof HTMLInputElement)
+  ) {
+    return;
+  }
+  if (!editId.value) {
+    if (reservationsStatus) {
+      reservationsStatus.textContent = 'Escolha uma reserva para alterar.';
+    }
+    return;
+  }
+  void api
+    .updateReservation({
+      requestId: createRequestId(),
+      reservationId: editId.value,
+      studentNameText: editName.value,
+      classroomText: editClassroom.value,
+      contactOptional: editContact.value,
+    })
+    .then(() => {
+      editId.value = '';
+      return refreshAfterReservation('Reserva alterada.');
+    })
+    .catch((error: unknown) => {
+      if (reservationsStatus) {
+        reservationsStatus.textContent =
+          error instanceof Error
+            ? error.message.replace(/^[A-Z_]+:\s*/, '')
+            : 'Não foi possível alterar a reserva.';
       }
     });
 });

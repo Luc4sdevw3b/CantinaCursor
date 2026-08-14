@@ -15,6 +15,7 @@ export const RESERVATION_STATUS_CANCELLED = 'cancelled';
 export const RESERVATION_STATUS_NO_SHOW = 'no_show';
 export const RESERVATION_PAYMENT_UNPAID = 'unpaid';
 export const RESERVATION_CREATE_OPERATION = 'reservation.create';
+export const RESERVATION_UPDATE_OPERATION = 'reservation.update';
 
 export const RESERVATION_STATUSES = [
   RESERVATION_STATUS_RESERVED,
@@ -134,6 +135,18 @@ export const RESERVATION_NOT_ACTIVE_ERROR = {
 export const RESERVATION_REASON_REQUIRED_ERROR = {
   code: 'RESERVATION_REASON_REQUIRED',
   message: 'Informe o motivo.',
+  retryable: false,
+} as const;
+
+export const RESERVATION_STUDENT_NOT_FOUND_ERROR = {
+  code: 'STUDENT_NOT_FOUND',
+  message: 'Aluno não encontrado.',
+  retryable: false,
+} as const;
+
+export const RESERVATION_STUDENT_INACTIVE_ERROR = {
+  code: 'STUDENT_INACTIVE',
+  message: 'Aluno inativo não pode ser vinculado à reserva.',
   retryable: false,
 } as const;
 
@@ -384,6 +397,89 @@ export function publicProductSummaryLabel(input: {
 
 export function publicReservationCodeLabel(code: string): string {
   return `Código ${code}`;
+}
+
+export function productionSummaryLabel(
+  productName: string,
+  quantity: number,
+): string {
+  return `${productName} • ${quantity}`;
+}
+
+export function linkedReservationStudentLabel(
+  fullName: string,
+  ageLabel: string,
+): string {
+  return `vinculada a ${fullName} • ${ageLabel}`;
+}
+
+export function reservationMatchesOwnerSearch(
+  reservation: {
+    studentNameText: string;
+    classroomText: string;
+    publicCode: string;
+    slotLabel: string;
+    summaryLabel: string;
+    linkedStudentLabel: string;
+  },
+  query: string,
+): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) {
+    return true;
+  }
+  const haystack = [
+    reservation.studentNameText,
+    reservation.classroomText,
+    reservation.publicCode,
+    reservation.slotLabel,
+    reservation.summaryLabel,
+    reservation.linkedStudentLabel,
+  ]
+    .join(' ')
+    .toLowerCase();
+  return haystack.includes(needle);
+}
+
+export function buildProductionSummary(
+  reservations: ReadonlyArray<{
+    status: string;
+    items: ReadonlyArray<{
+      productId: string;
+      productName: string;
+      quantity: number;
+    }>;
+  }>,
+): Array<{
+  productId: string;
+  productName: string;
+  quantity: number;
+  summaryLabel: string;
+}> {
+  const counts = new Map<string, { productName: string; quantity: number }>();
+  for (const reservation of reservations) {
+    if (reservation.status !== RESERVATION_STATUS_RESERVED) {
+      continue;
+    }
+    for (const item of reservation.items) {
+      const current = counts.get(item.productId) ?? {
+        productName: item.productName,
+        quantity: 0,
+      };
+      current.quantity += item.quantity;
+      counts.set(item.productId, current);
+    }
+  }
+  return [...counts.entries()]
+    .map(([productId, row]) => ({
+      productId,
+      productName: row.productName,
+      quantity: row.quantity,
+      summaryLabel: productionSummaryLabel(row.productName, row.quantity),
+    }))
+    .sort((left, right) =>
+      left.productName.localeCompare(right.productName, 'pt-BR'),
+    );
 }
 
 export function rejectPublicHoneypot(value: unknown): Result<void> {

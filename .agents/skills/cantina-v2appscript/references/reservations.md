@@ -107,10 +107,14 @@ Nunca confiar no estoque visto pelo navegador.
 
 - reservas por recreio;
 - resumo de produção por produto;
+- pesquisar;
+- alterar nome/turma/contato;
 - entregar;
 - cancelar;
 - não retirada;
 - vincular aluno quando necessário.
+
+Entregar nesta fase só marca `fulfilled` e libera o reservado. Não cria venda e não baixa o estoque físico.
 
 ## Pagamento
 

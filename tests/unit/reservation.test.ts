@@ -236,4 +236,106 @@ describe('reservas', () => {
       }),
     ).rejects.toThrow('RESERVATION_REJECTED');
   });
+
+  it('lets the owner update, link, produce and fulfill without changing physical stock', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('owner');
+    const setup = await api.getReservationsSetup();
+    const slot = setup.slots.find((item) => item.label === 'Recreio tarde');
+    const coxinha = setup.reservableProducts.find(
+      (item) => item.name === 'Coxinha',
+    );
+    const ana = (await api.listStudents()).find(
+      (item) => item.fullName === 'Ana Souza' && item.ageLabel === '~8',
+    );
+    if (!slot || !coxinha || !ana) {
+      throw new Error('seed da fila da dona ausente');
+    }
+    const created = await api.createReservation({
+      requestId: createRequestId(),
+      slotId: slot.id,
+      studentNameText: 'Ana Souza',
+      classroomText: '3º A',
+      items: [{ productId: coxinha.id, quantity: 1 }],
+    });
+    const reservation = created.reservations[0];
+    if (!reservation) {
+      throw new Error('reserva ausente');
+    }
+    expect(created.production[0]?.summaryLabel).toBe('Coxinha • 1');
+    const updateRequestId = createRequestId();
+    const updated = await api.updateReservation({
+      requestId: updateRequestId,
+      reservationId: reservation.id,
+      studentNameText: 'Ana Souza',
+      classroomText: '4º B',
+      contactOptional: '11999990000',
+    });
+    expect(updated.reservations[0]?.summaryLabel).toBe(
+      'Ana Souza • 4º B • Coxinha • R$ 5,50 • Recreio tarde • reservada',
+    );
+    expect(updated.reservations[0]?.contactOptional).toBe('11999990000');
+    const replay = await api.updateReservation({
+      requestId: updateRequestId,
+      reservationId: reservation.id,
+      studentNameText: 'Ana Souza',
+      classroomText: '5º C',
+    });
+    expect(replay.reservations[0]?.classroomText).toBe('4º B');
+    const linked = await api.linkReservationStudent({
+      reservationId: reservation.id,
+      studentId: ana.id,
+    });
+    expect(linked.reservations[0]?.studentNameText).toBe('Ana Souza');
+    expect(linked.reservations[0]?.linkedStudentLabel).toBe(
+      'vinculada a Ana Souza • ~8',
+    );
+    const fulfilled = await api.fulfillReservation({
+      reservationId: reservation.id,
+    });
+    expect(fulfilled.reservations[0]?.status).toBe('fulfilled');
+    expect(fulfilled.reservations[0]?.summaryLabel).toContain('retirada');
+    expect(fulfilled.production).toEqual([]);
+    expect(
+      fulfilled.availability.find((item) => item.productName === 'Coxinha')
+        ?.reservedQuantity,
+    ).toBe(0);
+    expect(
+      (await api.listInventoryBalances()).items.find(
+        (item) => item.productName === 'Coxinha',
+      )?.physicalQuantity,
+    ).toBe(10);
+    await expect(
+      api.updateReservation({
+        requestId: createRequestId(),
+        reservationId: reservation.id,
+        studentNameText: 'Ana Souza',
+        classroomText: '4º B',
+      }),
+    ).rejects.toThrow('já foi encerrada');
+  });
+
+  it('lets staff deliver a reservation', async () => {
+    const api = new FakeAppApi();
+    await api.loginE2E('staff');
+    const setup = await api.getReservationsSetup();
+    const slot = setup.slots.find((item) => item.label === 'Recreio tarde');
+    const coxinha = setup.reservableProducts.find(
+      (item) => item.name === 'Coxinha',
+    );
+    if (!slot || !coxinha) {
+      throw new Error('seed de reserva ausente');
+    }
+    const created = await api.createReservation({
+      requestId: createRequestId(),
+      slotId: slot.id,
+      studentNameText: 'Bruno Lima',
+      classroomText: '3º A',
+      items: [{ productId: coxinha.id, quantity: 1 }],
+    });
+    const fulfilled = await api.fulfillReservation({
+      reservationId: created.reservations[0]?.id ?? '',
+    });
+    expect(fulfilled.reservations[0]?.status).toBe('fulfilled');
+  });
 });

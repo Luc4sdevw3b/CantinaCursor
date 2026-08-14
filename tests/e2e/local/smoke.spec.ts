@@ -1015,6 +1015,8 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await expect(
       page.getByRole('button', { name: 'Confirmar reserva' }),
     ).toBeVisible();
+    await expect(page.getByLabel('Pesquisar reserva')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Produção' })).toBeVisible();
   });
 
   test('creates a public recreio reservation without login or private autocomplete', async ({
@@ -1056,5 +1058,81 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await expect(
       page.getByText('Coxinha • R$ 5,50 • disponível 9', { exact: true }),
     ).toBeVisible();
+  });
+
+  test('lets the owner search, link, update and deliver a recreio reservation', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await goToArea(page, 'Reservas');
+    await page.locator('#reservation-slot-id').selectOption({
+      label: 'Recreio tarde • corte 18:00 • retirada 18:15–18:35',
+    });
+    await page.locator('#reservation-student-name').fill('Ana Souza');
+    await page.locator('#reservation-classroom').fill('3º A');
+    await page.locator('#reservation-product').selectOption({
+      label: 'Coxinha • R$ 5,50',
+    });
+    await page.getByRole('button', { name: 'Confirmar reserva' }).click();
+    await expect(page.getByText('Coxinha • 1', { exact: true })).toBeVisible();
+    await page.locator('#reservation-filter-slot').selectOption({
+      label: 'Recreio manhã',
+    });
+    await expect(
+      page.getByText(
+        'Ana Souza • 3º A • Coxinha • R$ 5,50 • Recreio tarde • reservada',
+        { exact: true },
+      ),
+    ).toHaveCount(0);
+    await expect(page.getByText('Nenhuma reserva encontrada.')).toBeVisible();
+    await page.locator('#reservation-filter-slot').selectOption({
+      label: 'Todos os recreios',
+    });
+    await page.getByLabel('Pesquisar reserva').fill('Ana');
+    await expect(
+      page.getByText(
+        'Ana Souza • 3º A • Coxinha • R$ 5,50 • Recreio tarde • reservada',
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await page.getByLabel('Pesquisar reserva').fill('ZZZZZZ');
+    await expect(page.getByText('Nenhuma reserva encontrada.')).toBeVisible();
+    await page.getByLabel('Pesquisar reserva').fill('');
+    await page.locator('#reservation-link-student').selectOption({
+      label: 'Ana Souza • ~8',
+    });
+    await page.getByRole('button', { name: 'Vincular aluno' }).click();
+    await expect(
+      page.getByText('vinculada a Ana Souza • ~8', { exact: true }),
+    ).toBeVisible();
+    await page
+      .locator('#reservations-list')
+      .getByRole('button', { name: 'Alterar reserva' })
+      .click();
+    await page.locator('#reservation-edit-classroom').fill('4º B');
+    await page
+      .locator('#reservation-edit-form')
+      .getByRole('button', { name: 'Alterar reserva' })
+      .click();
+    await expect(
+      page.getByText(
+        'Ana Souza • 4º B • Coxinha • R$ 5,50 • Recreio tarde • reservada',
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Entregar reserva' }).click();
+    await expect(
+      page.getByText(
+        'Ana Souza • 4º B • Coxinha • R$ 5,50 • Recreio tarde • retirada',
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Coxinha • disponível 10 • reservado 0', { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText('Coxinha • 1', { exact: true })).toHaveCount(0);
+    await goToArea(page, 'Estoque');
+    await expect(page.getByText('Coxinha • 10', { exact: true })).toBeVisible();
   });
 });

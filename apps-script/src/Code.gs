@@ -458,6 +458,7 @@ const RESERVATION_STATUS_CANCELLED = 'cancelled';
 const RESERVATION_STATUS_NO_SHOW = 'no_show';
 const RESERVATION_PAYMENT_UNPAID = 'unpaid';
 const RESERVATION_CREATE_OPERATION = 'reservation.create';
+const RESERVATION_UPDATE_OPERATION = 'reservation.update';
 const PUBLIC_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const PUBLIC_ACTOR_ID = 'aaaaaaaa-bbbb-4ccc-8ddd-000000000098';
 const CASH_STATUS_OPEN = 'open';
@@ -7849,6 +7850,10 @@ function toReservationSlotGs(slot, nowIso) {
   };
 }
 
+function linkedReservationStudentLabelGs(fullName, ageLabel) {
+  return 'vinculada a ' + fullName + ' • ' + ageLabel;
+}
+
 function toReservationViewGs(reservation) {
   const slot = latestRecordsById(listReservationSlotRecords()).filter(
     function (item) {
@@ -7872,13 +7877,32 @@ function toReservationViewGs(reservation) {
     return item.productName;
   });
   const slotLabel = slot ? slot.label : '';
+  const linkedStudentId = reservation.linked_student_id
+    ? String(reservation.linked_student_id)
+    : '';
+  let linkedStudentLabel = '';
+  if (linkedStudentId) {
+    try {
+      const student = latestStudentById(linkedStudentId);
+      linkedStudentLabel = linkedReservationStudentLabelGs(
+        student.full_name,
+        studentAgeLabelGs(student),
+      );
+    } catch (error) {
+      linkedStudentLabel = '';
+    }
+  }
   return {
     id: reservation.id,
     publicCode: reservation.public_code,
+    publicCodeLabel: 'Código ' + reservation.public_code,
     slotId: reservation.slot_id,
     slotLabel: slotLabel,
     studentNameText: reservation.student_name_text,
     classroomText: reservation.classroom_text,
+    contactOptional: reservation.contact_optional || '',
+    linkedStudentId: linkedStudentId || null,
+    linkedStudentLabel: linkedStudentLabel,
     status: reservation.status,
     paymentStatus: reservation.payment_status,
     totalCents: Number(reservation.total_cents),
@@ -7897,6 +7921,38 @@ function toReservationViewGs(reservation) {
     items: items,
     createdAt: reservation.created_at,
   };
+}
+
+function productionSummaryGs(reservations) {
+  const counts = {};
+  reservations.forEach(function (reservation) {
+    if (reservation.status !== RESERVATION_STATUS_RESERVED) {
+      return;
+    }
+    reservation.items.forEach(function (item) {
+      if (!counts[item.productId]) {
+        counts[item.productId] = {
+          productId: item.productId,
+          productName: item.productName,
+          quantity: 0,
+        };
+      }
+      counts[item.productId].quantity += item.quantity;
+    });
+  });
+  return Object.keys(counts)
+    .map(function (productId) {
+      const row = counts[productId];
+      return {
+        productId: row.productId,
+        productName: row.productName,
+        quantity: row.quantity,
+        summaryLabel: row.productName + ' • ' + row.quantity,
+      };
+    })
+    .sort(function (left, right) {
+      return left.productName.localeCompare(right.productName, 'pt-BR');
+    });
 }
 
 function toReservationsSetupGs() {
@@ -7951,6 +8007,7 @@ function toReservationsSetupGs() {
     reservations: reservations,
     availability: availability,
     reservableProducts: reservableProducts,
+    production: productionSummaryGs(reservations),
   };
 }
 
@@ -8313,6 +8370,149 @@ function fulfillReservation(sessionToken, payload) {
       RESERVATION_STATUS_FULFILLED,
       'Retirada no recreio',
     );
+  });
+}
+
+function requireActiveReservationGs(reservationId) {
+  if (!REQUEST_ID_PATTERN.test(reservationId)) {
+    throw new Error(
+      'INVALID_ID: ID deve ser UUID imutável, nunca número da linha.',
+    );
+  }
+  const reservation = latestRecordsById(listReservationRecords()).filter(
+    function (item) {
+      return item.id === reservationId;
+    },
+  )[0];
+  if (!reservation) {
+    throw new Error('RESERVATION_NOT_FOUND: Reserva não encontrada.');
+  }
+  if (reservation.status !== RESERVATION_STATUS_RESERVED) {
+    throw new Error('RESERVATION_NOT_ACTIVE: Esta reserva já foi encerrada.');
+  }
+  return reservation;
+}
+
+function appendReservationSnapshotGs(reservation, next) {
+  openNamedSheet(RESERVATIONS_SHEET, RESERVATIONS_HEADERS).appendRow([
+    reservation.id,
+    reservation.public_code,
+    reservation.request_id,
+    next.requester_name,
+    next.student_name_text,
+    next.classroom_text,
+    next.contact_optional,
+    reservation.slot_id,
+    next.status,
+    reservation.payment_status,
+    next.linked_student_id,
+    reservation.total_cents,
+    reservation.created_at,
+    next.updated_at,
+    reservation.note,
+  ]);
+}
+
+function updateReservationUnlocked(payload) {
+  const requestId =
+    payload && payload.requestId ? String(payload.requestId) : '';
+  if (!REQUEST_ID_PATTERN.test(requestId)) {
+    throw new Error(
+      'INVALID_REQUEST_ID: request_id deve ser UUID, nunca número da linha.',
+    );
+  }
+  const operations = openNamedSheet(
+    OPERATION_REQUESTS_SHEET,
+    OPERATION_REQUESTS_HEADERS,
+  );
+  const existing = findOperationRequest(operations, requestId);
+  if (existing) {
+    if (existing.operation_type !== RESERVATION_UPDATE_OPERATION) {
+      throw new Error(
+        'REQUEST_CONFLICT: Este request_id já foi usado em outra operação.',
+      );
+    }
+    return toReservationsSetupGs();
+  }
+  const reservation = requireActiveReservationGs(
+    String((payload && payload.reservationId) || ''),
+  );
+  const studentName = String((payload && payload.studentNameText) || '')
+    .trim()
+    .replace(/\s+/g, ' ');
+  if (studentName.length < 2 || studentName.length > 80) {
+    throw new Error(
+      'RESERVATION_STUDENT_NAME_REQUIRED: Informe o nome para a retirada.',
+    );
+  }
+  const classroom = String((payload && payload.classroomText) || '')
+    .trim()
+    .replace(/\s+/g, ' ');
+  if (!classroom || classroom.length > 40) {
+    throw new Error('RESERVATION_CLASSROOM_REQUIRED: Informe a turma.');
+  }
+  const contact = String((payload && payload.contactOptional) || '')
+    .trim()
+    .replace(/\s+/g, ' ');
+  if (contact.length > 40) {
+    throw new Error('RESERVATION_REASON_REQUIRED: Informe o motivo.');
+  }
+  const now = new Date().toISOString();
+  appendReservationSnapshotGs(reservation, {
+    requester_name: studentName,
+    student_name_text: studentName,
+    classroom_text: classroom,
+    contact_optional: contact,
+    status: reservation.status,
+    linked_student_id: reservation.linked_student_id,
+    updated_at: now,
+  });
+  operations.appendRow([
+    requestId,
+    RESERVATION_UPDATE_OPERATION,
+    reservation.id,
+    OPERATION_COMPLETED,
+    now,
+  ]);
+  return toReservationsSetupGs();
+}
+
+function updateReservation(sessionToken, payload) {
+  requireAction(sessionToken, 'reservations.write');
+  return withScriptLock(function () {
+    setupSchema();
+    return updateReservationUnlocked(payload || {});
+  });
+}
+
+function linkReservationStudentUnlocked(payload) {
+  const reservation = requireActiveReservationGs(
+    String((payload && payload.reservationId) || ''),
+  );
+  const studentId = String((payload && payload.studentId) || '');
+  const student = latestStudentById(studentId);
+  if (student.active !== 'true') {
+    throw new Error(
+      'STUDENT_INACTIVE: Aluno inativo não pode ser vinculado à reserva.',
+    );
+  }
+  appendReservationSnapshotGs(reservation, {
+    requester_name: reservation.requester_name,
+    student_name_text: reservation.student_name_text,
+    classroom_text: reservation.classroom_text,
+    contact_optional: reservation.contact_optional,
+    status: reservation.status,
+    linked_student_id: student.id,
+    updated_at: new Date().toISOString(),
+  });
+  return toReservationsSetupGs();
+}
+
+function linkReservationStudent(sessionToken, payload) {
+  requireAction(sessionToken, 'reservations.write');
+  return withScriptLock(function () {
+    setupSchema();
+    return linkReservationStudentUnlocked(payload || {});
   });
 }
 

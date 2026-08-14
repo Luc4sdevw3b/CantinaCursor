@@ -377,8 +377,19 @@ interface ServerContext {
   getReservationsSetup(sessionToken: string): {
     slots: Array<{ id: string; label: string; openForReservations: boolean }>;
     reservableProducts: Array<{ id: string; name: string }>;
-    reservations: Array<{ id: string; summaryLabel: string; status: string }>;
-    availability: Array<{ productName: string; summaryLabel: string }>;
+    reservations: Array<{
+      id: string;
+      summaryLabel: string;
+      status: string;
+      classroomText: string;
+      linkedStudentLabel: string;
+    }>;
+    availability: Array<{
+      productName: string;
+      summaryLabel: string;
+      reservedQuantity: number;
+    }>;
+    production: Array<{ summaryLabel: string }>;
   };
   createReservationSlot(
     sessionToken: string,
@@ -390,8 +401,9 @@ interface ServerContext {
     sessionToken: string,
     payload: Record<string, unknown>,
   ): {
-    reservations: Array<{ summaryLabel: string }>;
+    reservations: Array<{ id: string; summaryLabel: string }>;
     availability: Array<{ productName: string; reservedQuantity: number }>;
+    production: Array<{ summaryLabel: string }>;
   };
   getPublicReservationPortal(): {
     slots: Array<{ id: string; label: string; summaryLabel: string }>;
@@ -406,6 +418,38 @@ interface ServerContext {
     publicCode: string;
     publicCodeLabel: string;
     summaryLabel: string;
+  };
+  updateReservation(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): {
+    reservations: Array<{
+      id: string;
+      summaryLabel: string;
+      status: string;
+      classroomText: string;
+      contactOptional: string;
+      linkedStudentLabel: string;
+    }>;
+    production: Array<{ summaryLabel: string }>;
+    availability: Array<{ productName: string; reservedQuantity: number }>;
+  };
+  linkReservationStudent(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): {
+    reservations: Array<{
+      studentNameText: string;
+      linkedStudentLabel: string;
+    }>;
+  };
+  fulfillReservation(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): {
+    reservations: Array<{ status: string; summaryLabel: string }>;
+    production: Array<{ summaryLabel: string }>;
+    availability: Array<{ productName: string; reservedQuantity: number }>;
   };
 }
 
@@ -2862,5 +2906,84 @@ describe('Apps Script E2E server', () => {
         items: [{ productId: coxinha.id, quantity: 1 }],
       }),
     ).toThrow('RESERVATION_REJECTED');
+  });
+
+  it('lets the owner update, link and fulfill a recreio reservation without changing physical stock', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const staff = server.loginE2E('staff').token;
+    const slots = server.createReservationSlot(owner, {
+      label: 'Recreio teste',
+      cutoffTime: '23:00',
+      pickupStartTime: '23:10',
+      pickupEndTime: '23:30',
+    });
+    const slot = slots.slots.find((item) => item.label === 'Recreio teste');
+    const coxinha = server
+      .getReservationsSetup(owner)
+      .reservableProducts.find((item) => item.name === 'Coxinha');
+    const ana = server
+      .listStudents(owner)
+      .find((item) => item.fullName === 'Ana Souza' && item.ageLabel === '~8');
+    if (!slot || !coxinha || !ana) {
+      throw new Error('fila da dona E2E incompleta');
+    }
+    const created = server.createReservation(owner, {
+      requestId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee29',
+      slotId: slot.id,
+      studentNameText: 'Ana Souza',
+      classroomText: '3º A',
+      items: [{ productId: coxinha.id, quantity: 1 }],
+    });
+    const reservationId = created.reservations[0]?.id;
+    if (!reservationId) {
+      throw new Error('reserva ausente');
+    }
+    expect(server.getReservationsSetup(owner).production[0]?.summaryLabel).toBe(
+      'Coxinha • 1',
+    );
+    const updated = server.updateReservation(owner, {
+      requestId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee30',
+      reservationId,
+      studentNameText: 'Ana Souza',
+      classroomText: '4º B',
+      contactOptional: '11999990000',
+    });
+    expect(updated.reservations[0]?.summaryLabel).toBe(
+      'Ana Souza • 4º B • Coxinha • R$ 5,50 • Recreio teste • reservada',
+    );
+    const replay = server.updateReservation(owner, {
+      requestId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee30',
+      reservationId,
+      studentNameText: 'Ana Souza',
+      classroomText: '5º C',
+    });
+    expect(replay.reservations[0]?.classroomText).toBe('4º B');
+    const linked = server.linkReservationStudent(staff, {
+      reservationId,
+      studentId: ana.id,
+    });
+    expect(linked.reservations[0]?.studentNameText).toBe('Ana Souza');
+    expect(linked.reservations[0]?.linkedStudentLabel).toBe(
+      'vinculada a Ana Souza • ~8',
+    );
+    const fulfilled = server.fulfillReservation(staff, { reservationId });
+    expect(fulfilled.reservations[0]?.status).toBe('fulfilled');
+    expect(fulfilled.reservations[0]?.summaryLabel).toContain('retirada');
+    expect(fulfilled.production).toEqual([]);
+    expect(
+      fulfilled.availability.find((item) => item.productName === 'Coxinha')
+        ?.reservedQuantity,
+    ).toBe(0);
+    expect(
+      server
+        .listInventoryBalances(owner)
+        .items.find((item) => item.productName === 'Coxinha')?.physicalQuantity,
+    ).toBe(10);
   });
 });

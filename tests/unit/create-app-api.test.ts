@@ -107,6 +107,8 @@ function runnerWith(
     cancelReservation() {},
     markReservationNoShow() {},
     fulfillReservation() {},
+    updateReservation() {},
+    linkReservationStudent() {},
     getPublicReservationPortal() {},
     createPublicReservation() {},
     ...extra,

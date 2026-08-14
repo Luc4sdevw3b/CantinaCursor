@@ -9,6 +9,40 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-14 08:20 — Implementada a Fase 25: gestão da dona nas reservas
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 25
+
+### Pedido / objetivo
+
+- Executar a Fase 25: reservas por recreio, resumo de produção, pesquisar, alterar, entregar, cancelar, no-show e vincular aluno.
+
+### Tentativa / implementação
+
+- Tela **Reservas do recreio** ganha filtro por recreio, **Pesquisar reserva**, produção (`Coxinha • 1`), **Alterar reserva**, **Entregar reserva** e **Vincular aluno**.
+- `updateReservation` (com `request_id`) altera nome, turma e contato de reserva ativa. `linkReservationStudent` preenche `linked_student_id` e mostra `vinculada a Ana Souza • ~8`, sem apagar o nome digitado.
+- Entregar chama `fulfillReservation`: status `retirada`, libera reservado, estoque físico permanece. Não abre venda nem pagamento.
+- Cancelar e não retirada continuam iguais. **Criar recreio** segue só da dona. Funcionário pesquisa, entrega, altera, vincula e cancela.
+
+### Resultado
+
+- Fase 25 concluída sobre o preview local. Reserva→venda permanece na Fase 26.
+
+### Diferenças do pedido
+
+- Alterar nesta fase não troca o produto/quantidade da reserva; só nome, turma e contato.
+
+### Impacto técnico
+
+- Sem migration nova. `linked_student_id` já existia no schema 15. Produção é calculada das reservas `reserved`.
+
+### Testes
+
+- typecheck, lint, format, Vitest (211) e E2E local (35) passaram.
+
 ## 2026-08-14 07:45 — Implementada a Fase 24: portal público de reservas
 
 **Origem:** Pedido do usuário

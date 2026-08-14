@@ -2,7 +2,7 @@
 
 Aplicação web da cantina, planejada para Google Apps Script + Google Sheets + Google Drive.
 
-O projeto está na Fase 24 (`0.1.0-dev`): portal público de reservas com catálogo reservável, `ACABOU`, nome/turma digitados, contato opcional e código público. Gestão da dona fica na Fase 25.
+O projeto está na Fase 25 (`0.1.0-dev`): gestão da dona nas reservas do recreio (fila por recreio, produção, pesquisar, alterar, entregar, cancelar, não retirada e vincular aluno). Reserva→venda fica na Fase 26.
 
 Consulte:
 

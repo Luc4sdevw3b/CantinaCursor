@@ -557,16 +557,27 @@ export interface ReservationItem {
 export interface Reservation {
   id: string;
   publicCode: string;
+  publicCodeLabel: string;
   slotId: string;
   slotLabel: string;
   studentNameText: string;
   classroomText: string;
+  contactOptional: string;
+  linkedStudentId: string | null;
+  linkedStudentLabel: string;
   status: string;
   paymentStatus: string;
   totalCents: number;
   summaryLabel: string;
   items: ReservationItem[];
   createdAt: string;
+}
+
+export interface ReservationProduction {
+  productId: string;
+  productName: string;
+  quantity: number;
+  summaryLabel: string;
 }
 
 export interface ReservationAvailability {
@@ -589,6 +600,7 @@ export interface ReservationsSetup {
   reservations: Reservation[];
   availability: ReservationAvailability[];
   reservableProducts: ReservableProduct[];
+  production: ReservationProduction[];
 }
 
 export interface CreateReservationSlotInput {
@@ -608,6 +620,19 @@ export interface CreateReservationInput {
   note?: string;
   items: Array<{ productId: string; quantity: number }>;
   website?: string;
+}
+
+export interface UpdateReservationInput {
+  requestId: string;
+  reservationId: string;
+  studentNameText: string;
+  classroomText: string;
+  contactOptional?: string;
+}
+
+export interface LinkReservationStudentInput {
+  reservationId: string;
+  studentId: string;
 }
 
 export interface PublicReservationProduct {
@@ -760,6 +785,10 @@ export interface AppApi {
   fulfillReservation(input: {
     reservationId: string;
   }): Promise<ReservationsSetup>;
+  updateReservation(input: UpdateReservationInput): Promise<ReservationsSetup>;
+  linkReservationStudent(
+    input: LinkReservationStudentInput,
+  ): Promise<ReservationsSetup>;
   getPublicReservationPortal(): Promise<PublicReservationPortal>;
   createPublicReservation(
     input: CreateReservationInput,

@@ -61,6 +61,8 @@ import type {
   ReservationsSetup,
   CreateReservationSlotInput,
   CreateReservationInput,
+  UpdateReservationInput,
+  LinkReservationStudentInput,
   PublicReservationConfirmation,
   PublicReservationPortal,
 } from './app-api';
@@ -100,6 +102,7 @@ export class FakeAppApi implements AppApi {
   private readonly reservations = new MemoryReservations(
     this.catalog,
     this.stock,
+    this.roster,
     () => '2026-08-13T16:00:00.000Z',
   );
   private readonly sales = new MemorySales(
@@ -560,6 +563,20 @@ export class FakeAppApi implements AppApi {
   }): Promise<ReservationsSetup> {
     this.assertAction('reservations.write');
     return throwResult(this.reservations.fulfillReservation(input));
+  }
+
+  async updateReservation(
+    input: UpdateReservationInput,
+  ): Promise<ReservationsSetup> {
+    this.assertAction('reservations.write');
+    return throwResult(this.reservations.updateReservation(input));
+  }
+
+  async linkReservationStudent(
+    input: LinkReservationStudentInput,
+  ): Promise<ReservationsSetup> {
+    this.assertAction('reservations.write');
+    return throwResult(this.reservations.linkStudent(input));
   }
 
   async getPublicReservationPortal(): Promise<PublicReservationPortal> {
