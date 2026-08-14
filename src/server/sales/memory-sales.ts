@@ -503,6 +503,10 @@ export class MemorySales {
     );
   }
 
+  productIsReferenced(productId: string): boolean {
+    return this.items.some((item) => item.product_id === productId);
+  }
+
   listReceivables(): Result<ReceivableAgendaView> {
     const today = todayCivilSaoPaulo(this.nowIso());
     const overdue: ReceivableView[] = [];

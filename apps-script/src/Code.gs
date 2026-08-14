@@ -948,6 +948,20 @@ function clearSheetData(sheet) {
   }
 }
 
+function rewriteSheetRecords(sheetName, headers, records) {
+  const sheet = openNamedSheet(sheetName, headers);
+  clearSheetData(sheet);
+  if (!records.length) {
+    return;
+  }
+  const rows = records.map(function (record) {
+    return headers.map(function (header) {
+      return record[header];
+    });
+  });
+  sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+}
+
 function resetE2EUnlocked() {
   const spreadsheet = openConfiguredSpreadsheet();
   clearSheetData(getOrCreateE2EMetaSheet(spreadsheet));
@@ -3603,7 +3617,7 @@ function deactivateCategory(sessionToken, id) {
       const product = products[index];
       if (product.category_id === id && product.active === 'true') {
         throw new Error(
-          'CATEGORY_HAS_ACTIVE_PRODUCTS: Não é possível excluir a categoria enquanto houver produtos ativos nela.',
+          'CATEGORY_HAS_ACTIVE_PRODUCTS: Não é possível inativar a categoria enquanto houver produtos ativos nela.',
         );
       }
     }
@@ -3613,6 +3627,52 @@ function deactivateCategory(sessionToken, id) {
       id: record.id,
       name: record.name,
       active: false,
+    };
+  });
+}
+
+function activateCategory(sessionToken, id) {
+  requireAction(sessionToken, 'products.write');
+  return withScriptLock(function () {
+    setupSchema();
+    const current = latestCategoryById(id, true);
+    if (current.active === 'true') {
+      throw new Error('CATEGORY_ALREADY_ACTIVE: Esta categoria já está ativa.');
+    }
+    const record = Object.assign({}, current, { active: 'true' });
+    appendCategoryRecord(record);
+    return {
+      id: record.id,
+      name: record.name,
+      active: true,
+    };
+  });
+}
+
+function deleteCategory(sessionToken, id) {
+  requireAction(sessionToken, 'products.write');
+  return withScriptLock(function () {
+    setupSchema();
+    const current = latestCategoryById(id, true);
+    const products = latestRecordsById(listProductRecords());
+    for (let index = 0; index < products.length; index += 1) {
+      if (products[index].category_id === id) {
+        throw new Error(
+          'CATEGORY_HAS_PRODUCTS: Não é possível excluir a categoria enquanto houver produtos nela.',
+        );
+      }
+    }
+    rewriteSheetRecords(
+      PRODUCT_CATEGORIES_SHEET,
+      PRODUCT_CATEGORIES_HEADERS,
+      listCategoryRecords().filter(function (record) {
+        return record.id !== id;
+      }),
+    );
+    return {
+      id: current.id,
+      name: current.name,
+      active: current.active === 'true',
     };
   });
 }
@@ -3700,6 +3760,78 @@ function deactivateProduct(sessionToken, id) {
     });
     appendProductRecord(record);
     return toProductGs(record);
+  });
+}
+
+function activateProduct(sessionToken, id) {
+  requireAction(sessionToken, 'products.write');
+  return withScriptLock(function () {
+    setupSchema();
+    const previous = latestProductById(id);
+    if (previous.active === 'true') {
+      throw new Error('PRODUCT_ALREADY_ACTIVE: Este produto já está ativo.');
+    }
+    const category = latestCategoryById(previous.category_id, true);
+    if (category.active !== 'true') {
+      throw new Error(
+        'CATEGORY_INACTIVE: Não é possível reativar um produto de categoria inativa.',
+      );
+    }
+    const record = Object.assign({}, previous, {
+      active: 'true',
+      updated_at: new Date().toISOString(),
+    });
+    appendProductRecord(record);
+    return toProductGs(record);
+  });
+}
+
+function productIsReferencedGs(productId) {
+  const sheets = [
+    [SALE_ITEMS_SHEET, SALE_ITEMS_HEADERS],
+    [INVENTORY_OPENING_ITEMS_SHEET, INVENTORY_OPENING_ITEMS_HEADERS],
+    [INVENTORY_MOVEMENTS_SHEET, INVENTORY_MOVEMENTS_HEADERS],
+    [RESERVATION_ITEMS_SHEET, RESERVATION_ITEMS_HEADERS],
+  ];
+  for (let index = 0; index < sheets.length; index += 1) {
+    const records = listSheetRecords(
+      openNamedSheet(sheets[index][0], sheets[index][1]),
+      sheets[index][1],
+    );
+    for (let row = 0; row < records.length; row += 1) {
+      if (records[row].product_id === productId) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function deleteProduct(sessionToken, id) {
+  requireAction(sessionToken, 'products.write');
+  return withScriptLock(function () {
+    setupSchema();
+    const previous = latestProductById(id);
+    if (productIsReferencedGs(id)) {
+      throw new Error(
+        'PRODUCT_IN_USE: Não é possível excluir o produto porque ele já entrou em venda, estoque ou reserva. Inative-o.',
+      );
+    }
+    rewriteSheetRecords(
+      PRODUCTS_SHEET,
+      PRODUCTS_HEADERS,
+      listProductRecords().filter(function (record) {
+        return record.id !== id;
+      }),
+    );
+    rewriteSheetRecords(
+      PRODUCT_PRICE_HISTORY_SHEET,
+      PRODUCT_PRICE_HISTORY_HEADERS,
+      listPriceHistoryRecords().filter(function (record) {
+        return record.product_id !== id;
+      }),
+    );
+    return toProductGs(previous);
   });
 }
 

@@ -726,10 +726,14 @@ export interface AppApi {
   createCategory(name: string): Promise<ProductCategory>;
   updateCategory(id: string, name: string): Promise<ProductCategory>;
   deactivateCategory(id: string): Promise<ProductCategory>;
+  activateCategory(id: string): Promise<ProductCategory>;
+  deleteCategory(id: string): Promise<ProductCategory>;
   listProducts(query?: { includeInactive?: boolean }): Promise<Product[]>;
   createProduct(input: ProductFields): Promise<Product>;
   updateProduct(id: string, input: ProductFields): Promise<Product>;
   deactivateProduct(id: string): Promise<Product>;
+  activateProduct(id: string): Promise<Product>;
+  deleteProduct(id: string): Promise<Product>;
   listProductPriceHistory(productId: string): Promise<ProductPriceHistory[]>;
   createAdHocItem(input: {
     name: string;

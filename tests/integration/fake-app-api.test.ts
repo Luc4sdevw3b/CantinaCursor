@@ -268,6 +268,16 @@ describe('FakeAppApi', () => {
       ),
     ).toBe(true);
     expect((await api.deactivateCategory(lanches.id)).active).toBe(false);
+    expect((await api.activateCategory(lanches.id)).active).toBe(true);
+    await api.deleteCategory(lanches.id);
+    expect(
+      (await api.listProductCategories()).some(
+        (item) => item.name === 'Lanche da tarde',
+      ),
+    ).toBe(false);
+    await expect(api.deleteCategory(salgados.id)).rejects.toThrow(
+      'CATEGORY_HAS_PRODUCTS',
+    );
     await expect(api.deactivateCategory(salgados.id)).rejects.toThrow(
       'CATEGORY_HAS_ACTIVE_PRODUCTS',
     );
@@ -276,7 +286,22 @@ describe('FakeAppApi', () => {
       categoryId: salgados.id,
       priceCents: 100,
     });
-    expect((await api.deactivateProduct(extra.id)).active).toBe(false);
+    await api.deleteProduct(extra.id);
+    expect(
+      (await api.listProducts({ includeInactive: true })).some(
+        (item) => item.name === 'Produto e2e excluir',
+      ),
+    ).toBe(false);
+    await expect(api.deleteProduct(coxinha.id)).rejects.toThrow(
+      'PRODUCT_IN_USE',
+    );
+    const inactive = await api.createProduct({
+      name: 'Produto e2e inativar',
+      categoryId: salgados.id,
+      priceCents: 100,
+    });
+    expect((await api.deactivateProduct(inactive.id)).active).toBe(false);
+    expect((await api.activateProduct(inactive.id)).active).toBe(true);
   });
 
   it('opens demo stock, labels zero as ACABOU and keeps adjustments to the owner', async () => {

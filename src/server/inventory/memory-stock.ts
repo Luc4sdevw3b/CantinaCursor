@@ -216,6 +216,13 @@ export class MemoryStock {
     });
   }
 
+  productIsReferenced(productId: string): boolean {
+    return (
+      this.openings.some((item) => item.product_id === productId) ||
+      this.movements.some((item) => item.product_id === productId)
+    );
+  }
+
   adjust(input: {
     productId: string;
     quantityDelta: number;

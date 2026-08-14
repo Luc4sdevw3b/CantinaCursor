@@ -109,10 +109,14 @@ export interface GoogleScriptRunner {
   createCategory(token: string, payload: unknown): void;
   updateCategory(token: string, id: string, payload: unknown): void;
   deactivateCategory(token: string, id: string): void;
+  activateCategory(token: string, id: string): void;
+  deleteCategory(token: string, id: string): void;
   listProducts(token: string, query?: unknown): void;
   createProduct(token: string, payload: unknown): void;
   updateProduct(token: string, id: string, payload: unknown): void;
   deactivateProduct(token: string, id: string): void;
+  activateProduct(token: string, id: string): void;
+  deleteProduct(token: string, id: string): void;
   listProductPriceHistory(token: string, productId: string): void;
   createAdHocItem(token: string, payload: unknown): void;
   listAdHocItems(token: string): void;
@@ -529,6 +533,18 @@ export class GoogleScriptAppApi implements AppApi {
     );
   }
 
+  activateCategory(id: string): Promise<ProductCategory> {
+    return this.callWithToken((runner, token) =>
+      runner.activateCategory(token, id),
+    );
+  }
+
+  deleteCategory(id: string): Promise<ProductCategory> {
+    return this.callWithToken((runner, token) =>
+      runner.deleteCategory(token, id),
+    );
+  }
+
   listProducts(query?: { includeInactive?: boolean }): Promise<Product[]> {
     return this.callWithToken((runner, token) =>
       runner.listProducts(token, query),
@@ -556,6 +572,18 @@ export class GoogleScriptAppApi implements AppApi {
   deactivateProduct(id: string): Promise<Product> {
     return this.callWithToken((runner, token) =>
       runner.deactivateProduct(token, id),
+    );
+  }
+
+  activateProduct(id: string): Promise<Product> {
+    return this.callWithToken((runner, token) =>
+      runner.activateProduct(token, id),
+    );
+  }
+
+  deleteProduct(id: string): Promise<Product> {
+    return this.callWithToken((runner, token) =>
+      runner.deleteProduct(token, id),
     );
   }
 

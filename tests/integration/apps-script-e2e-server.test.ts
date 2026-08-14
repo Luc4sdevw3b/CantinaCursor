@@ -223,6 +223,14 @@ interface ServerContext {
     sessionToken: string,
     id: string,
   ): { id: string; name: string; active: boolean };
+  activateCategory(
+    sessionToken: string,
+    id: string,
+  ): { id: string; name: string; active: boolean };
+  deleteCategory(
+    sessionToken: string,
+    id: string,
+  ): { id: string; name: string; active: boolean };
   listProducts(
     sessionToken: string,
     query?: { includeInactive?: boolean },
@@ -245,6 +253,14 @@ interface ServerContext {
     payload: Record<string, unknown>,
   ): { id: string; priceCents: number };
   deactivateProduct(
+    sessionToken: string,
+    id: string,
+  ): { id: string; name: string; active: boolean };
+  activateProduct(
+    sessionToken: string,
+    id: string,
+  ): { id: string; name: string; active: boolean };
+  deleteProduct(
     sessionToken: string,
     id: string,
   ): { id: string; name: string; active: boolean };
@@ -1808,12 +1824,22 @@ describe('Apps Script E2E server', () => {
         .some((item) => item.name === 'Lanche da tarde'),
     ).toBe(true);
     expect(server.deactivateCategory(owner, lanches.id).active).toBe(false);
+    expect(server.activateCategory(owner, lanches.id).active).toBe(true);
+    server.deleteCategory(owner, lanches.id);
+    expect(
+      server
+        .listProductCategories(owner)
+        .some((item) => item.name === 'Lanche da tarde'),
+    ).toBe(false);
     const salgados = server
       .listProductCategories(owner)
       .find((item) => item.name === 'Salgados');
     if (!salgados) {
       throw new Error('categoria Salgados ausente');
     }
+    expect(() => server.deleteCategory(owner, salgados.id)).toThrow(
+      'CATEGORY_HAS_PRODUCTS',
+    );
     expect(() => server.deactivateCategory(owner, salgados.id)).toThrow(
       'CATEGORY_HAS_ACTIVE_PRODUCTS',
     );
@@ -1822,7 +1848,22 @@ describe('Apps Script E2E server', () => {
       categoryId: salgados.id,
       priceCents: 100,
     });
-    expect(server.deactivateProduct(owner, extra.id).active).toBe(false);
+    server.deleteProduct(owner, extra.id);
+    expect(
+      server
+        .listProducts(owner, { includeInactive: true })
+        .some((item) => item.name === 'Produto e2e excluir'),
+    ).toBe(false);
+    expect(() => server.deleteProduct(owner, coxinha.id)).toThrow(
+      'PRODUCT_IN_USE',
+    );
+    const inactive = server.createProduct(owner, {
+      name: 'Produto e2e inativar',
+      categoryId: salgados.id,
+      priceCents: 100,
+    });
+    expect(server.deactivateProduct(owner, inactive.id).active).toBe(false);
+    expect(server.activateProduct(owner, inactive.id).active).toBe(true);
     expect(() => server.listProducts('')).toThrow('UNAUTHENTICATED');
   });
 

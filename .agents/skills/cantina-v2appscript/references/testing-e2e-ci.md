@@ -113,8 +113,8 @@ Mínimo obrigatório do smoke local:
 35. editar responsável: **Responsáveis** → **Editar** Maria → **Salvar responsável**.
 36. categoria: **Cardápio** abre em **Categorias** no topo; **Cadastrar categoria** `Lanches` → **Editar** → **Salvar categoria** `Lanche da tarde`. Produtos continuam com **Editar** / **Salvar produto**.
 37. enquanto uma ação grava, a tela mostra **Processando…** / **Processando ação…** e o botão fica bloqueado; no fim volta o texto de sucesso ou erro.
-38. **Excluir** categoria vazia (`Lanche da tarde`) some do `#product-category` (fica `(inativa)` na lista); **Excluir** `Salgados` com Coxinha ativa mostra erro e a categoria permanece.
-39. criar `Produto e2e excluir` e **Excluir**; a lista marca `Inativo` e `#sale-product` não oferece o item.
+38. **Excluir** categoria vazia (`Lanche da tarde`) some da lista e do `#product-category`; **Inativar** `Lanche inativar` fica `(inativa)` fora do select; **Excluir** `Salgados` com Coxinha mostra erro e a categoria permanece.
+39. criar `Produto e2e excluir` e **Excluir** some da lista (não fica Inativo); criar `Produto e2e inativar` e **Inativar** marca `Inativo` e `#sale-product` não oferece o item; **Excluir** Coxinha com estoque recusa.
 40. turma: criar `6º D`, **Editar** para `6º E`, **Excluir** vazia (`(inativa)`); **Excluir** `3º A` com aluno ativo recusa.
 41. responsável: cadastrar `Responsável e2e` e **Desativar**; some o botão e a lista mostra `Inativo`.
 42. `#reservation-student-search` `Ana` filtra `#reservation-student` para Ana Souza; `ZZZ` esconde os alunos. Portal público `/?portal=reservas` não mostra esse autocomplete.

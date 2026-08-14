@@ -283,14 +283,41 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
         .locator('#products-list')
         .getByRole('listitem')
         .filter({ hasText: 'Produto e2e excluir' }),
-    ).toContainText('Inativo');
-    await expect(
-      extraProduct.getByRole('button', { name: 'Excluir' }),
     ).toHaveCount(0);
     await goToArea(page, 'Vendas');
     await expect(page.locator('#sale-product')).not.toContainText(
       'Produto e2e excluir',
     );
+    await goToArea(page, 'Cardápio');
+    await page.locator('#product-name').fill('Produto e2e inativar');
+    await page.locator('#product-price').fill('1,00');
+    await page.getByRole('button', { name: 'Cadastrar produto' }).click();
+    const inactiveProduct = page
+      .locator('#products-list')
+      .getByRole('listitem')
+      .filter({ hasText: 'Produto e2e inativar' });
+    await inactiveProduct.getByRole('button', { name: 'Inativar' }).click();
+    await expect(inactiveProduct).toContainText('Inativo');
+    await expect(
+      inactiveProduct.getByRole('button', { name: 'Inativar' }),
+    ).toHaveCount(0);
+    await goToArea(page, 'Vendas');
+    await expect(page.locator('#sale-product')).not.toContainText(
+      'Produto e2e inativar',
+    );
+    await goToArea(page, 'Cardápio');
+    await page
+      .locator('#products-list')
+      .getByRole('listitem')
+      .filter({ hasText: 'Coxinha • Salgados • R$ 6,00' })
+      .getByRole('button', { name: 'Excluir' })
+      .click();
+    await expect(page.locator('#products-status')).toHaveText(
+      'Não é possível excluir o produto porque ele já entrou em venda, estoque ou reserva. Inative-o.',
+    );
+    await expect(
+      page.locator('#products-list').getByText('Coxinha • Salgados • R$ 6,00'),
+    ).toBeVisible();
   });
 
   test('edits an existing student and creates a classroom', async ({
@@ -440,10 +467,23 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
       .getByRole('button', { name: 'Excluir' })
       .click();
     await expect(
-      page.locator('#categories-list').getByText('Lanche da tarde (inativa)'),
-    ).toBeVisible();
+      page.locator('#categories-list').getByText('Lanche da tarde'),
+    ).toHaveCount(0);
     await expect(page.locator('#product-category')).not.toContainText(
       'Lanche da tarde',
+    );
+    await page.locator('#category-name').fill('Lanche inativar');
+    await page.getByRole('button', { name: 'Cadastrar categoria' }).click();
+    const inactivateCategory = page
+      .locator('#categories-list')
+      .getByRole('listitem')
+      .filter({ hasText: 'Lanche inativar' });
+    await inactivateCategory.getByRole('button', { name: 'Inativar' }).click();
+    await expect(
+      page.locator('#categories-list').getByText('Lanche inativar (inativa)'),
+    ).toBeVisible();
+    await expect(page.locator('#product-category')).not.toContainText(
+      'Lanche inativar',
     );
     await page
       .locator('#categories-list')
@@ -452,7 +492,7 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
       .getByRole('button', { name: 'Excluir' })
       .click();
     await expect(page.locator('#products-status')).toHaveText(
-      'Não é possível excluir a categoria enquanto houver produtos ativos nela.',
+      'Não é possível excluir a categoria enquanto houver produtos nela.',
     );
     await expect(
       page

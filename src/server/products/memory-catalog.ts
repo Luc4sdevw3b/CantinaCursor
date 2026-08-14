@@ -2,6 +2,8 @@ import { validateAdHocItem } from '../../domain/ad-hoc-item';
 import { isImmutableId, isSheetRowNumber } from '../../domain/ids';
 import { formatBrl } from '../../domain/money';
 import {
+  CATEGORY_HAS_ACTIVE_PRODUCTS_ERROR,
+  CATEGORY_HAS_PRODUCTS_ERROR,
   DEFAULT_PRODUCT_CATEGORIES,
   validateCategoryName,
 } from '../../domain/product-category';
@@ -255,12 +257,7 @@ export class MemoryCatalog {
       (product) => product.category_id === id && product.active === 'true',
     );
     if (hasActiveProduct) {
-      return err({
-        code: 'CATEGORY_HAS_ACTIVE_PRODUCTS',
-        message:
-          'Não é possível excluir a categoria enquanto houver produtos ativos nela.',
-        retryable: false,
-      });
+      return err(CATEGORY_HAS_ACTIVE_PRODUCTS_ERROR);
     }
     const record: CategoryRecord = {
       ...current.data,
@@ -272,6 +269,50 @@ export class MemoryCatalog {
       name: record.name,
       active: false,
     });
+  }
+
+  activateCategory(id: string): Result<ProductCategoryView> {
+    const current = this.findCategory(id);
+    if (!current.ok) {
+      return err(current.error);
+    }
+    if (current.data.active === 'true') {
+      return err({
+        code: 'CATEGORY_ALREADY_ACTIVE',
+        message: 'Esta categoria já está ativa.',
+        retryable: false,
+      });
+    }
+    const record: CategoryRecord = {
+      ...current.data,
+      active: 'true',
+    };
+    this.categories.push(record);
+    return ok({
+      id: record.id,
+      name: record.name,
+      active: true,
+    });
+  }
+
+  deleteCategory(id: string): Result<ProductCategoryView> {
+    const current = this.findCategory(id);
+    if (!current.ok) {
+      return err(current.error);
+    }
+    const hasProduct = latestById(this.products).some(
+      (product) => product.category_id === id,
+    );
+    if (hasProduct) {
+      return err(CATEGORY_HAS_PRODUCTS_ERROR);
+    }
+    const view: ProductCategoryView = {
+      id: current.data.id,
+      name: current.data.name,
+      active: current.data.active === 'true',
+    };
+    this.categories = this.categories.filter((item) => item.id !== id);
+    return ok(view);
   }
 
   listProducts(query?: { includeInactive?: boolean }): Result<ProductView[]> {
@@ -403,6 +444,51 @@ export class MemoryCatalog {
     };
     this.products.push(record);
     return ok(this.toProduct(record));
+  }
+
+  activateProduct(id: string): Result<ProductView> {
+    const previous = this.findProduct(id);
+    if (!previous.ok) {
+      return err(previous.error);
+    }
+    if (previous.data.active === 'true') {
+      return err({
+        code: 'PRODUCT_ALREADY_ACTIVE',
+        message: 'Este produto já está ativo.',
+        retryable: false,
+      });
+    }
+    const category = this.findCategory(previous.data.category_id);
+    if (!category.ok) {
+      return err(category.error);
+    }
+    if (category.data.active !== 'true') {
+      return err({
+        code: 'CATEGORY_INACTIVE',
+        message: 'Não é possível reativar um produto de categoria inativa.',
+        retryable: false,
+      });
+    }
+    const record: ProductRecord = {
+      ...previous.data,
+      active: 'true',
+      updated_at: this.nowIso(),
+    };
+    this.products.push(record);
+    return ok(this.toProduct(record));
+  }
+
+  deleteProduct(id: string): Result<ProductView> {
+    const previous = this.findProduct(id);
+    if (!previous.ok) {
+      return err(previous.error);
+    }
+    const view = this.toProduct(previous.data);
+    this.products = this.products.filter((item) => item.id !== id);
+    this.priceHistory = this.priceHistory.filter(
+      (item) => item.product_id !== id,
+    );
+    return ok(view);
   }
 
   listProductPriceHistory(

@@ -2,6 +2,7 @@ import { APP_NAME, APP_VERSION } from '../../app-version';
 import { isUserRole, type AuthAction, type UserRole } from '../../domain/auth';
 import { authorize } from '../../domain/authorize';
 import type { AppError } from '../../domain/result';
+import { PRODUCT_IN_USE_ERROR } from '../../domain/product-category';
 import { MemoryCatalog } from '../../server/products/memory-catalog';
 import { MemorySales } from '../../server/sales/memory-sales';
 import { MemoryStock } from '../../server/inventory/memory-stock';
@@ -329,6 +330,16 @@ export class FakeAppApi implements AppApi {
     return throwResult(this.catalog.deactivateCategory(id));
   }
 
+  async activateCategory(id: string): Promise<ProductCategory> {
+    this.assertAction('products.write');
+    return throwResult(this.catalog.activateCategory(id));
+  }
+
+  async deleteCategory(id: string): Promise<ProductCategory> {
+    this.assertAction('products.write');
+    return throwResult(this.catalog.deleteCategory(id));
+  }
+
   async listProducts(query?: {
     includeInactive?: boolean;
   }): Promise<Product[]> {
@@ -349,6 +360,25 @@ export class FakeAppApi implements AppApi {
   async deactivateProduct(id: string): Promise<Product> {
     this.assertAction('products.write');
     return throwResult(this.catalog.deactivateProduct(id));
+  }
+
+  async activateProduct(id: string): Promise<Product> {
+    this.assertAction('products.write');
+    return throwResult(this.catalog.activateProduct(id));
+  }
+
+  async deleteProduct(id: string): Promise<Product> {
+    this.assertAction('products.write');
+    if (
+      this.sales.productIsReferenced(id) ||
+      this.stock.productIsReferenced(id) ||
+      this.reservations.productIsReferenced(id)
+    ) {
+      throw new Error(
+        `${PRODUCT_IN_USE_ERROR.code}: ${PRODUCT_IN_USE_ERROR.message}`,
+      );
+    }
+    return throwResult(this.catalog.deleteProduct(id));
   }
 
   async listProductPriceHistory(

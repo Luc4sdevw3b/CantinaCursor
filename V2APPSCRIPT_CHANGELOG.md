@@ -9,6 +9,45 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-14 10:30 — Excluir apaga categoria/produto; Inativar só desativa
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 26
+
+### Pedido / objetivo
+
+- Não deixar categoria/produto “inativo” quando a dona escolhe **Excluir**.
+- **Excluir** apaga de verdade; **Inativar** só desativa.
+
+### Tentativa / implementação
+
+- Cardápio ganha os dois botões: **Inativar** / **Reativar** e **Excluir**.
+- Excluir categoria remove as linhas da aba `_product_categories`. Recusa se ainda houver qualquer produto nela.
+- Excluir produto remove `_products` e o histórico de preço. Recusa se o produto já entrou em venda, estoque ou reserva; nesses casos a dona usa **Inativar**.
+- Inativar continua append-only (`active: false`) e some do select de vendas.
+
+### Resultado
+
+- Excluir some da lista. Inativar aparece como `(inativa)` / `Inativo` e pode ser reativada.
+
+### Diferenças do pedido
+
+- Produto com histórico financeiro/estoque não é apagado: a venda antiga continua com snapshot, mas o cadastro precisa existir para estorno e estoque.
+
+### Impacto técnico
+
+- Novas APIs: `deleteCategory`, `deleteProduct`, `activateCategory`, `activateProduct`. `rewriteSheetRecords` no Code.gs.
+
+### Testes
+
+- Unitário, FakeAppApi, Code.gs e E2E local de excluir vs inativar.
+
+### Pendências / próxima versão
+
+- Publicar no Web App de teste e recarregar com Ctrl+F5.
+
 ## 2026-08-14 10:20 — CRUD de cadastro com exclusão suave
 
 **Origem:** Pedido do usuário

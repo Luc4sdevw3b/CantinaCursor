@@ -267,7 +267,7 @@ app.innerHTML = `
       <h2>Cardápio</h2>
       <p id="products-status">Entre para ver o cardápio.</p>
       <h3>Categorias</h3>
-      <p>Crie a categoria antes do produto, se ela ainda não existir. Use Editar para mudar o nome e Excluir só se não houver produto ativo nela.</p>
+      <p>Crie a categoria antes do produto, se ela ainda não existir. Excluir apaga de verdade. Inativar tira do cardápio de vendas e guarda o cadastro. Não dá para excluir categoria com produto, nem produto que já teve venda, estoque ou reserva.</p>
       <ul id="categories-list"></ul>
       <form id="category-form" aria-label="Cadastrar categoria">
         <label>
@@ -1820,14 +1820,14 @@ async function renderProducts(session: AppSession | null): Promise<void> {
       });
       actions.append(edit);
       if (category.active) {
-        const remove = document.createElement('button');
-        remove.type = 'button';
-        remove.textContent = 'Excluir';
-        remove.addEventListener('click', () => {
+        const deactivate = document.createElement('button');
+        deactivate.type = 'button';
+        deactivate.textContent = 'Inativar';
+        deactivate.addEventListener('click', () => {
           runBusyAction(
             productsStatus,
-            remove,
-            'Não foi possível excluir a categoria.',
+            deactivate,
+            'Não foi possível inativar a categoria.',
             () =>
               api.deactivateCategory(category.id).then(() => {
                 if (editingCategoryId === category.id) {
@@ -1837,8 +1837,42 @@ async function renderProducts(session: AppSession | null): Promise<void> {
               }),
           );
         });
-        actions.append(remove);
+        actions.append(deactivate);
+      } else {
+        const activate = document.createElement('button');
+        activate.type = 'button';
+        activate.textContent = 'Reativar';
+        activate.addEventListener('click', () => {
+          runBusyAction(
+            productsStatus,
+            activate,
+            'Não foi possível reativar a categoria.',
+            () =>
+              api
+                .activateCategory(category.id)
+                .then(() => api.getSession().then(renderProducts)),
+          );
+        });
+        actions.append(activate);
       }
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.textContent = 'Excluir';
+      remove.addEventListener('click', () => {
+        runBusyAction(
+          productsStatus,
+          remove,
+          'Não foi possível excluir a categoria.',
+          () =>
+            api.deleteCategory(category.id).then(() => {
+              if (editingCategoryId === category.id) {
+                fillCategoryForm(null);
+              }
+              return api.getSession().then(renderProducts);
+            }),
+        );
+      });
+      actions.append(remove);
       item.append(actions);
       categoriesList.append(item);
     }
@@ -1862,12 +1896,12 @@ async function renderProducts(session: AppSession | null): Promise<void> {
     if (product.active) {
       const deactivate = document.createElement('button');
       deactivate.type = 'button';
-      deactivate.textContent = 'Excluir';
+      deactivate.textContent = 'Inativar';
       deactivate.addEventListener('click', () => {
         runBusyAction(
           productsStatus,
           deactivate,
-          'Não foi possível excluir o produto.',
+          'Não foi possível inativar o produto.',
           () =>
             api.deactivateProduct(product.id).then(() => {
               if (editingProductId === product.id) {
@@ -1886,7 +1920,59 @@ async function renderProducts(session: AppSession | null): Promise<void> {
         );
       });
       actions.append(deactivate);
+    } else {
+      const activate = document.createElement('button');
+      activate.type = 'button';
+      activate.textContent = 'Reativar';
+      activate.addEventListener('click', () => {
+        runBusyAction(
+          productsStatus,
+          activate,
+          'Não foi possível reativar o produto.',
+          () =>
+            api
+              .activateProduct(product.id)
+              .then(() =>
+                api
+                  .getSession()
+                  .then((current) =>
+                    Promise.all([
+                      renderProducts(current),
+                      renderSales(current),
+                      renderInventory(current),
+                    ]),
+                  ),
+              ),
+        );
+      });
+      actions.append(activate);
     }
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = 'Excluir';
+    remove.addEventListener('click', () => {
+      runBusyAction(
+        productsStatus,
+        remove,
+        'Não foi possível excluir o produto.',
+        () =>
+          api.deleteProduct(product.id).then(() => {
+            if (editingProductId === product.id) {
+              fillProductForm(null);
+            }
+            return api
+              .getSession()
+              .then((current) =>
+                Promise.all([
+                  renderProducts(current),
+                  renderSales(current),
+                  renderInventory(current),
+                ]),
+              );
+          }),
+      );
+    });
+    actions.append(remove);
     item.append(actions);
     productsList.append(item);
   }

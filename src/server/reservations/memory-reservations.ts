@@ -290,6 +290,10 @@ export class MemoryReservations {
     return total;
   }
 
+  productIsReferenced(productId: string): boolean {
+    return this.items.some((item) => item.product_id === productId);
+  }
+
   getSetup(): Result<ReservationsSetupView> {
     const now = this.nowIso();
     const today = todayCivilSaoPaulo(now);
