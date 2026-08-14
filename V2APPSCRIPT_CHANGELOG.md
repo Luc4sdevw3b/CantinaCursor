@@ -29,7 +29,8 @@ Regras:
 
 ### Resultado
 
-- Fase 25 concluída sobre o preview local. Reserva→venda permanece na Fase 26.
+- Fase 25 concluída sobre o ambiente E2E isolado e o preview local.
+- Reserva→venda permanece na Fase 26.
 
 ### Diferenças do pedido
 
@@ -42,6 +43,7 @@ Regras:
 ### Testes
 
 - typecheck, lint, format, Vitest (211) e E2E local (35) passaram.
+- E2E remoto: health e reserva pública no portal.
 
 ## 2026-08-14 07:45 — Implementada a Fase 24: portal público de reservas
 
