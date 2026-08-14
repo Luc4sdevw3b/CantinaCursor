@@ -1122,6 +1122,18 @@ describe('Apps Script E2E server', () => {
     });
     expect(fromNull.reservations).toBe(80);
     expect(fromNull.sales).toBe(24);
+
+    const capped = server.seedE2EVolume(ownerToken(server), {
+      students: 12,
+      sales: 90,
+      reservations: 4,
+      payments: 6,
+    });
+    expect(capped.sales).toBe(90);
+    const cappedOwner = ownerToken(server);
+    expect(server.getSaleScreenData(cappedOwner).sales).toHaveLength(80);
+    expect(server.listSales(cappedOwner)).toHaveLength(80);
+    expect(server.listPayments(cappedOwner).length).toBeLessThanOrEqual(80);
   });
 
   it('applies foundation schema idempotently', () => {

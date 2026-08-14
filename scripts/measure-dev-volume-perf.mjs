@@ -201,12 +201,14 @@ try {
   await app.getByRole('button', { name: 'Entrar como dona' }).waitFor({
     timeout: 20_000,
   });
-  await app.getByRole('button', { name: 'Entrar como dona' }).click();
-  await waitStatusLoaded(app, '#sales-status', 'Entre para vender.', 60_000);
 
-  page.setDefaultTimeout(SEED_TIMEOUT_MS);
-  const seedStarted = Date.now();
-  seed = await app.evaluate(async (payload) => {
+  if (process.env.VOLUME_SKIP_SEED !== '1') {
+    await app.getByRole('button', { name: 'Entrar como dona' }).click();
+    await waitStatusLoaded(app, '#sales-status', 'Entre para vender.', 60_000);
+
+    page.setDefaultTimeout(SEED_TIMEOUT_MS);
+    const seedStarted = Date.now();
+    seed = await app.evaluate(async (payload) => {
     const token = sessionStorage.getItem('cantina.sessionToken');
     const run = globalThis.google?.script?.run;
     if (!token || !run) {
@@ -245,11 +247,12 @@ try {
     }),
   );
 
-  await page.reload({ waitUntil: 'domcontentloaded', timeout: 45_000 });
-  app = await findApp(page);
-  await app.getByRole('button', { name: 'Entrar como dona' }).waitFor({
-    timeout: 20_000,
-  });
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 45_000 });
+    app = await findApp(page);
+    await app.getByRole('button', { name: 'Entrar como dona' }).waitFor({
+      timeout: 20_000,
+    });
+  }
 
   await perfReset(app);
   const loginStarted = Date.now();
@@ -304,17 +307,19 @@ try {
     measuredAt: new Date().toISOString(),
     source: 'playwright-chromium DEV playground iframe',
     note: 'Seed de volume fictício + Atualizar em cada aba. Sem PII, sem URL.',
-    seed: {
-      elapsedMs: seed.elapsedMs,
-      students: seed.students,
-      guardians: seed.guardians,
-      products: seed.products,
-      sales: seed.sales,
-      receivables: seed.receivables,
-      payments: seed.payments,
-      reservations: seed.reservations,
-      volume: seed.volume === true,
-    },
+    seed: seed
+      ? {
+          elapsedMs: seed.elapsedMs,
+          students: seed.students,
+          guardians: seed.guardians,
+          products: seed.products,
+          sales: seed.sales,
+          receivables: seed.receivables,
+          payments: seed.payments,
+          reservations: seed.reservations,
+          volume: seed.volume === true,
+        }
+      : { skipped: true, note: 'Planilha já estava com o volume fictício.' },
     shell,
     results,
     ranked: [...results].sort(

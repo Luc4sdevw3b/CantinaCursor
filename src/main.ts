@@ -3394,6 +3394,7 @@ async function renderPayments(
   preloaded?: PaymentsScreenData,
   allowShare = true,
 ): Promise<void> {
+  void allowShare;
   const panel = document.querySelector('#payments-panel');
   const status = document.querySelector('#payments-status');
   const list = document.querySelector('#payments-list');
@@ -3430,18 +3431,17 @@ async function renderPayments(
     return;
   }
   try {
-    const sharedReceivables = allowShare
-      ? sharedSaleSlice('receivables')
-      : undefined;
+    const sharedReceivables = sharedSaleSlice('receivables');
     const data =
       preloaded ??
-      (allowShare && rosterShare && sharedReceivables
+      (rosterShare
         ? {
             students: rosterShare.students,
             payments: await api.listPayments(),
             guardians: rosterShare.guardians,
             links: rosterShare.links,
-            receivables: sharedReceivables,
+            receivables:
+              sharedReceivables ?? (await api.listReceivables()),
           }
         : await api.getPaymentsScreenData());
     const students = data.students;
@@ -3533,6 +3533,7 @@ async function renderCredits(
   preloaded?: CreditsScreenData,
   allowShare = true,
 ): Promise<void> {
+  void allowShare;
   const panel = document.querySelector('#credits-panel');
   const status = document.querySelector('#credits-status');
   const list = document.querySelector('#credits-list');
@@ -3577,7 +3578,7 @@ async function renderCredits(
   try {
     const data =
       preloaded ??
-      (allowShare && rosterShare
+      (rosterShare
         ? {
             students: rosterShare.students,
             guardians: rosterShare.guardians,

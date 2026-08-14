@@ -1981,6 +1981,36 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     expect(afterTabs.calls).toBe(2);
   });
 
+  test('keeps Atualizar cheap on pagamentos and crédito', async ({ page }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Vendas', exact: true }),
+    ).toBeVisible();
+    await goToArea(page, 'Pagamentos');
+    await expect(
+      page.getByRole('heading', { name: 'Pagamentos', exact: true }),
+    ).toBeVisible();
+    await resetCantinaPerf(page);
+    await page.getByRole('button', { name: 'Atualizar' }).click();
+    await expect(page.locator('#payments-status')).not.toHaveText(
+      'Entre para registrar pagamentos.',
+    );
+    const afterPayments = await snapshotCantinaPerf(page);
+    expect(afterPayments.methods).toEqual(['listPayments']);
+    await goToArea(page, 'Crédito');
+    await expect(
+      page.getByRole('heading', { name: 'Crédito pessoal' }),
+    ).toBeVisible();
+    await resetCantinaPerf(page);
+    await page.getByRole('button', { name: 'Atualizar' }).click();
+    await expect(page.locator('#credits-status')).not.toHaveText(
+      'Entre para registrar crédito.',
+    );
+    const afterCredits = await snapshotCantinaPerf(page);
+    expect(afterCredits.methods).toEqual(['listCreditAccounts']);
+  });
+
   test('uses one updateStudent call when changing classroom', async ({
     page,
   }) => {

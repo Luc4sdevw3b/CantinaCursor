@@ -584,6 +584,7 @@ const REQUEST_ID_PATTERN =
 const SCRIPT_LOCK_TIMEOUT_MS = 30000;
 const CATALOG_CACHE_KEY = 'catalog:' + CURRENT_SCHEMA_VERSION;
 const SCHEMA_CACHE_KEY = 'schema:' + CURRENT_SCHEMA_VERSION;
+const SCREEN_HISTORY_LIMIT = 80;
 
 var cachedSpreadsheet = null;
 var namedSheetCache = {};
@@ -604,6 +605,10 @@ var derivedAllocationsByPayment = null;
 var derivedCreditAllocationsByPayment = null;
 var derivedCreditAccountById = null;
 var derivedEffectsByReversal = null;
+var derivedStudentSummariesAll = null;
+var derivedRosterScreen = null;
+var derivedReservationItemsByReservation = null;
+var derivedReservationSlotById = null;
 var perfCounters = {
   sheetReads: 0,
   sheetWrites: 0,
@@ -625,6 +630,43 @@ function clearDerivedPerfCaches() {
   derivedCreditAllocationsByPayment = null;
   derivedCreditAccountById = null;
   derivedEffectsByReversal = null;
+  derivedStudentSummariesAll = null;
+  derivedRosterScreen = null;
+  derivedReservationItemsByReservation = null;
+  derivedReservationSlotById = null;
+}
+
+function takeLatestByIdGs(records, limit) {
+  const latest = latestRecordsById(records).slice().reverse();
+  if (latest.length <= limit) {
+    return latest;
+  }
+  return latest.slice(0, limit);
+}
+
+function reservationItemsByReservationGs() {
+  if (sheetRecordsCacheEnabled && derivedReservationItemsByReservation) {
+    return derivedReservationItemsByReservation;
+  }
+  const grouped = groupRecordsByField(
+    listReservationItemRecords(),
+    'reservation_id',
+  );
+  if (sheetRecordsCacheEnabled) {
+    derivedReservationItemsByReservation = grouped;
+  }
+  return grouped;
+}
+
+function reservationSlotByIdGs() {
+  if (sheetRecordsCacheEnabled && derivedReservationSlotById) {
+    return derivedReservationSlotById;
+  }
+  const map = indexLatestRecordsById(listReservationSlotRecords());
+  if (sheetRecordsCacheEnabled) {
+    derivedReservationSlotById = map;
+  }
+  return map;
 }
 
 function groupRecordsByField(records, field) {
@@ -1021,14 +1063,17 @@ function requireAction(sessionToken, action) {
 
 function attachLoginPayload(session) {
   try {
+    session.roster = getRosterScreenDataUnlocked();
     session.screen = getSaleScreenDataUnlocked(session.role);
   } catch (error) {
     const message = error && error.message ? String(error.message) : '';
     if (message.indexOf('INVENTORY_DAY_NOT_OPEN') === -1) {
       throw error;
     }
+    if (!session.roster) {
+      session.roster = getRosterScreenDataUnlocked();
+    }
   }
-  session.roster = getRosterScreenDataUnlocked();
   return session;
 }
 
@@ -5258,8 +5303,12 @@ function openInventoryDay(sessionToken, payload) {
 }
 
 function listInventoryBalances(sessionToken, businessDate) {
+  const startedAt = Date.now();
+  resetPerfCounters();
   requireAction(sessionToken, 'inventory.read');
-  return listBalancesUnlocked(resolveBusinessDateGs(businessDate));
+  const data = listBalancesUnlocked(resolveBusinessDateGs(businessDate));
+  logPerf('listInventoryBalances', startedAt);
+  return data;
 }
 
 function adjustInventory(sessionToken, payload) {
@@ -5732,8 +5781,12 @@ function closeCashSessionUnlocked(userId, payload) {
 }
 
 function getCashSetup(sessionToken) {
+  const startedAt = Date.now();
+  resetPerfCounters();
   requireAction(sessionToken, 'cash.read');
-  return getCashSetupUnlocked();
+  const data = getCashSetupUnlocked();
+  logPerf('getCashSetup', startedAt);
+  return data;
 }
 
 function openCashSession(sessionToken, payload) {
@@ -6874,14 +6927,19 @@ function listProductsUnlocked(includeInactive) {
 }
 
 function listStudentsUnlocked(includeInactive) {
+  if (sheetRecordsCacheEnabled && derivedStudentSummariesAll) {
+    return includeInactive
+      ? derivedStudentSummariesAll
+      : derivedStudentSummariesAll.filter(function (student) {
+          return student.active;
+        });
+  }
   const students = latestRecordsById(
     listSheetRecords(
       openNamedSheet(STUDENTS_SHEET, STUDENTS_HEADERS),
       STUDENTS_HEADERS,
     ),
-  ).filter(function (student) {
-    return includeInactive || student.active === 'true';
-  });
+  );
   const currentByStudent = {};
   listSheetRecords(
     openNamedSheet(STUDENT_ENROLLMENTS_SHEET, STUDENT_ENROLLMENTS_HEADERS),
@@ -6920,35 +6978,43 @@ function listStudentsUnlocked(includeInactive) {
     guardians[guardian.id] = guardian;
   });
   const requireAge = requireGuardianBelowAgeGs();
-  const summaries = students.map(function (student) {
-    const enrollment = currentByStudent[student.id] || null;
-    const classroom = enrollment ? classrooms[enrollment.classroom_id] : null;
-    const year = classroom ? years[classroom.school_year_id] : null;
-    const primaryId = primaryByStudent[student.id] || null;
-    const primary = primaryId ? guardians[primaryId] : null;
-    const ageYears = studentAgeYearsGs(student);
-    return {
-      id: student.id,
-      fullName: student.full_name,
-      active: student.active === 'true',
-      ageLabel: studentAgeLabelGs(student),
-      classroomName: classroom ? classroom.name : null,
-      schoolYearLabel: year ? year.label : null,
-      isHomonym: false,
-      primaryGuardianName: primary ? primary.full_name : null,
-      needsGuardian: ageYears < requireAge && !primaryId,
-    };
-  });
-  return markHomonymsGs(summaries);
+  const summaries = markHomonymsGs(
+    students.map(function (student) {
+      const enrollment = currentByStudent[student.id] || null;
+      const classroom = enrollment ? classrooms[enrollment.classroom_id] : null;
+      const year = classroom ? years[classroom.school_year_id] : null;
+      const primaryId = primaryByStudent[student.id] || null;
+      const primary = primaryId ? guardians[primaryId] : null;
+      const ageYears = studentAgeYearsGs(student);
+      return {
+        id: student.id,
+        fullName: student.full_name,
+        active: student.active === 'true',
+        ageLabel: studentAgeLabelGs(student),
+        classroomName: classroom ? classroom.name : null,
+        schoolYearLabel: year ? year.label : null,
+        isHomonym: false,
+        primaryGuardianName: primary ? primary.full_name : null,
+        needsGuardian: ageYears < requireAge && !primaryId,
+      };
+    }),
+  );
+  if (sheetRecordsCacheEnabled) {
+    derivedStudentSummariesAll = summaries;
+  }
+  return includeInactive
+    ? summaries
+    : summaries.filter(function (student) {
+        return student.active;
+      });
 }
 
 function listSalesUnlocked() {
-  return latestRecordsById(listSaleRecords())
-    .slice()
-    .reverse()
-    .map(function (sale) {
+  return takeLatestByIdGs(listSaleRecords(), SCREEN_HISTORY_LIMIT).map(
+    function (sale) {
       return toSaleViewGs(sale);
-    });
+    },
+  );
 }
 
 function listSiblingAuthorizationsUnlocked(studentId) {
@@ -7031,12 +7097,19 @@ function getStudentsScreenDataUnlocked() {
 }
 
 function getFamilyScreenData(sessionToken) {
+  const startedAt = Date.now();
+  resetPerfCounters();
   requireAction(sessionToken, 'guardians.read');
-  return getFamilyScreenDataUnlocked();
+  const data = getFamilyScreenDataUnlocked();
+  logPerf('getFamilyScreenData', startedAt);
+  return data;
 }
 
 function getRosterScreenDataUnlocked() {
-  return {
+  if (sheetRecordsCacheEnabled && derivedRosterScreen) {
+    return derivedRosterScreen;
+  }
+  const screen = {
     students: listStudentsUnlocked(true),
     classrooms: listClassroomsUnlocked(),
     guardians: listGuardiansUnlocked(true),
@@ -7044,6 +7117,10 @@ function getRosterScreenDataUnlocked() {
     settings: { requireGuardianBelowAge: requireGuardianBelowAgeGs() },
     links: latestRecordsById(listGuardianLinkRecords()).map(toGuardianLinkGs),
   };
+  if (sheetRecordsCacheEnabled) {
+    derivedRosterScreen = screen;
+  }
+  return screen;
 }
 
 function getFamilyScreenDataUnlocked() {
@@ -7079,8 +7156,12 @@ function getCatalogScreenDataUnlocked(role) {
 }
 
 function getPaymentsScreenData(sessionToken) {
+  const startedAt = Date.now();
+  resetPerfCounters();
   requireAction(sessionToken, 'receivables.read');
-  return getPaymentsScreenDataUnlocked();
+  const data = getPaymentsScreenDataUnlocked();
+  logPerf('getPaymentsScreenData', startedAt);
+  return data;
 }
 
 function getPaymentsScreenDataUnlocked() {
@@ -7094,8 +7175,12 @@ function getPaymentsScreenDataUnlocked() {
 }
 
 function getCreditsScreenData(sessionToken) {
+  const startedAt = Date.now();
+  resetPerfCounters();
   requireAction(sessionToken, 'credits.read');
-  return getCreditsScreenDataUnlocked();
+  const data = getCreditsScreenDataUnlocked();
+  logPerf('getCreditsScreenData', startedAt);
+  return data;
 }
 
 function getCreditsScreenDataUnlocked() {
@@ -7107,8 +7192,12 @@ function getCreditsScreenDataUnlocked() {
 }
 
 function getReservationScreenData(sessionToken) {
+  const startedAt = Date.now();
+  resetPerfCounters();
   requireAction(sessionToken, 'reservations.read');
-  return getReservationScreenDataUnlocked();
+  const data = getReservationScreenDataUnlocked();
+  logPerf('getReservationScreenData', startedAt);
+  return data;
 }
 
 function getReservationScreenDataUnlocked() {
@@ -7163,8 +7252,12 @@ function toReceivableViewGs(receivable, today, remainingCents) {
 }
 
 function listReceivables(sessionToken) {
+  const startedAt = Date.now();
+  resetPerfCounters();
   requireAction(sessionToken, 'receivables.read');
-  return listReceivablesUnlocked();
+  const data = listReceivablesUnlocked();
+  logPerf('listReceivables', startedAt);
+  return data;
 }
 
 function parsePaymentMethodGs(value) {
@@ -7550,17 +7643,13 @@ function familyPaymentSummaryLabelGs(
 function familyPaymentChildLinesGs(paymentId) {
   const order = [];
   const sums = {};
-  listPaymentAllocationRecords()
-    .filter(function (item) {
-      return item.payment_id === paymentId;
-    })
-    .forEach(function (row) {
-      if (!sums[row.student_id]) {
-        order.push(row.student_id);
-        sums[row.student_id] = 0;
-      }
-      sums[row.student_id] += Number(row.amount_cents);
-    });
+  (allocationsByPaymentGs()[paymentId] || []).forEach(function (row) {
+    if (!sums[row.student_id]) {
+      order.push(row.student_id);
+      sums[row.student_id] = 0;
+    }
+    sums[row.student_id] += Number(row.amount_cents);
+  });
   return order.map(function (studentId) {
     return {
       studentLabel: saleConsumerLabelGs(studentId),
@@ -7570,13 +7659,12 @@ function familyPaymentChildLinesGs(paymentId) {
 }
 
 function paymentCreditCentsGs(paymentId) {
-  return listPaymentCreditAllocationRecords()
-    .filter(function (item) {
-      return item.payment_id === paymentId;
-    })
-    .reduce(function (total, item) {
+  return (creditAllocationsByPaymentGs()[paymentId] || []).reduce(
+    function (total, item) {
       return total + Number(item.amount_cents);
-    }, 0);
+    },
+    0,
+  );
 }
 
 function toPaymentViewGs(payment) {
@@ -7852,17 +7940,20 @@ function createFamilyPayment(sessionToken, payload) {
 }
 
 function listPaymentsUnlocked() {
-  return latestRecordsById(listPaymentRecords())
-    .slice()
-    .reverse()
-    .map(function (payment) {
+  return takeLatestByIdGs(listPaymentRecords(), SCREEN_HISTORY_LIMIT).map(
+    function (payment) {
       return toPaymentViewGs(payment);
-    });
+    },
+  );
 }
 
 function listPayments(sessionToken) {
+  const startedAt = Date.now();
+  resetPerfCounters();
   requireAction(sessionToken, 'receivables.read');
-  return listPaymentsUnlocked();
+  const data = listPaymentsUnlocked();
+  logPerf('listPayments', startedAt);
+  return data;
 }
 
 function parseRequiredReasonGs(value, errorCode, errorMessage) {
@@ -8444,8 +8535,12 @@ function refundPersonalCreditUnlocked(userId, payload) {
 }
 
 function listCreditAccounts(sessionToken) {
+  const startedAt = Date.now();
+  resetPerfCounters();
   requireAction(sessionToken, 'credits.read');
-  return listCreditAccountsUnlocked();
+  const data = listCreditAccountsUnlocked();
+  logPerf('listCreditAccounts', startedAt);
+  return data;
 }
 
 function listCreditAccountsUnlocked() {
@@ -8831,17 +8926,16 @@ function toReversalsSetupGs() {
   const creditAllocationsByPayment = creditAllocationsByPaymentGs();
   const accountsById = creditAccountByIdMapGs();
   const effectsByReversal = effectsByReversalGs();
-  const sales = latestRecordsById(listSaleRecords())
-    .slice()
-    .reverse()
-    .map(function (sale) {
+  const productsById = productRecordByIdMapGs();
+  const sales = takeLatestByIdGs(listSaleRecords(), SCREEN_HISTORY_LIMIT).map(
+    function (sale) {
       const view = toSaleViewGs(sale);
       const settlementRows = settlementsBySale[sale.id] || [];
       const tracked = (itemsBySale[sale.id] || []).some(function (item) {
         if (!item.product_id) {
           return false;
         }
-        const product = latestProductById(item.product_id);
+        const product = productsById[item.product_id];
         return product && product.stock_tracked === 'true';
       });
       return {
@@ -8868,10 +8962,10 @@ function toReversalsSetupGs() {
       reversedRefunds[item.operation_id] = true;
     }
   });
-  const payments = latestRecordsById(listPaymentRecords())
-    .slice()
-    .reverse()
-    .map(function (payment) {
+  const payments = takeLatestByIdGs(
+    listPaymentRecords(),
+    SCREEN_HISTORY_LIMIT,
+  ).map(function (payment) {
       const debtCents = (allocationsByPayment[payment.id] || []).reduce(
         function (total, item) {
           return total + Number(item.amount_cents);
@@ -8978,8 +9072,12 @@ function toReversalsSetupGs() {
 }
 
 function getReversalsSetup(sessionToken) {
+  const startedAt = Date.now();
+  resetPerfCounters();
   requireAction(sessionToken, 'reversals.read');
-  return toReversalsSetupGs();
+  const data = toReversalsSetupGs();
+  logPerf('getReversalsSetup', startedAt);
+  return data;
 }
 
 function reverseSaleUnlocked(userId, payload) {
@@ -9570,16 +9668,9 @@ function linkedReservationStudentLabelGs(fullName, ageLabel) {
 }
 
 function toReservationViewGs(reservation) {
-  const slot = latestRecordsById(listReservationSlotRecords()).filter(
+  const slot = reservationSlotByIdGs()[reservation.slot_id];
+  const items = (reservationItemsByReservationGs()[reservation.id] || []).map(
     function (item) {
-      return item.id === reservation.slot_id;
-    },
-  )[0];
-  const items = listReservationItemRecords()
-    .filter(function (item) {
-      return item.reservation_id === reservation.id;
-    })
-    .map(function (item) {
       return {
         productId: item.product_id,
         productName: item.description_snapshot,
@@ -9587,7 +9678,8 @@ function toReservationViewGs(reservation) {
         unitPriceCents: Number(item.unit_price_cents),
         lineTotalCents: Number(item.line_total_cents),
       };
-    });
+    },
+  );
   const names = items.map(function (item) {
     return item.productName;
   });
@@ -9680,12 +9772,12 @@ function toReservationsSetupGs(preloadedInventory) {
     .map(function (item) {
       return toReservationSlotGs(item, now);
     });
-  const reservations = latestRecordsById(listReservationRecords())
-    .slice()
-    .reverse()
-    .map(function (item) {
-      return toReservationViewGs(item);
-    });
+  const reservations = takeLatestByIdGs(
+    listReservationRecords(),
+    SCREEN_HISTORY_LIMIT,
+  ).map(function (item) {
+    return toReservationViewGs(item);
+  });
   let availability = [];
   try {
     const balances = preloadedInventory || listBalancesUnlocked(today);

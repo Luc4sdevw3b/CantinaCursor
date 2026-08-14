@@ -116,3 +116,24 @@ Playground DEV (não a planilha E2E de CI). `seedE2EVolume` gravou só dados fic
 Comparado ao seed pequeno (12:33, 3 alunos, 0 vendas), 1.200 vendas **não** multiplicaram o tempo de Vendas. Pagamentos piorou (4,8 s → 9,1 s) porque a aba passou a ter histórico. Reservas 20,1 s no seed pequeno era abertura fria; com 80 reservas o Atualizar ficou em 5,9 s. O piso quente continua ~1,4–3 s.
 
 `seedE2EVolume` só existe no ambiente E2E isolado (o playground DEV está com `ENVIRONMENT=E2E`). Recusa PROD. Não usar na planilha E2E de CI: o smoke remoto espera o seed mínimo.
+
+## Medição depois do corte — 2026-08-14 14:27 BRT
+
+Mesma planilha grande. Telas de Vendas/Estornos/Pagamentos/Reservas passam a listar no máximo **80** registros recentes. Atualizar em Pagamentos/Crédito reusa o cadastro do login (`listPayments` / `listCreditAccounts`). Reservas e pagamentos indexam itens/alocações uma vez por execução.
+
+| Fluxo | API | Antes | Depois |
+| --- | --- | ---: | ---: |
+| Login + Vendas | `loginE2E` | 13,1 s | 13,7 s |
+| Atualizar Vendas | `getSaleScreenData` | 9,6 s | **6,8 s** |
+| Atualizar Estornos | `getReversalsSetup` | 9,2 s | **7,5 s** |
+| Atualizar Pagamentos | `listPayments` | 9,1 s | **4,0 s** |
+| Atualizar Reservas | `getReservationScreenData` | 5,9 s | 5,2 s |
+| Atualizar Estoque | `listInventoryBalances` | 5,0 s | 4,3 s |
+| Atualizar Alunos | `getStudentsScreenData` | 4,6 s | 5,0 s |
+| Atualizar Responsáveis | `getFamilyScreenData` | 4,1 s | 5,0 s |
+| Atualizar Crédito | `listCreditAccounts` | 3,0 s | **2,0 s** |
+| Atualizar Agenda | `listReceivables` | 2,3 s | 3,7 s |
+| Atualizar Cardápio | `getCatalogScreenData` | 1,9 s | 1,7 s |
+| Atualizar Caixa | `getCashSetup` | 1,4 s | 1,6 s |
+
+Uma segunda medição logo depois teve Responsáveis em 5,0 s (a primeira chegou a ~95 s numa ida ao Google; tratado como variação, não como regressão). Login não caiu: ainda monta Vendas + cadastro na mesma chamada. O piso quente continua ~1,5–3 s.

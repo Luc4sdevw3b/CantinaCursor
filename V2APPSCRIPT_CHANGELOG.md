@@ -9,6 +9,51 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-14 14:27 — Cortar as abas mais lentas na planilha grande
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 26.5
+
+### Pedido / objetivo
+
+- Corrigir as lentidões dos fluxos que mais demoraram na medição da planilha grande e tentar baixar o tempo de cada teste.
+
+### Tentativa / implementação
+
+- Telas de Vendas, Estornos, Pagamentos e Reservas devolvem no máximo 80 registros recentes (`SCREEN_HISTORY_LIMIT`).
+- Reservas: itens e recreios viram mapa uma vez por execução (antes cada reserva relia a aba).
+- Pagamentos: alocações já agrupadas por pagamento, sem filtrar a aba inteira por linha.
+- Cadastro de alunos calculado uma vez por execução e reusado no login (Vendas + roster).
+- Atualizar em Pagamentos/Crédito reusa o cadastro do login e chama só `listPayments` / `listCreditAccounts`.
+
+### Resultado
+
+- Pagamentos 9,1 s → 4,0 s. Vendas 9,6 s → 6,8 s. Estornos 9,2 s → 7,5 s. Crédito 3,0 s → 2,0 s.
+- Login continua ~13 s (ainda monta Vendas + cadastro). Publicado no playground.
+
+### Diferenças do pedido
+
+- Não dá para zerar o piso de uma ida fria ao Google (~1,5–3 s).
+- Login não ficou mais rápido de forma estável.
+- Agenda/Alunos/Responsáveis oscilaram na variação do Google; uma ida de Responsáveis chegou a ~95 s e a repetição ficou em 5 s.
+
+### Impacto técnico
+
+- A dona vê as 80 vendas/pagamentos/reservas mais novas na lista. O restante permanece na planilha.
+- `CacheService` continua só para catálogo; totais financeiros não entram em cache.
+
+### Testes
+
+- Vitest: 246. Lista com 90 vendas fictícias devolve 80.
+- E2E local: 55. Atualizar em Pagamentos = `listPayments`; Crédito = `listCreditAccounts`.
+
+### Pendências / próxima versão
+
+- Ctrl+F5 no Web App.
+- Fase 27 (WhatsApp) continua fora.
+
 ## 2026-08-14 13:48 — Planilha grande fictícia e medição de desempenho
 
 **Origem:** Pedido do usuário
