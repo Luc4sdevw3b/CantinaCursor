@@ -46,8 +46,7 @@ Regras:
 
 ### Testes
 
-- Vitest: `createProduct.screen` e homônimos em `getStudentsScreenData`.
-- E2E local: orçamento de 1 chamada em cadastrar produto e em abrir Alunos.
+- Vitest **235** e E2E local **45**: `createProduct.screen`, homônimos em `getStudentsScreenData`, orçamento de 1 chamada em cadastrar produto e em abrir Alunos.
 
 ### Pendências / próxima versão
 
