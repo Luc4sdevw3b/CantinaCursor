@@ -9,6 +9,7 @@ import {
 } from './domain/reservation';
 import type {
   AppSession,
+  Classroom,
   DueDateShortcuts,
   Guardian,
   InventoryBalanceItem,
@@ -142,12 +143,15 @@ app.innerHTML = `
       <h2>Alunos</h2>
       <p id="students-status">Entre para ver o cadastro.</p>
       <ul id="students-list"></ul>
-      <form id="classroom-form">
+      <h3>Turmas</h3>
+      <ul id="classrooms-list"></ul>
+      <form id="classroom-form" aria-label="Cadastrar turma">
         <label>
           Nova turma
           <input id="classroom-name" required autocomplete="off" />
         </label>
         <button type="submit" id="classroom-submit">Cadastrar turma</button>
+        <button type="button" id="classroom-cancel" hidden>Cancelar</button>
       </form>
       <form id="student-form">
         <label>
@@ -263,7 +267,7 @@ app.innerHTML = `
       <h2>Cardápio</h2>
       <p id="products-status">Entre para ver o cardápio.</p>
       <h3>Categorias</h3>
-      <p>Crie a categoria antes do produto, se ela ainda não existir. Use Editar para mudar o nome.</p>
+      <p>Crie a categoria antes do produto, se ela ainda não existir. Use Editar para mudar o nome e Excluir só se não houver produto ativo nela.</p>
       <ul id="categories-list"></ul>
       <form id="category-form" aria-label="Cadastrar categoria">
         <label>
@@ -943,6 +947,17 @@ function submitButton(event: Event): HTMLButtonElement | null {
   return null;
 }
 
+function shouldHoldBusyBanner(): boolean {
+  try {
+    return (
+      typeof globalThis.location !== 'undefined' &&
+      new URLSearchParams(globalThis.location.search).get('e2eBusy') === '1'
+    );
+  } catch {
+    return false;
+  }
+}
+
 function runBusyAction(
   statusEl: Element | null,
   button: HTMLButtonElement | null | undefined,
@@ -963,7 +978,12 @@ function runBusyAction(
   if (statusEl) {
     statusEl.textContent = 'Processando…';
   }
-  void work()
+  const started = shouldHoldBusyBanner()
+    ? new Promise((resolve) => {
+        globalThis.setTimeout(resolve, 80);
+      }).then(work)
+    : work();
+  void started
     .catch((error: unknown) => {
       if (statusEl) {
         statusEl.textContent =
@@ -1174,9 +1194,11 @@ document
 const studentsPanel = document.querySelector('#students-panel');
 const studentsStatus = document.querySelector('#students-status');
 const studentsList = document.querySelector('#students-list');
+const classroomsList = document.querySelector('#classrooms-list');
 const classroomSelect = document.querySelector('#student-classroom');
 let editingStudentId: string | null = null;
 let editingStudentClassroomId: string | null = null;
+let editingClassroomId: string | null = null;
 
 function studentLine(student: StudentSummary): string {
   const classroom = student.classroomName || 'Sem turma';
@@ -1232,6 +1254,23 @@ function fillStudentForm(student: StudentDetail | null): void {
   }
 }
 
+function fillClassroomForm(classroom: Classroom | null): void {
+  const name = document.querySelector('#classroom-name');
+  const submit = document.querySelector('#classroom-submit');
+  const cancel = document.querySelector('#classroom-cancel');
+  editingClassroomId = classroom?.id ?? null;
+  if (!(name instanceof HTMLInputElement)) {
+    return;
+  }
+  name.value = classroom?.name ?? '';
+  if (submit instanceof HTMLButtonElement) {
+    submit.textContent = classroom ? 'Salvar turma' : 'Cadastrar turma';
+  }
+  if (cancel instanceof HTMLButtonElement) {
+    cancel.hidden = !classroom;
+  }
+}
+
 async function renderStudents(authenticated: boolean): Promise<void> {
   if (
     !(studentsPanel instanceof HTMLElement) ||
@@ -1241,6 +1280,9 @@ async function renderStudents(authenticated: boolean): Promise<void> {
     return;
   }
   studentsList.replaceChildren();
+  if (classroomsList instanceof HTMLElement) {
+    classroomsList.replaceChildren();
+  }
   if (!authenticated) {
     studentsStatus.textContent = 'Entre para ver o cadastro.';
     return;
@@ -1257,7 +1299,7 @@ async function renderStudents(authenticated: boolean): Promise<void> {
 
   if (classroomSelect instanceof HTMLSelectElement) {
     classroomSelect.replaceChildren();
-    for (const classroom of classrooms) {
+    for (const classroom of classrooms.filter((item) => item.active)) {
       const option = document.createElement('option');
       option.value = classroom.id;
       option.textContent = classroom.name;
@@ -1265,6 +1307,49 @@ async function renderStudents(authenticated: boolean): Promise<void> {
     }
     if (editingStudentClassroomId) {
       classroomSelect.value = editingStudentClassroomId;
+    }
+  }
+
+  if (classroomsList instanceof HTMLElement) {
+    for (const classroom of classrooms) {
+      const item = document.createElement('li');
+      item.textContent = classroom.active
+        ? classroom.name
+        : `${classroom.name} (inativa)`;
+      const actions = document.createElement('div');
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.textContent = 'Editar';
+      edit.addEventListener('click', () => {
+        fillClassroomForm(classroom);
+        const nameField = document.querySelector('#classroom-name');
+        if (nameField instanceof HTMLInputElement) {
+          nameField.focus();
+        }
+      });
+      actions.append(edit);
+      if (classroom.active) {
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.textContent = 'Excluir';
+        remove.addEventListener('click', () => {
+          runBusyAction(
+            studentsStatus,
+            remove,
+            'Não foi possível excluir a turma.',
+            () =>
+              api.deactivateClassroom(classroom.id).then(() => {
+                if (editingClassroomId === classroom.id) {
+                  fillClassroomForm(null);
+                }
+                return renderStudents(true);
+              }),
+          );
+        });
+        actions.append(remove);
+      }
+      item.append(actions);
+      classroomsList.append(item);
     }
   }
 
@@ -1353,10 +1438,12 @@ function guardianLine(guardian: {
   fullName: string;
   relationLabel: string;
   whatsappEnabled: boolean;
+  active?: boolean;
 }): string {
   const relation = guardian.relationLabel ? ` • ${guardian.relationLabel}` : '';
   const whatsapp = guardian.whatsappEnabled ? ' • WhatsApp' : '';
-  return `${guardian.fullName}${relation}${whatsapp}`;
+  const inactive = guardian.active === false ? ' • Inativo' : '';
+  return `${guardian.fullName}${relation}${whatsapp}${inactive}`;
 }
 
 function guardianCreditLinkLine(
@@ -1455,6 +1542,26 @@ async function renderFamily(session: AppSession | null): Promise<void> {
     });
     const actions = document.createElement('div');
     actions.append(edit);
+    if (guardian.active) {
+      const deactivate = document.createElement('button');
+      deactivate.type = 'button';
+      deactivate.textContent = 'Desativar';
+      deactivate.addEventListener('click', () => {
+        runBusyAction(
+          familyStatus,
+          deactivate,
+          'Não foi possível desativar o responsável.',
+          () =>
+            api.deactivateGuardian(guardian.id).then(() => {
+              if (editingGuardianId === guardian.id) {
+                fillGuardianForm(null);
+              }
+              return api.getSession().then(renderFamily);
+            }),
+        );
+      });
+      actions.append(deactivate);
+    }
     item.append(actions);
     guardiansList.append(item);
   }
@@ -1680,7 +1787,7 @@ async function renderProducts(session: AppSession | null): Promise<void> {
 
   if (productCategorySelect instanceof HTMLSelectElement) {
     productCategorySelect.replaceChildren();
-    for (const category of categories) {
+    for (const category of categories.filter((item) => item.active)) {
       const option = document.createElement('option');
       option.value = category.id;
       option.textContent = category.name;
@@ -1697,7 +1804,9 @@ async function renderProducts(session: AppSession | null): Promise<void> {
   if (categoriesList instanceof HTMLElement) {
     for (const category of categories) {
       const item = document.createElement('li');
-      item.textContent = category.name;
+      item.textContent = category.active
+        ? category.name
+        : `${category.name} (inativa)`;
       const actions = document.createElement('div');
       const edit = document.createElement('button');
       edit.type = 'button';
@@ -1710,6 +1819,26 @@ async function renderProducts(session: AppSession | null): Promise<void> {
         }
       });
       actions.append(edit);
+      if (category.active) {
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.textContent = 'Excluir';
+        remove.addEventListener('click', () => {
+          runBusyAction(
+            productsStatus,
+            remove,
+            'Não foi possível excluir a categoria.',
+            () =>
+              api.deactivateCategory(category.id).then(() => {
+                if (editingCategoryId === category.id) {
+                  fillCategoryForm(null);
+                }
+                return api.getSession().then(renderProducts);
+              }),
+          );
+        });
+        actions.append(remove);
+      }
       item.append(actions);
       categoriesList.append(item);
     }
@@ -1733,18 +1862,26 @@ async function renderProducts(session: AppSession | null): Promise<void> {
     if (product.active) {
       const deactivate = document.createElement('button');
       deactivate.type = 'button';
-      deactivate.textContent = 'Desativar';
+      deactivate.textContent = 'Excluir';
       deactivate.addEventListener('click', () => {
         runBusyAction(
           productsStatus,
           deactivate,
-          'Não foi possível desativar o produto.',
+          'Não foi possível excluir o produto.',
           () =>
             api.deactivateProduct(product.id).then(() => {
               if (editingProductId === product.id) {
                 fillProductForm(null);
               }
-              return api.getSession().then(renderProducts);
+              return api
+                .getSession()
+                .then((current) =>
+                  Promise.all([
+                    renderProducts(current),
+                    renderSales(current),
+                    renderInventory(current),
+                  ]),
+                );
             }),
         );
       });
@@ -4137,25 +4274,32 @@ document
     runBusyAction(
       studentsStatus,
       submitButton(event),
-      'Não foi possível cadastrar a turma.',
+      editingClassroomId
+        ? 'Não foi possível salvar a turma.'
+        : 'Não foi possível cadastrar a turma.',
       () =>
         api.listSchoolYears().then((years) => {
           const year = years.find((item) => item.active) ?? years[0];
           if (!year) {
             throw new Error('Nenhum ano letivo ativo para criar a turma.');
           }
-          return api
-            .createClassroom({
-              schoolYearId: year.id,
-              name: name.value,
-            })
-            .then(() => {
-              name.value = '';
-              return renderStudents(true);
-            });
+          const saved = editingClassroomId
+            ? api.updateClassroom(editingClassroomId, name.value)
+            : api.createClassroom({
+                schoolYearId: year.id,
+                name: name.value,
+              });
+          return saved.then(() => {
+            fillClassroomForm(null);
+            return renderStudents(true);
+          });
         }),
     );
   });
+
+document.querySelector('#classroom-cancel')?.addEventListener('click', () => {
+  fillClassroomForm(null);
+});
 
 document
   .querySelector('#guardian-form')

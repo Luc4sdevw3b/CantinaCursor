@@ -676,6 +676,8 @@ export interface AppApi {
   createSchoolYear(input: CreateSchoolYearInput): Promise<SchoolYear>;
   listClassrooms(schoolYearId?: string): Promise<Classroom[]>;
   createClassroom(input: CreateClassroomInput): Promise<Classroom>;
+  updateClassroom(id: string, name: string): Promise<Classroom>;
+  deactivateClassroom(id: string): Promise<Classroom>;
   listStudents(query?: {
     includeInactive?: boolean;
   }): Promise<StudentSummary[]>;
@@ -697,6 +699,7 @@ export interface AppApi {
   listGuardians(query?: { includeInactive?: boolean }): Promise<Guardian[]>;
   createGuardian(input: GuardianProfileFields): Promise<Guardian>;
   updateGuardian(id: string, input: GuardianProfileFields): Promise<Guardian>;
+  deactivateGuardian(id: string): Promise<Guardian>;
   getStudentGuardians(studentId: string): Promise<StudentGuardianLink[]>;
   linkGuardian(
     studentId: string,
@@ -722,6 +725,7 @@ export interface AppApi {
   listProductCategories(): Promise<ProductCategory[]>;
   createCategory(name: string): Promise<ProductCategory>;
   updateCategory(id: string, name: string): Promise<ProductCategory>;
+  deactivateCategory(id: string): Promise<ProductCategory>;
   listProducts(query?: { includeInactive?: boolean }): Promise<Product[]>;
   createProduct(input: ProductFields): Promise<Product>;
   updateProduct(id: string, input: ProductFields): Promise<Product>;

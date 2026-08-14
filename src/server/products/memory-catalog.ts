@@ -239,6 +239,41 @@ export class MemoryCatalog {
     });
   }
 
+  deactivateCategory(id: string): Result<ProductCategoryView> {
+    const current = this.findCategory(id);
+    if (!current.ok) {
+      return err(current.error);
+    }
+    if (current.data.active !== 'true') {
+      return err({
+        code: 'CATEGORY_ALREADY_INACTIVE',
+        message: 'Esta categoria já está inativa.',
+        retryable: false,
+      });
+    }
+    const hasActiveProduct = latestById(this.products).some(
+      (product) => product.category_id === id && product.active === 'true',
+    );
+    if (hasActiveProduct) {
+      return err({
+        code: 'CATEGORY_HAS_ACTIVE_PRODUCTS',
+        message:
+          'Não é possível excluir a categoria enquanto houver produtos ativos nela.',
+        retryable: false,
+      });
+    }
+    const record: CategoryRecord = {
+      ...current.data,
+      active: 'false',
+    };
+    this.categories.push(record);
+    return ok({
+      id: record.id,
+      name: record.name,
+      active: false,
+    });
+  }
+
   listProducts(query?: { includeInactive?: boolean }): Result<ProductView[]> {
     const includeInactive = query?.includeInactive !== false;
     return ok(
@@ -264,6 +299,13 @@ export class MemoryCatalog {
     const category = this.findCategory(profile.data.category_id);
     if (!category.ok) {
       return err(category.error);
+    }
+    if (category.data.active !== 'true') {
+      return err({
+        code: 'CATEGORY_INACTIVE',
+        message: 'Não é possível usar uma categoria inativa.',
+        retryable: false,
+      });
     }
     const now = this.nowIso();
     const record: ProductRecord = {
@@ -301,6 +343,13 @@ export class MemoryCatalog {
     const category = this.findCategory(profile.data.category_id);
     if (!category.ok) {
       return err(category.error);
+    }
+    if (category.data.active !== 'true') {
+      return err({
+        code: 'CATEGORY_INACTIVE',
+        message: 'Não é possível usar uma categoria inativa.',
+        retryable: false,
+      });
     }
     const now = this.nowIso();
     const record: ProductRecord = {

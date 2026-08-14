@@ -164,6 +164,16 @@ export class FakeAppApi implements AppApi {
     return throwResult(this.roster.createClassroom(input));
   }
 
+  async updateClassroom(id: string, name: string): Promise<Classroom> {
+    this.assertSession();
+    return throwResult(this.roster.updateClassroom(id, name));
+  }
+
+  async deactivateClassroom(id: string): Promise<Classroom> {
+    this.assertSession();
+    return throwResult(this.roster.deactivateClassroom(id));
+  }
+
   async listStudents(query?: {
     includeInactive?: boolean;
   }): Promise<StudentSummary[]> {
@@ -228,6 +238,11 @@ export class FakeAppApi implements AppApi {
   ): Promise<Guardian> {
     this.assertAction('guardians.write');
     return throwResult(this.roster.updateGuardian(id, input));
+  }
+
+  async deactivateGuardian(id: string): Promise<Guardian> {
+    this.assertAction('guardians.write');
+    return throwResult(this.roster.deactivateGuardian(id));
   }
 
   async getStudentGuardians(studentId: string): Promise<StudentGuardianLink[]> {
@@ -307,6 +322,11 @@ export class FakeAppApi implements AppApi {
   async updateCategory(id: string, name: string): Promise<ProductCategory> {
     this.assertAction('products.write');
     return throwResult(this.catalog.updateCategory(id, name));
+  }
+
+  async deactivateCategory(id: string): Promise<ProductCategory> {
+    this.assertAction('products.write');
+    return throwResult(this.catalog.deactivateCategory(id));
   }
 
   async listProducts(query?: {

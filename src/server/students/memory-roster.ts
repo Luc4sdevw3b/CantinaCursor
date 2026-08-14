@@ -388,6 +388,64 @@ export class MemoryRoster {
     });
   }
 
+  updateClassroom(id: string, name: string): Result<ClassroomView> {
+    const current = this.findClassroom(id);
+    if (!current.ok) {
+      return err(current.error);
+    }
+    if (!name.trim()) {
+      return err({
+        code: 'INVALID_CLASSROOM',
+        message: 'Informe o nome da turma.',
+        retryable: false,
+      });
+    }
+    const record: ClassroomRecord = {
+      ...current.data,
+      name: name.trim(),
+    };
+    this.classrooms.push(record);
+    return ok({
+      id: record.id,
+      schoolYearId: record.school_year_id,
+      name: record.name,
+      active: record.active === 'true',
+    });
+  }
+
+  deactivateClassroom(id: string): Result<ClassroomView> {
+    const current = this.findClassroom(id);
+    if (!current.ok) {
+      return err(current.error);
+    }
+    if (current.data.active !== 'true') {
+      return err({
+        code: 'CLASSROOM_ALREADY_INACTIVE',
+        message: 'Esta turma já está inativa.',
+        retryable: false,
+      });
+    }
+    if (this.classroomHasActiveStudents(id)) {
+      return err({
+        code: 'CLASSROOM_HAS_ACTIVE_STUDENTS',
+        message:
+          'Não é possível excluir a turma enquanto houver alunos ativos nela.',
+        retryable: false,
+      });
+    }
+    const record: ClassroomRecord = {
+      ...current.data,
+      active: 'false',
+    };
+    this.classrooms.push(record);
+    return ok({
+      id: record.id,
+      schoolYearId: record.school_year_id,
+      name: record.name,
+      active: false,
+    });
+  }
+
   listStudents(query?: {
     includeInactive?: boolean;
   }): Result<StudentSummaryView[]> {
@@ -574,6 +632,13 @@ export class MemoryRoster {
         retryable: false,
       });
     }
+    if (classroom.active !== 'true') {
+      return err({
+        code: 'CLASSROOM_INACTIVE',
+        message: 'Não é possível matricular em turma inativa.',
+        retryable: false,
+      });
+    }
     const planned = planEnrollment({
       studentId: id,
       classroomId: input.classroomId,
@@ -664,6 +729,27 @@ export class MemoryRoster {
     const record: GuardianRecord = {
       ...previous,
       ...profile.data,
+      updated_at: this.nowIso(),
+    };
+    this.guardians.push(record);
+    return ok(this.toGuardian(record));
+  }
+
+  deactivateGuardian(id: string): Result<GuardianView> {
+    const found = this.findGuardian(id);
+    if (!found.ok) {
+      return err(found.error);
+    }
+    if (found.data.active !== 'true') {
+      return err({
+        code: 'GUARDIAN_ALREADY_INACTIVE',
+        message: 'Este responsável já está inativo.',
+        retryable: false,
+      });
+    }
+    const record: GuardianRecord = {
+      ...found.data,
+      active: 'false',
       updated_at: this.nowIso(),
     };
     this.guardians.push(record);
@@ -904,6 +990,38 @@ export class MemoryRoster {
           Boolean(primaryId),
         ),
     };
+  }
+
+  private findClassroom(id: string): Result<ClassroomRecord> {
+    const validId = parseId(id);
+    if (!validId.ok) {
+      return err(validId.error);
+    }
+    const classroom = latestById(this.classrooms).find(
+      (item) => item.id === id,
+    );
+    if (!classroom) {
+      return err({
+        code: 'CLASSROOM_NOT_FOUND',
+        message: 'Turma não encontrada.',
+        retryable: false,
+      });
+    }
+    return ok(classroom);
+  }
+
+  private classroomHasActiveStudents(classroomId: string): boolean {
+    return latestById(this.students).some((student) => {
+      if (student.active !== 'true') {
+        return false;
+      }
+      const enrollment = this.enrollments
+        .filter(
+          (item) => item.student_id === student.id && item.ended_on === '',
+        )
+        .at(-1);
+      return enrollment?.classroom_id === classroomId;
+    });
   }
 
   private findGuardian(id: string): Result<GuardianRecord> {

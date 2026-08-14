@@ -269,6 +269,28 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await expect(page.locator('#sale-product')).toContainText(
       'Coxinha • R$ 6,00',
     );
+    await goToArea(page, 'Cardápio');
+    await page.locator('#product-name').fill('Produto e2e excluir');
+    await page.locator('#product-price').fill('1,00');
+    await page.getByRole('button', { name: 'Cadastrar produto' }).click();
+    const extraProduct = page
+      .locator('#products-list')
+      .getByRole('listitem')
+      .filter({ hasText: 'Produto e2e excluir' });
+    await extraProduct.getByRole('button', { name: 'Excluir' }).click();
+    await expect(
+      page
+        .locator('#products-list')
+        .getByRole('listitem')
+        .filter({ hasText: 'Produto e2e excluir' }),
+    ).toContainText('Inativo');
+    await expect(
+      extraProduct.getByRole('button', { name: 'Excluir' }),
+    ).toHaveCount(0);
+    await goToArea(page, 'Vendas');
+    await expect(page.locator('#sale-product')).not.toContainText(
+      'Produto e2e excluir',
+    );
   });
 
   test('edits an existing student and creates a classroom', async ({
@@ -297,6 +319,56 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await expect(
       page.getByRole('button', { name: 'Cadastrar aluno' }),
     ).toBeVisible();
+    await expect(
+      page.locator('#classrooms-list').getByText('5º C'),
+    ).toBeVisible();
+    await page.locator('#classroom-name').fill('6º D');
+    await page.getByRole('button', { name: 'Cadastrar turma' }).click();
+    const sixth = page
+      .locator('#classrooms-list')
+      .getByRole('listitem')
+      .filter({ hasText: '6º D' });
+    await sixth.getByRole('button', { name: 'Editar' }).click();
+    await expect(page.locator('#classroom-name')).toHaveValue('6º D');
+    await page.locator('#classroom-name').fill('6º E');
+    await page.getByRole('button', { name: 'Salvar turma' }).click();
+    const sixthRenamed = page
+      .locator('#classrooms-list')
+      .getByRole('listitem')
+      .filter({ hasText: '6º E' });
+    await expect(sixthRenamed).toBeVisible();
+    await sixthRenamed.getByRole('button', { name: 'Excluir' }).click();
+    await expect(
+      page.locator('#classrooms-list').getByText('6º E (inativa)'),
+    ).toBeVisible();
+    await expect(page.locator('#student-classroom')).not.toContainText('6º E');
+    const third = page
+      .locator('#classrooms-list')
+      .getByRole('listitem')
+      .filter({ hasText: '3º A' });
+    await third.getByRole('button', { name: 'Excluir' }).click();
+    await expect(page.locator('#students-status')).toHaveText(
+      'Não é possível excluir a turma enquanto houver alunos ativos nela.',
+    );
+    await expect(third.getByRole('button', { name: 'Excluir' })).toBeVisible();
+  });
+
+  test('shows Processando while a cadastro save runs', async ({ page }) => {
+    await openLocalApp(page, '/?e2eBusy=1');
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await goToArea(page, 'Alunos');
+    const ana = page
+      .locator('#students-list')
+      .getByRole('listitem')
+      .filter({ hasText: 'Ana Souza • ~8 • 3º A' });
+    await ana.getByRole('button', { name: 'Editar' }).click();
+    const pending = page.getByRole('button', { name: 'Salvar aluno' }).click();
+    await expect(page.locator('#busy-banner')).toHaveText('Processando ação…');
+    await pending;
+    await expect(page.locator('#busy-banner')).toBeHidden();
+    await expect(
+      page.getByRole('button', { name: 'Cadastrar aluno' }),
+    ).toBeVisible();
   });
 
   test('edits an existing guardian', async ({ page }) => {
@@ -319,6 +391,19 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await expect(
       page.getByRole('button', { name: 'Cadastrar responsável' }),
     ).toBeVisible();
+    await page.locator('#guardian-name').fill('Responsável e2e');
+    await page.getByRole('button', { name: 'Cadastrar responsável' }).click();
+    const extraGuardian = page
+      .locator('#guardians-list')
+      .getByRole('listitem')
+      .filter({ hasText: 'Responsável e2e' });
+    await extraGuardian.getByRole('button', { name: 'Desativar' }).click();
+    await expect(
+      page.locator('#guardians-list').getByText('Responsável e2e • Inativo'),
+    ).toBeVisible();
+    await expect(
+      extraGuardian.getByRole('button', { name: 'Desativar' }),
+    ).toHaveCount(0);
   });
 
   test('creates and edits a product category', async ({ page }) => {
@@ -347,6 +432,34 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     );
     await expect(
       page.getByRole('button', { name: 'Cadastrar categoria' }),
+    ).toBeVisible();
+    await page
+      .locator('#categories-list')
+      .getByRole('listitem')
+      .filter({ hasText: 'Lanche da tarde' })
+      .getByRole('button', { name: 'Excluir' })
+      .click();
+    await expect(
+      page.locator('#categories-list').getByText('Lanche da tarde (inativa)'),
+    ).toBeVisible();
+    await expect(page.locator('#product-category')).not.toContainText(
+      'Lanche da tarde',
+    );
+    await page
+      .locator('#categories-list')
+      .getByRole('listitem')
+      .filter({ hasText: 'Salgados' })
+      .getByRole('button', { name: 'Excluir' })
+      .click();
+    await expect(page.locator('#products-status')).toHaveText(
+      'Não é possível excluir a categoria enquanto houver produtos ativos nela.',
+    );
+    await expect(
+      page
+        .locator('#categories-list')
+        .getByRole('listitem')
+        .filter({ hasText: 'Salgados' })
+        .getByRole('button', { name: 'Excluir' }),
     ).toBeVisible();
   });
 
@@ -1113,6 +1226,28 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await expect(page.getByRole('heading', { name: 'Produção' })).toBeVisible();
   });
 
+  test('filters the internal reservation student selector by search', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await goToArea(page, 'Reservas');
+    await page.locator('#reservation-student-search').fill('Ana');
+    await expect(page.locator('#reservation-student')).toContainText(
+      'Ana Souza',
+    );
+    await expect(page.locator('#reservation-student')).not.toContainText(
+      'Bruno Lima',
+    );
+    await page.locator('#reservation-student-search').fill('ZZZ');
+    await expect(page.locator('#reservation-student')).not.toContainText(
+      'Ana Souza',
+    );
+    await expect(page.locator('#reservation-student')).not.toContainText(
+      'Bruno Lima',
+    );
+  });
+
   test('creates a public recreio reservation without login or private autocomplete', async ({
     page,
   }) => {
@@ -1124,6 +1259,8 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
       page.getByRole('button', { name: 'Entrar como dona' }),
     ).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Alunos' })).toHaveCount(0);
+    await expect(page.locator('#reservation-student-search')).toBeHidden();
+    await expect(page.locator('#reservation-student')).toBeHidden();
     await expect(
       page.getByText('Coxinha • R$ 5,50 • disponível 10', { exact: true }),
     ).toBeVisible();

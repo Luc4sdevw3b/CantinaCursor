@@ -77,6 +77,27 @@ describe('FakeAppApi', () => {
     });
     expect(updated.fullName).toBe('Bruno Lima');
     expect(updated.birthDate).toBe('2015-06-01');
+
+    const years = await api.listSchoolYears();
+    const year = years[0];
+    if (!year) {
+      throw new Error('ano letivo ausente');
+    }
+    const emptyRoom = await api.createClassroom({
+      schoolYearId: year.id,
+      name: '6º D',
+    });
+    expect((await api.updateClassroom(emptyRoom.id, '6º E')).name).toBe('6º E');
+    expect((await api.deactivateClassroom(emptyRoom.id)).active).toBe(false);
+    const third = (await api.listClassrooms()).find(
+      (item) => item.name === '3º A',
+    );
+    if (!third) {
+      throw new Error('3º A ausente');
+    }
+    await expect(api.deactivateClassroom(third.id)).rejects.toThrow(
+      'CLASSROOM_HAS_ACTIVE_STUDENTS',
+    );
   });
 
   it('links siblings through a shared guardian and refuses non-siblings', async () => {
@@ -149,6 +170,10 @@ describe('FakeAppApi', () => {
       (await api.listGuardians()).find((item) => item.id === created.id)
         ?.relationLabel,
     ).toBe('madrinha');
+    expect((await api.deactivateGuardian(created.id)).active).toBe(false);
+    await expect(api.deactivateGuardian(created.id)).rejects.toThrow(
+      'GUARDIAN_ALREADY_INACTIVE',
+    );
     await expect(api.setRequireGuardianBelowAge(16)).rejects.toThrow(
       'FORBIDDEN',
     );
@@ -242,6 +267,16 @@ describe('FakeAppApi', () => {
         (item) => item.name === 'Lanche da tarde',
       ),
     ).toBe(true);
+    expect((await api.deactivateCategory(lanches.id)).active).toBe(false);
+    await expect(api.deactivateCategory(salgados.id)).rejects.toThrow(
+      'CATEGORY_HAS_ACTIVE_PRODUCTS',
+    );
+    const extra = await api.createProduct({
+      name: 'Produto e2e excluir',
+      categoryId: salgados.id,
+      priceCents: 100,
+    });
+    expect((await api.deactivateProduct(extra.id)).active).toBe(false);
   });
 
   it('opens demo stock, labels zero as ACABOU and keeps adjustments to the owner', async () => {

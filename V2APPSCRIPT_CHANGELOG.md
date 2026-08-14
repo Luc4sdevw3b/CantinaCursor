@@ -9,6 +9,50 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-14 10:20 — CRUD de cadastro com exclusão suave
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 26
+
+### Pedido / objetivo
+
+- Excluir categoria e produto, além de criar/editar.
+- Completar CRUD de alunos, responsáveis, turmas, categorias e produtos.
+- Cobrir em E2E local os processos dos últimos pedidos (reserva Fase 26, cadastros, seletor de aluno, Processando, layout do Cardápio).
+
+### Tentativa / implementação
+
+- Exclusão é desativação append-only (`active: false`), sem apagar linha do Sheets.
+- Categoria: `deactivateCategory` recusa se ainda houver produto ativo; categoria vazia pode ser excluída. O select `#product-category` lista só categorias ativas; a lista mostra `(inativa)`.
+- Produto: o botão da lista passa de **Desativar** para **Excluir**; o backend continua `deactivateProduct`.
+- Responsável: `deactivateGuardian` (botão **Desativar**, como aluno). Crédito e fiado históricos permanecem pelo ID.
+- Turma: `updateClassroom` e `deactivateClassroom`; recusa se houver aluno ativo. Lista compacta `#classrooms-list` em Alunos, com **Editar** / **Excluir**.
+- Aluno permanece com **Desativar** + **Reativar** com revisão.
+- E2E local cobre exclusão, recusa, filtro `#reservation-student-search` e `#busy-banner` `Processando ação…` com `?e2eBusy=1`.
+
+### Resultado
+
+- Dona e funcionário concluem o CRUD dos cadastros sem apagar histórico.
+
+### Diferenças do pedido
+
+- Excluir não apaga a linha: o registro fica inativo para auditoria.
+- Responsável usa **Desativar**, não **Excluir**, porque pode haver crédito/fiado ligado ao ID.
+
+### Impacto técnico
+
+- Sem schema novo. Novas APIs: `deactivateCategory`, `deactivateGuardian`, `updateClassroom`, `deactivateClassroom`.
+
+### Testes
+
+- Unitário de categoria/turma/responsável; integração FakeAppApi e Code.gs; E2E local.
+
+### Pendências / próxima versão
+
+- Publicar no Web App de teste e recarregar com Ctrl+F5.
+
 ## 2026-08-14 10:08 — Categorias no topo do Cardápio
 
 **Origem:** Pedido do usuário

@@ -90,6 +90,15 @@ interface ServerContext {
     sessionToken: string,
     payload: { schoolYearId: string; name: string },
   ): { id: string; schoolYearId: string; name: string; active: boolean };
+  updateClassroom(
+    sessionToken: string,
+    id: string,
+    payload: { name: string },
+  ): { id: string; schoolYearId: string; name: string; active: boolean };
+  deactivateClassroom(
+    sessionToken: string,
+    id: string,
+  ): { id: string; name: string; active: boolean };
   listStudents(
     sessionToken: string,
     query?: { includeInactive?: boolean },
@@ -155,7 +164,11 @@ interface ServerContext {
     sessionToken: string,
     id: string,
     payload: Record<string, unknown>,
-  ): { id: string; fullName: string; relationLabel: string };
+  ): { id: string; fullName: string; relationLabel: string; active: boolean };
+  deactivateGuardian(
+    sessionToken: string,
+    id: string,
+  ): { id: string; active: boolean };
   linkGuardian(
     sessionToken: string,
     studentId: string,
@@ -206,6 +219,10 @@ interface ServerContext {
     id: string,
     payload: Record<string, unknown>,
   ): { id: string; name: string; active: boolean };
+  deactivateCategory(
+    sessionToken: string,
+    id: string,
+  ): { id: string; name: string; active: boolean };
   listProducts(
     sessionToken: string,
     query?: { includeInactive?: boolean },
@@ -227,6 +244,10 @@ interface ServerContext {
     id: string,
     payload: Record<string, unknown>,
   ): { id: string; priceCents: number };
+  deactivateProduct(
+    sessionToken: string,
+    id: string,
+  ): { id: string; name: string; active: boolean };
   listProductPriceHistory(
     sessionToken: string,
     productId: string,
@@ -1612,6 +1633,17 @@ describe('Apps Script E2E server', () => {
         approximateAgeReferenceYear: 2026,
       }).fullName,
     ).toBe('Carla Nunes Silva');
+    expect(
+      server.updateClassroom(staff, classroom.id, { name: '1º A manhã' }).name,
+    ).toBe('1º A manhã');
+    expect(() => server.deactivateClassroom(staff, classroom.id)).toThrow(
+      'CLASSROOM_HAS_ACTIVE_STUDENTS',
+    );
+    const emptyRoom = server.createClassroom(staff, {
+      schoolYearId: year.id,
+      name: '6º D',
+    });
+    expect(server.deactivateClassroom(staff, emptyRoom.id).active).toBe(false);
     expect(() => server.listStudents('')).toThrow('UNAUTHENTICATED');
   });
 
@@ -1691,6 +1723,10 @@ describe('Apps Script E2E server', () => {
         relationLabel: 'madrinha',
       }).relationLabel,
     ).toBe('madrinha');
+    expect(server.deactivateGuardian(staff, carla.id).active).toBe(false);
+    expect(() => server.deactivateGuardian(staff, carla.id)).toThrow(
+      'GUARDIAN_ALREADY_INACTIVE',
+    );
     expect(() => server.setRequireGuardianBelowAge(staff, 16)).toThrow(
       'FORBIDDEN',
     );
@@ -1771,6 +1807,22 @@ describe('Apps Script E2E server', () => {
         .listProductCategories(owner)
         .some((item) => item.name === 'Lanche da tarde'),
     ).toBe(true);
+    expect(server.deactivateCategory(owner, lanches.id).active).toBe(false);
+    const salgados = server
+      .listProductCategories(owner)
+      .find((item) => item.name === 'Salgados');
+    if (!salgados) {
+      throw new Error('categoria Salgados ausente');
+    }
+    expect(() => server.deactivateCategory(owner, salgados.id)).toThrow(
+      'CATEGORY_HAS_ACTIVE_PRODUCTS',
+    );
+    const extra = server.createProduct(owner, {
+      name: 'Produto e2e excluir',
+      categoryId: salgados.id,
+      priceCents: 100,
+    });
+    expect(server.deactivateProduct(owner, extra.id).active).toBe(false);
     expect(() => server.listProducts('')).toThrow('UNAUTHENTICATED');
   });
 

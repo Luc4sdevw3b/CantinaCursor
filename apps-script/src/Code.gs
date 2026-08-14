@@ -2169,6 +2169,11 @@ function enrollStudentUnlocked(studentId, classroomId, startedOn, createdBy) {
   if (!classroom) {
     throw new Error('CLASSROOM_NOT_FOUND: Turma não encontrada.');
   }
+  if (classroom.active !== 'true') {
+    throw new Error(
+      'CLASSROOM_INACTIVE: Não é possível matricular em turma inativa.',
+    );
+  }
   const current = currentEnrollmentGs(studentId);
   const now = new Date().toISOString();
   const enrollments = openNamedSheet(
@@ -2463,6 +2468,97 @@ function createClassroom(sessionToken, payload) {
       new Date().toISOString(),
     ]);
     return record;
+  });
+}
+
+function appendClassroomRecordGs(record) {
+  openNamedSheet(CLASSROOMS_SHEET, CLASSROOMS_HEADERS).appendRow([
+    record.id,
+    record.school_year_id,
+    record.name,
+    record.active,
+    record.created_at,
+  ]);
+}
+
+function classroomHasActiveStudentsGs(classroomId) {
+  const students = latestRecordsById(
+    listSheetRecords(
+      openNamedSheet(STUDENTS_SHEET, STUDENTS_HEADERS),
+      STUDENTS_HEADERS,
+    ),
+  );
+  for (let index = 0; index < students.length; index += 1) {
+    const student = students[index];
+    if (student.active !== 'true') {
+      continue;
+    }
+    const enrollment = currentEnrollmentGs(student.id);
+    if (enrollment && enrollment.classroom_id === classroomId) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function toClassroomGs(room) {
+  return {
+    id: room.id,
+    schoolYearId: room.school_year_id,
+    name: room.name,
+    active: room.active === 'true',
+  };
+}
+
+function updateClassroom(sessionToken, id, payload) {
+  requireAction(sessionToken, 'classrooms.manage');
+  return withScriptLock(function () {
+    setupSchema();
+    if (!REQUEST_ID_PATTERN.test(id)) {
+      throw new Error(
+        'INVALID_ID: ID deve ser UUID imutável, nunca número da linha.',
+      );
+    }
+    const current = classroomById(id);
+    if (!current) {
+      throw new Error('CLASSROOM_NOT_FOUND: Turma não encontrada.');
+    }
+    const name = String((payload && payload.name) || '').trim();
+    if (!name) {
+      throw new Error('INVALID_CLASSROOM: Informe o nome da turma.');
+    }
+    const record = Object.assign({}, current, { name: name });
+    appendClassroomRecordGs(record);
+    return toClassroomGs(record);
+  });
+}
+
+function deactivateClassroom(sessionToken, id) {
+  requireAction(sessionToken, 'classrooms.manage');
+  return withScriptLock(function () {
+    setupSchema();
+    if (!REQUEST_ID_PATTERN.test(id)) {
+      throw new Error(
+        'INVALID_ID: ID deve ser UUID imutável, nunca número da linha.',
+      );
+    }
+    const current = classroomById(id);
+    if (!current) {
+      throw new Error('CLASSROOM_NOT_FOUND: Turma não encontrada.');
+    }
+    if (current.active !== 'true') {
+      throw new Error(
+        'CLASSROOM_ALREADY_INACTIVE: Esta turma já está inativa.',
+      );
+    }
+    if (classroomHasActiveStudentsGs(id)) {
+      throw new Error(
+        'CLASSROOM_HAS_ACTIVE_STUDENTS: Não é possível excluir a turma enquanto houver alunos ativos nela.',
+      );
+    }
+    const record = Object.assign({}, current, { active: 'false' });
+    appendClassroomRecordGs(record);
+    return toClassroomGs(record);
   });
 }
 
@@ -2944,6 +3040,25 @@ function updateGuardian(sessionToken, id, payload) {
   });
 }
 
+function deactivateGuardian(sessionToken, id) {
+  requireAction(sessionToken, 'guardians.write');
+  return withScriptLock(function () {
+    setupSchema();
+    const previous = latestGuardianById(id, true);
+    if (previous.active !== 'true') {
+      throw new Error(
+        'GUARDIAN_ALREADY_INACTIVE: Este responsável já está inativo.',
+      );
+    }
+    const record = Object.assign({}, previous, {
+      active: 'false',
+      updated_at: new Date().toISOString(),
+    });
+    appendGuardianRecord(record);
+    return toGuardianGs(record);
+  });
+}
+
 function getStudentGuardians(sessionToken, studentId) {
   requireAction(sessionToken, 'guardians.read');
   latestStudentById(studentId);
@@ -3397,9 +3512,16 @@ function seedE2EProductsUnlocked() {
 }
 
 function appendCategoryRecord(record) {
-  openNamedSheet(PRODUCT_CATEGORIES_SHEET, PRODUCT_CATEGORIES_HEADERS).appendRow(
-    [record.id, record.name, record.sort_order, record.active, record.created_at],
-  );
+  openNamedSheet(
+    PRODUCT_CATEGORIES_SHEET,
+    PRODUCT_CATEGORIES_HEADERS,
+  ).appendRow([
+    record.id,
+    record.name,
+    record.sort_order,
+    record.active,
+    record.created_at,
+  ]);
 }
 
 function listProductCategories(sessionToken) {
@@ -3466,6 +3588,35 @@ function updateCategory(sessionToken, id, payload) {
   });
 }
 
+function deactivateCategory(sessionToken, id) {
+  requireAction(sessionToken, 'products.write');
+  return withScriptLock(function () {
+    setupSchema();
+    const current = latestCategoryById(id, true);
+    if (current.active !== 'true') {
+      throw new Error(
+        'CATEGORY_ALREADY_INACTIVE: Esta categoria já está inativa.',
+      );
+    }
+    const products = latestRecordsById(listProductRecords());
+    for (let index = 0; index < products.length; index += 1) {
+      const product = products[index];
+      if (product.category_id === id && product.active === 'true') {
+        throw new Error(
+          'CATEGORY_HAS_ACTIVE_PRODUCTS: Não é possível excluir a categoria enquanto houver produtos ativos nela.',
+        );
+      }
+    }
+    const record = Object.assign({}, current, { active: 'false' });
+    appendCategoryRecord(record);
+    return {
+      id: record.id,
+      name: record.name,
+      active: false,
+    };
+  });
+}
+
 function listProducts(sessionToken, query) {
   requireAction(sessionToken, 'products.read');
   const includeInactive = !query || query.includeInactive !== false;
@@ -3481,7 +3632,12 @@ function createProduct(sessionToken, payload) {
   return withScriptLock(function () {
     setupSchema();
     const profile = validateProductProfileGs(payload || {});
-    latestCategoryById(profile.category_id, true);
+    const category = latestCategoryById(profile.category_id, true);
+    if (category.active !== 'true') {
+      throw new Error(
+        'CATEGORY_INACTIVE: Não é possível usar uma categoria inativa.',
+      );
+    }
     const now = new Date().toISOString();
     const record = Object.assign(
       {
@@ -3509,7 +3665,12 @@ function updateProduct(sessionToken, id, payload) {
     setupSchema();
     const previous = latestProductById(id);
     const profile = validateProductProfileGs(payload || {});
-    latestCategoryById(profile.category_id, true);
+    const category = latestCategoryById(profile.category_id, true);
+    if (category.active !== 'true') {
+      throw new Error(
+        'CATEGORY_INACTIVE: Não é possível usar uma categoria inativa.',
+      );
+    }
     const now = new Date().toISOString();
     const record = Object.assign({}, previous, profile, { updated_at: now });
     appendProductRecord(record);

@@ -73,6 +73,8 @@ export interface GoogleScriptRunner {
   createSchoolYear(token: string, payload: unknown): void;
   listClassrooms(token: string, schoolYearId?: string): void;
   createClassroom(token: string, payload: unknown): void;
+  updateClassroom(token: string, id: string, payload: unknown): void;
+  deactivateClassroom(token: string, id: string): void;
   listStudents(token: string, query?: unknown): void;
   getStudent(token: string, id: string): void;
   createStudent(token: string, payload: unknown): void;
@@ -83,6 +85,7 @@ export interface GoogleScriptRunner {
   listGuardians(token: string, query?: unknown): void;
   createGuardian(token: string, payload: unknown): void;
   updateGuardian(token: string, id: string, payload: unknown): void;
+  deactivateGuardian(token: string, id: string): void;
   getStudentGuardians(token: string, studentId: string): void;
   linkGuardian(
     token: string,
@@ -105,6 +108,7 @@ export interface GoogleScriptRunner {
   listProductCategories(token: string): void;
   createCategory(token: string, payload: unknown): void;
   updateCategory(token: string, id: string, payload: unknown): void;
+  deactivateCategory(token: string, id: string): void;
   listProducts(token: string, query?: unknown): void;
   createProduct(token: string, payload: unknown): void;
   updateProduct(token: string, id: string, payload: unknown): void;
@@ -316,6 +320,18 @@ export class GoogleScriptAppApi implements AppApi {
     );
   }
 
+  updateClassroom(id: string, name: string): Promise<Classroom> {
+    return this.callWithToken((runner, token) =>
+      runner.updateClassroom(token, id, { name }),
+    );
+  }
+
+  deactivateClassroom(id: string): Promise<Classroom> {
+    return this.callWithToken((runner, token) =>
+      runner.deactivateClassroom(token, id),
+    );
+  }
+
   listStudents(query?: {
     includeInactive?: boolean;
   }): Promise<StudentSummary[]> {
@@ -400,6 +416,12 @@ export class GoogleScriptAppApi implements AppApi {
         ...input,
         requestId: crypto.randomUUID(),
       }),
+    );
+  }
+
+  deactivateGuardian(id: string): Promise<Guardian> {
+    return this.callWithToken((runner, token) =>
+      runner.deactivateGuardian(token, id),
     );
   }
 
@@ -498,6 +520,12 @@ export class GoogleScriptAppApi implements AppApi {
   updateCategory(id: string, name: string): Promise<ProductCategory> {
     return this.callWithToken((runner, token) =>
       runner.updateCategory(token, id, { name }),
+    );
+  }
+
+  deactivateCategory(id: string): Promise<ProductCategory> {
+    return this.callWithToken((runner, token) =>
+      runner.deactivateCategory(token, id),
     );
   }
 
