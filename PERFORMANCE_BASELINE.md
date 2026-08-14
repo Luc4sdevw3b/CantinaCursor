@@ -92,3 +92,27 @@ O piso de uma chamada “barata” neste ambiente ficou em ~3 s (Agenda vazia / 
 - `LockService` espera se duas mutações coincidirem (`lockWaitMs`).
 - Projeções derivadas de dashboard **não** foram criadas: o gargalo medido era round trip, não scan de base grande no seed E2E.
 - O Web App Google roda num iframe de outro domínio: o navegador embutido do Cursor não consegue clicar/medir dentro dele. Tempos de ação no Google vêm do orçamento de chamadas + `window.__cantinaPerf.timings` depois do deploy.
+
+## Medição com planilha grande — 2026-08-14 13:48 BRT
+
+Playground DEV (não a planilha E2E de CI). `seedE2EVolume` gravou só dados fictícios em lote (`setValues`): 243 alunos, 240 responsáveis, 27 produtos, 1.200 vendas, 400 fiados, 200 pagamentos, 80 reservas. Seed em **58 s**. Depois, login da dona e **Atualizar** em cada aba. Sem PII.
+
+| Fluxo | API | Chamadas | Tempo |
+| --- | --- | ---: | ---: |
+| Preencher a planilha | `seedE2EVolume` | 1 | **58 s** |
+| Login + Vendas | `loginE2E` | 1 | **13,1 s** |
+| Atualizar Vendas | `getSaleScreenData` | 1 | **9,6 s** |
+| Atualizar Estornos | `getReversalsSetup` | 1 | **9,2 s** |
+| Atualizar Pagamentos | `getPaymentsScreenData` | 1 | **9,1 s** |
+| Atualizar Reservas | `getReservationScreenData` | 1 | **5,9 s** |
+| Atualizar Estoque | `listInventoryBalances` | 1 | 5,0 s |
+| Atualizar Alunos | `getStudentsScreenData` | 1 | 4,6 s |
+| Atualizar Responsáveis | `getFamilyScreenData` | 1 | 4,1 s |
+| Atualizar Crédito | `getCreditsScreenData` | 1 | 3,0 s |
+| Atualizar Agenda | `listReceivables` | 1 | 2,3 s |
+| Atualizar Cardápio | `getCatalogScreenData` | 1 | 1,9 s |
+| Atualizar Caixa | `getCashSetup` | 1 | 1,4 s |
+
+Comparado ao seed pequeno (12:33, 3 alunos, 0 vendas), 1.200 vendas **não** multiplicaram o tempo de Vendas. Pagamentos piorou (4,8 s → 9,1 s) porque a aba passou a ter histórico. Reservas 20,1 s no seed pequeno era abertura fria; com 80 reservas o Atualizar ficou em 5,9 s. O piso quente continua ~1,4–3 s.
+
+`seedE2EVolume` só existe no ambiente E2E isolado (o playground DEV está com `ENVIRONMENT=E2E`). Recusa PROD. Não usar na planilha E2E de CI: o smoke remoto espera o seed mínimo.

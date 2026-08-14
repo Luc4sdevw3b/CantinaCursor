@@ -1219,6 +1219,48 @@ function rewriteSheetRecords(sheetName, headers, records) {
   sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
 }
 
+function appendSheetRowsGs(sheetName, headers, rows) {
+  if (!rows.length) {
+    return;
+  }
+  if (
+    sheetName === PRODUCTS_SHEET ||
+    sheetName === PRODUCT_CATEGORIES_SHEET ||
+    sheetName === PRODUCT_PRICE_HISTORY_SHEET
+  ) {
+    invalidateCatalogCache();
+  }
+  const sheet = openNamedSheet(sheetName, headers);
+  const start = sheet.getLastRow() + 1;
+  perfCounters.sheetWrites += 1;
+  sheet.getRange(start, 1, rows.length, headers.length).setValues(rows);
+}
+
+function padSeedIndexGs(value) {
+  const text = String(value);
+  if (text.length >= 3) {
+    return text;
+  }
+  return ('000' + text).slice(-3);
+}
+
+function clampSeedCountGs(value, min, max, fallback) {
+  if (value === null || value === undefined || value === '') {
+    return fallback;
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)) {
+    return fallback;
+  }
+  if (parsed < min) {
+    return min;
+  }
+  if (parsed > max) {
+    return max;
+  }
+  return parsed;
+}
+
 function resetE2EUnlocked() {
   const spreadsheet = openConfiguredSpreadsheet();
   clearSheetData(getOrCreateE2EMetaSheet(spreadsheet));
@@ -1262,6 +1304,15 @@ function resetE2EUnlocked() {
     CREDIT_ACCOUNT_STUDENTS_SHEET,
     CREDIT_MOVEMENTS_SHEET,
     PAYMENT_CREDIT_ALLOCATIONS_SHEET,
+    RECEIVABLE_DUE_DATE_HISTORY_SHEET,
+    CASH_SESSIONS_SHEET,
+    CASH_MOVEMENTS_SHEET,
+    OPERATION_REVERSALS_SHEET,
+    REVERSAL_EFFECTS_SHEET,
+    RESERVATION_SLOTS_SHEET,
+    RESERVATIONS_SHEET,
+    RESERVATION_ITEMS_SHEET,
+    RESERVATION_STATUS_HISTORY_SHEET,
   ].forEach(function (name) {
     const sheet = spreadsheet.getSheetByName(name);
     if (sheet) {
@@ -1300,6 +1351,491 @@ function seedE2E(sessionToken) {
       environment: CANTINA_ENVIRONMENT,
     };
   });
+}
+
+function seedE2EVolume(sessionToken, payload) {
+  assertE2EEnvironment();
+  requireAction(sessionToken, 'e2e.seed');
+  const students = clampSeedCountGs(
+    payload && payload.students,
+    10,
+    400,
+    240,
+  );
+  const sales = clampSeedCountGs(payload && payload.sales, 10, 2500, 1200);
+  const reservations = clampSeedCountGs(
+    payload && payload.reservations,
+    0,
+    400,
+    80,
+  );
+  const payments = clampSeedCountGs(
+    payload && payload.payments,
+    0,
+    800,
+    200,
+  );
+  const startedAt = Date.now();
+  resetPerfCounters();
+  const result = withScriptLock(function () {
+    resetE2EUnlocked();
+    const spreadsheet = openConfiguredSpreadsheet();
+    const sheet = getOrCreateE2EMetaSheet(spreadsheet);
+    sheet.appendRow(['marker', E2E_SEED_MARKER]);
+    sheet.appendRow(['seeded', 'true']);
+    sheet.appendRow(['volume', 'true']);
+    seedE2EStudentsUnlocked();
+    seedE2EGuardiansUnlocked();
+    seedE2EProductsUnlocked();
+    seedE2ESlotsUnlocked();
+    ensurePixCopySettingUnlocked();
+    const counts = seedE2EVolumeUnlocked({
+      students: students,
+      sales: sales,
+      reservations: reservations,
+      payments: payments,
+    });
+    counts.marker = E2E_SEED_MARKER;
+    counts.volume = true;
+    counts.environment = CANTINA_ENVIRONMENT;
+    return counts;
+  });
+  logPerf('seedE2EVolume', startedAt);
+  return result;
+}
+
+function seedE2EVolumeUnlocked(counts) {
+  const now = new Date().toISOString();
+  const today = todayCivil();
+  const actor = 'aaaaaaaa-bbbb-4ccc-8ddd-000000000099';
+  const years = latestRecordsById(
+    listSheetRecords(
+      openNamedSheet(SCHOOL_YEARS_SHEET, SCHOOL_YEARS_HEADERS),
+      SCHOOL_YEARS_HEADERS,
+    ),
+  );
+  const yearId = years[0] && years[0].id;
+  if (!yearId) {
+    throw new Error('SCHOOL_YEAR_NOT_FOUND: Ano letivo não encontrado.');
+  }
+  const classroomRows = [];
+  const classroomIds = latestRecordsById(
+    listSheetRecords(
+      openNamedSheet(CLASSROOMS_SHEET, CLASSROOMS_HEADERS),
+      CLASSROOMS_HEADERS,
+    ),
+  ).map(function (room) {
+    return room.id;
+  });
+  for (let index = 1; index <= 10; index += 1) {
+    const id = Utilities.getUuid();
+    classroomIds.push(id);
+    classroomRows.push([
+      id,
+      yearId,
+      'Turma F ' + padSeedIndexGs(index),
+      'true',
+      now,
+    ]);
+  }
+  appendSheetRowsGs(CLASSROOMS_SHEET, CLASSROOMS_HEADERS, classroomRows);
+
+  const studentRows = [];
+  const enrollmentRows = [];
+  const studentIds = [];
+  for (let index = 1; index <= counts.students; index += 1) {
+    const id = Utilities.getUuid();
+    studentIds.push(id);
+    const label = padSeedIndexGs(index);
+    studentRows.push([
+      id,
+      'Aluno fictício ' + label,
+      '',
+      String(6 + (index % 6)),
+      '2026',
+      'true',
+      now,
+      now,
+    ]);
+    enrollmentRows.push([
+      Utilities.getUuid(),
+      id,
+      classroomIds[index % classroomIds.length],
+      '2026-02-01',
+      '',
+      actor,
+      now,
+    ]);
+  }
+  appendSheetRowsGs(STUDENTS_SHEET, STUDENTS_HEADERS, studentRows);
+  appendSheetRowsGs(
+    STUDENT_ENROLLMENTS_SHEET,
+    STUDENT_ENROLLMENTS_HEADERS,
+    enrollmentRows,
+  );
+
+  const guardianCount = Math.min(counts.students, Math.max(12, counts.students));
+  const guardianRows = [];
+  const linkRows = [];
+  const guardianIds = [];
+  for (let index = 1; index <= guardianCount; index += 1) {
+    const id = Utilities.getUuid();
+    guardianIds.push(id);
+    guardianRows.push([
+      id,
+      'Responsável fictício ' + padSeedIndexGs(index),
+      '11900000' + padSeedIndexGs(index),
+      index % 2 === 0 ? 'true' : 'false',
+      'responsável',
+      'true',
+      now,
+      now,
+    ]);
+    linkRows.push([
+      Utilities.getUuid(),
+      studentIds[index - 1],
+      id,
+      'true',
+      'false',
+      'false',
+      'true',
+      now,
+      '',
+      '',
+      now,
+    ]);
+  }
+  appendSheetRowsGs(GUARDIANS_SHEET, GUARDIANS_HEADERS, guardianRows);
+  appendSheetRowsGs(STUDENT_GUARDIANS_SHEET, STUDENT_GUARDIANS_HEADERS, linkRows);
+
+  const categories = latestRecordsById(listCategoryRecords());
+  const extraProductRows = [];
+  const extraHistoryRows = [];
+  const extraProductIds = [];
+  const extraNames = [
+    'Salgado fictício',
+    'Bebida fictícia',
+    'Doce fictício',
+    'Outro fictício',
+  ];
+  for (let index = 1; index <= 24; index += 1) {
+    const category = categories[(index - 1) % categories.length];
+    if (!category) {
+      break;
+    }
+    const id = Utilities.getUuid();
+    extraProductIds.push(id);
+    const price = String(300 + (index % 8) * 50);
+    extraProductRows.push([
+      id,
+      category.id,
+      extraNames[(index - 1) % extraNames.length] +
+        ' ' +
+        padSeedIndexGs(index),
+      price,
+      'false',
+      'true',
+      'true',
+      'true',
+      now,
+      now,
+    ]);
+    extraHistoryRows.push([
+      Utilities.getUuid(),
+      id,
+      price,
+      now,
+      '',
+      actor,
+    ]);
+  }
+  appendSheetRowsGs(PRODUCTS_SHEET, PRODUCTS_HEADERS, extraProductRows);
+  appendSheetRowsGs(
+    PRODUCT_PRICE_HISTORY_SHEET,
+    PRODUCT_PRICE_HISTORY_HEADERS,
+    extraHistoryRows,
+  );
+
+  const tracked = trackedProductRecordsGs();
+  const inventoryItems = tracked.map(function (product) {
+    return { productId: product.id, openingQuantity: 8000 };
+  });
+  openInventoryDayUnlocked(actor, {
+    businessDate: today,
+    items: inventoryItems,
+  });
+  const inventoryDay = findInventoryDayGs(today);
+
+  const demoStudents = latestRecordsById(
+    listSheetRecords(
+      openNamedSheet(STUDENTS_SHEET, STUDENTS_HEADERS),
+      STUDENTS_HEADERS,
+    ),
+  ).map(function (student) {
+    return student.id;
+  });
+  const products = latestRecordsById(listProductRecords());
+  const saleProduct =
+    products.filter(function (item) {
+      return item.name === 'Coxinha';
+    })[0] || products[0];
+  if (!saleProduct) {
+    throw new Error('DEMO_STOCK: produtos controlados ausentes.');
+  }
+  const priceCents = Number(saleProduct.price_cents) || 550;
+  const saleRows = [];
+  const itemRows = [];
+  const settlementRows = [];
+  const movementRows = [];
+  const receivableRows = [];
+  const chargeRows = [];
+  const receivableIds = [];
+  const fiadoStudentIds = [];
+  for (let index = 1; index <= counts.sales; index += 1) {
+    const saleId = Utilities.getUuid();
+    const studentId = demoStudents[index % demoStudents.length];
+    const createdAt = now;
+    const isFiado = index % 3 === 0;
+    saleRows.push([
+      saleId,
+      studentId,
+      studentId,
+      SALE_STATUS_PAID,
+      String(priceCents),
+      '0',
+      String(priceCents),
+      '',
+      actor,
+      createdAt,
+      '',
+    ]);
+    itemRows.push([
+      Utilities.getUuid(),
+      saleId,
+      saleProduct.id,
+      SALE_ITEM_PRODUCT,
+      saleProduct.name,
+      '1',
+      String(priceCents),
+      '',
+      '',
+      '0',
+      String(priceCents),
+    ]);
+    settlementRows.push([
+      Utilities.getUuid(),
+      saleId,
+      isFiado ? SETTLEMENT_FIADO : SETTLEMENT_PIX,
+      String(priceCents),
+      '',
+      createdAt,
+    ]);
+    if (inventoryDay) {
+      movementRows.push([
+        Utilities.getUuid(),
+        inventoryDay.id,
+        saleProduct.id,
+        'sale',
+        '-1',
+        'sale',
+        saleId,
+        actor,
+        createdAt,
+        '',
+      ]);
+    }
+    if (isFiado) {
+      const receivableId = Utilities.getUuid();
+      receivableIds.push(receivableId);
+      fiadoStudentIds.push(studentId);
+      receivableRows.push([
+        receivableId,
+        studentId,
+        saleId,
+        today,
+        RECEIVABLE_STATUS_OPEN,
+        actor,
+        createdAt,
+      ]);
+      chargeRows.push([
+        Utilities.getUuid(),
+        receivableId,
+        RECEIVABLE_CHARGE_PRINCIPAL,
+        String(priceCents),
+        RECEIVABLE_REASON_SALE,
+        '',
+        actor,
+        createdAt,
+        '',
+      ]);
+    }
+  }
+  appendSheetRowsGs(SALES_SHEET, SALES_HEADERS, saleRows);
+  appendSheetRowsGs(SALE_ITEMS_SHEET, SALE_ITEMS_HEADERS, itemRows);
+  appendSheetRowsGs(
+    SALE_SETTLEMENTS_SHEET,
+    SALE_SETTLEMENTS_HEADERS,
+    settlementRows,
+  );
+  appendSheetRowsGs(
+    INVENTORY_MOVEMENTS_SHEET,
+    INVENTORY_MOVEMENTS_HEADERS,
+    movementRows,
+  );
+  appendSheetRowsGs(RECEIVABLES_SHEET, RECEIVABLES_HEADERS, receivableRows);
+  appendSheetRowsGs(
+    RECEIVABLE_CHARGES_SHEET,
+    RECEIVABLE_CHARGES_HEADERS,
+    chargeRows,
+  );
+
+  const paymentCount = Math.min(counts.payments, receivableIds.length);
+  const paymentRows = [];
+  const allocationRows = [];
+  for (let index = 0; index < paymentCount; index += 1) {
+    const paymentId = Utilities.getUuid();
+    paymentRows.push([
+      paymentId,
+      '',
+      fiadoStudentIds[index],
+      PAYMENT_METHOD_PIX,
+      String(priceCents),
+      PAYMENT_STATUS_COMPLETED,
+      actor,
+      now,
+      '',
+    ]);
+    allocationRows.push([
+      paymentId,
+      receivableIds[index],
+      fiadoStudentIds[index],
+      String(priceCents),
+    ]);
+  }
+  appendSheetRowsGs(PAYMENTS_SHEET, PAYMENTS_HEADERS, paymentRows);
+  appendSheetRowsGs(
+    PAYMENT_ALLOCATIONS_SHEET,
+    PAYMENT_ALLOCATIONS_HEADERS,
+    allocationRows,
+  );
+
+  const slots = latestRecordsById(listReservationSlotRecords());
+  const slotId = slots[0] && slots[0].id;
+  const reservationRows = [];
+  const reservationItemRows = [];
+  const reservationHistoryRows = [];
+  if (slotId) {
+    for (let index = 1; index <= counts.reservations; index += 1) {
+      const reservationId = Utilities.getUuid();
+      const studentId = demoStudents[index % demoStudents.length];
+      reservationRows.push([
+        reservationId,
+        volumePublicCodeGs(index),
+        Utilities.getUuid(),
+        'Retirada fictícia ' + padSeedIndexGs(index),
+        'Aluno fictício ' + padSeedIndexGs(index),
+        'Turma F 001',
+        '',
+        slotId,
+        RESERVATION_STATUS_RESERVED,
+        RESERVATION_PAYMENT_UNPAID,
+        studentId,
+        String(priceCents),
+        now,
+        now,
+        '',
+      ]);
+      reservationItemRows.push([
+        Utilities.getUuid(),
+        reservationId,
+        saleProduct.id,
+        saleProduct.name,
+        '1',
+        String(priceCents),
+        String(priceCents),
+      ]);
+      reservationHistoryRows.push([
+        Utilities.getUuid(),
+        reservationId,
+        '',
+        RESERVATION_STATUS_RESERVED,
+        actor,
+        now,
+        '',
+      ]);
+    }
+    appendSheetRowsGs(RESERVATIONS_SHEET, RESERVATIONS_HEADERS, reservationRows);
+    appendSheetRowsGs(
+      RESERVATION_ITEMS_SHEET,
+      RESERVATION_ITEMS_HEADERS,
+      reservationItemRows,
+    );
+    appendSheetRowsGs(
+      RESERVATION_STATUS_HISTORY_SHEET,
+      RESERVATION_STATUS_HISTORY_HEADERS,
+      reservationHistoryRows,
+    );
+  }
+
+  const creditRows = [];
+  const creditLinkRows = [];
+  const creditMovementRows = [];
+  const creditCount = Math.min(40, studentIds.length);
+  for (let index = 0; index < creditCount; index += 1) {
+    const accountId = Utilities.getUuid();
+    creditRows.push([
+      accountId,
+      CREDIT_OWNER_STUDENT,
+      studentIds[index],
+      '',
+      'true',
+      now,
+    ]);
+    creditLinkRows.push([accountId, studentIds[index], 'true', 'true']);
+    creditMovementRows.push([
+      accountId,
+      CREDIT_KIND_DEPOSIT,
+      '2000',
+      CREDIT_SOURCE_PAYMENT,
+      '',
+      studentIds[index],
+      actor,
+      now,
+      '',
+    ]);
+  }
+  appendSheetRowsGs(CREDIT_ACCOUNTS_SHEET, CREDIT_ACCOUNTS_HEADERS, creditRows);
+  appendSheetRowsGs(
+    CREDIT_ACCOUNT_STUDENTS_SHEET,
+    CREDIT_ACCOUNT_STUDENTS_HEADERS,
+    creditLinkRows,
+  );
+  appendSheetRowsGs(
+    CREDIT_MOVEMENTS_SHEET,
+    CREDIT_MOVEMENTS_HEADERS,
+    creditMovementRows,
+  );
+
+  return {
+    students: demoStudents.length,
+    guardians: latestRecordsById(listGuardianRecords()).length,
+    products: latestRecordsById(listProductRecords()).length,
+    sales: saleRows.length,
+    receivables: receivableRows.length,
+    payments: paymentRows.length,
+    reservations: reservationRows.length,
+  };
+}
+
+function volumePublicCodeGs(index) {
+  const alphabet = PUBLIC_CODE_ALPHABET;
+  let code = 'V';
+  let rest = index;
+  for (let position = 0; position < 5; position += 1) {
+    code += alphabet.charAt(rest % alphabet.length);
+    rest = Math.floor(rest / alphabet.length);
+  }
+  return code;
 }
 
 function listAppliedMigrationIds(sheet) {

@@ -30,6 +30,26 @@ interface ServerContext {
     seeded: true;
     environment: string;
   };
+  seedE2EVolume(
+    sessionToken: string,
+    payload?: {
+      students?: number | null;
+      sales?: number | null;
+      reservations?: number | null;
+      payments?: number | null;
+    },
+  ): {
+    marker: string;
+    volume: true;
+    environment: string;
+    students: number;
+    guardians: number;
+    products: number;
+    sales: number;
+    receivables: number;
+    payments: number;
+    reservations: number;
+  };
   setupSchema(): {
     schemaVersion: number;
     appliedMigrations: string[];
@@ -1005,6 +1025,9 @@ describe('Apps Script E2E server', () => {
     });
     expect(() => server.resetE2E('token')).toThrow('RESET_PROD_FORBIDDEN');
     expect(() => server.seedE2E('token')).toThrow('RESET_PROD_FORBIDDEN');
+    expect(() => server.seedE2EVolume('token', { sales: 12 })).toThrow(
+      'RESET_PROD_FORBIDDEN',
+    );
   });
 
   it('refuses reset, seed and schema setup on DEV', () => {
@@ -1015,6 +1038,7 @@ describe('Apps Script E2E server', () => {
     });
     expect(() => server.resetE2E('token')).toThrow('E2E_ONLY');
     expect(() => server.seedE2E('token')).toThrow('E2E_ONLY');
+    expect(() => server.seedE2EVolume('token')).toThrow('E2E_ONLY');
     expect(() => server.setupSchema()).toThrow('E2E_ONLY');
   });
 
@@ -1039,6 +1063,65 @@ describe('Apps Script E2E server', () => {
       ['marker', 'cantina-e2e-fictitious'],
       ['seeded', 'true'],
     ]);
+  });
+
+  it('seeds a small fictitious volume only in E2E', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    const volume = server.seedE2EVolume(ownerToken(server), {
+      students: 12,
+      sales: 24,
+      reservations: 4,
+      payments: 6,
+    });
+    expect(volume).toEqual({
+      marker: 'cantina-e2e-fictitious',
+      volume: true,
+      environment: 'E2E',
+      students: volume.students,
+      guardians: volume.guardians,
+      products: volume.products,
+      sales: 24,
+      receivables: 8,
+      payments: 6,
+      reservations: 4,
+    });
+    expect(volume.students).toBeGreaterThan(3);
+    expect(volume.guardians).toBeGreaterThan(2);
+    expect(volume.products).toBeGreaterThan(3);
+    expect(JSON.stringify(volume)).not.toMatch(/Ana Souza|11900000|fictício/);
+
+    const owner = ownerToken(server);
+    const screen = server.getSaleScreenData(owner);
+    expect(screen.sales).toHaveLength(24);
+    expect(screen.students.length).toBe(volume.students);
+    expect(server.listSales(owner)).toHaveLength(24);
+    expect(server.getStudentsScreenData(owner).students.length).toBe(
+      volume.students,
+    );
+
+    const clamped = server.seedE2EVolume(ownerToken(server), {
+      students: 5,
+      sales: 8,
+      reservations: 0,
+      payments: 0,
+    });
+    expect(clamped.students).toBe(13);
+    expect(clamped.sales).toBe(10);
+    expect(clamped.reservations).toBe(0);
+    expect(clamped.payments).toBe(0);
+
+    const fromNull = server.seedE2EVolume(ownerToken(server), {
+      students: 12,
+      sales: 24,
+      reservations: null,
+      payments: 6,
+    });
+    expect(fromNull.reservations).toBe(80);
+    expect(fromNull.sales).toBe(24);
   });
 
   it('applies foundation schema idempotently', () => {
@@ -1626,6 +1709,9 @@ describe('Apps Script E2E server', () => {
       ).replayed,
     ).toBe(false);
     expect(() => server.resetE2E(staff)).toThrow('FORBIDDEN');
+    expect(() => server.seedE2EVolume(staff, { sales: 12 })).toThrow(
+      'FORBIDDEN',
+    );
     expect(() => server.runBackup(staff, 'manual')).toThrow('FORBIDDEN');
     expect(() =>
       server.prepareRestore(

@@ -9,6 +9,50 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-14 13:48 — Planilha grande fictícia e medição de desempenho
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 26.5
+
+### Pedido / objetivo
+
+- Preencher a planilha de playground com dados fictícios até ficar grande e medir o desempenho das abas.
+
+### Tentativa / implementação
+
+- `seedE2EVolume` (só E2E, dona): reset + seed demo + volume em lote (`setValues`). Padrão: 240 alunos extra, 1.200 vendas, 80 reservas, 200 pagamentos. Nomes `* fictício *`, telefones `11900000NNN`.
+- Reset E2E também limpa caixa, estornos e reservas, para o seed não acumular recreios.
+- `null`/ausente no payload usa o padrão; `0` em reservas/pagamentos continua valendo zero.
+- Script local `scripts/measure-dev-volume-perf.mjs` (exige `DEV_BASE_URL`, recusa a URL E2E de CI).
+
+### Resultado
+
+- Planilha de playground preenchida. Seed em 58 s. Login 13,1 s; Atualizar Vendas 9,6 s; Pagamentos 9,1 s. 1.200 vendas não explodiram o tempo; o piso do Google continua ~1,4–3 s.
+- Publicado no Web App de playground em substituição.
+
+### Diferenças do pedido
+
+- Não medimos a planilha E2E de CI (o smoke remoto precisa do seed mínimo).
+- A primeira tentativa de seed no Google caiu no mínimo (10 vendas) porque o Playwright mandava `null`; corrigido e repetido.
+
+### Impacto técnico
+
+- `seedE2EVolume` não entra no `AppApi` da UI; chama-se via `google.script.run` no iframe, como `seedE2E`.
+- Volume **apaga** o playground e reescreve demo + fictício.
+
+### Testes
+
+- Vitest: volume pequeno (12 alunos, 24 vendas); recusa PROD/DEV/funcionário; `null` nas reservas usa o padrão 80.
+- Medição ao vivo no playground com 243 alunos e 1.200 vendas.
+
+### Pendências / próxima versão
+
+- Ctrl+F5 no Web App para pegar o bundle publicado.
+- Devolver o playground ao seed mínimo: `seedE2E` (dona).
+- Fase 27 (WhatsApp) continua fora.
+
 ## 2026-08-14 13:20 — Corrigir o restante da auditoria de lentidão
 
 **Origem:** Pedido do usuário
