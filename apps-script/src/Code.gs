@@ -1745,15 +1745,26 @@ function todayCivil() {
 
 function toCivilDateGs(value) {
   if (value instanceof Date && !isNaN(value.getTime())) {
-    return Utilities.formatDate(value, 'America/Sao_Paulo', 'yyyy-MM-dd');
+    const year = String(value.getUTCFullYear());
+    const month = String(value.getUTCMonth() + 1);
+    const day = String(value.getUTCDate());
+    return (
+      year +
+      '-' +
+      (month.length < 2 ? '0' + month : month) +
+      '-' +
+      (day.length < 2 ? '0' + day : day)
+    );
   }
-  const text = String(value || '').trim();
+  const text = String(value || '')
+    .trim()
+    .replace(/^'/, '');
   if (isCivilDate(text)) {
     return text;
   }
   const parsed = new Date(text);
   if (text && !isNaN(parsed.getTime())) {
-    return Utilities.formatDate(parsed, 'America/Sao_Paulo', 'yyyy-MM-dd');
+    return toCivilDateGs(parsed);
   }
   return text;
 }
@@ -3755,7 +3766,7 @@ function seedE2ESlotsUnlocked() {
   const actor = 'aaaaaaaa-bbbb-4ccc-8ddd-000000000099';
   openNamedSheet(RESERVATION_SLOTS_SHEET, RESERVATION_SLOTS_HEADERS).appendRow([
     Utilities.getUuid(),
-    today,
+    "'" + today,
     'Recreio manhã',
     combineCivilTimeSaoPauloGs(today, '09:45'),
     combineCivilTimeSaoPauloGs(today, '10:05'),
@@ -3766,7 +3777,7 @@ function seedE2ESlotsUnlocked() {
   ]);
   openNamedSheet(RESERVATION_SLOTS_SHEET, RESERVATION_SLOTS_HEADERS).appendRow([
     Utilities.getUuid(),
-    today,
+    "'" + today,
     'Recreio tarde',
     combineCivilTimeSaoPauloGs(today, '18:15'),
     combineCivilTimeSaoPauloGs(today, '18:35'),
@@ -3827,7 +3838,7 @@ function openInventoryDayUnlocked(userId, payload) {
   const dayId = Utilities.getUuid();
   openNamedSheet(INVENTORY_DAYS_SHEET, INVENTORY_DAYS_HEADERS).appendRow([
     dayId,
-    businessDate,
+    "'" + businessDate,
     INVENTORY_DAY_OPEN,
     userId,
     now,
@@ -8319,7 +8330,10 @@ function ensureE2EPublicCatalogUnlocked() {
       seedE2EInventoryUnlocked();
     } catch (error) {
       const message = String(error && error.message ? error.message : error);
-      if (message.indexOf('INVENTORY_DAY_ALREADY_OPEN') === -1) {
+      if (
+        message.indexOf('INVENTORY_DAY_ALREADY_OPEN') === -1 &&
+        message.indexOf('INVENTORY_DAY_NOT_OPEN') === -1
+      ) {
         throw error;
       }
     }
@@ -8350,7 +8364,7 @@ function ensureE2EPublicCatalogUnlocked() {
       RESERVATION_SLOTS_HEADERS,
     ).appendRow([
       Utilities.getUuid(),
-      today,
+      "'" + today,
       'Recreio extra',
       combineCivilTimeSaoPauloGs(today, '23:51'),
       combineCivilTimeSaoPauloGs(today, '23:59'),
