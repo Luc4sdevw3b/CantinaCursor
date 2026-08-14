@@ -219,6 +219,20 @@ h1 {
   display: none;
 }
 
+.busy-banner {
+  margin: 0;
+  padding: 0.7rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-weight: 600;
+}
+
+.busy-banner[hidden] {
+  display: none;
+}
+
 .session-card button {
   padding: 0.7rem 1rem;
   border: 1px solid var(--line);

@@ -70,6 +70,13 @@ describe('FakeAppApi', () => {
         })
       ).active,
     ).toBe(true);
+
+    const updated = await api.updateStudent(bruno.id, {
+      fullName: 'Bruno Lima',
+      birthDate: '2015-06-01',
+    });
+    expect(updated.fullName).toBe('Bruno Lima');
+    expect(updated.birthDate).toBe('2015-06-01');
   });
 
   it('links siblings through a shared guardian and refuses non-siblings', async () => {
@@ -132,6 +139,16 @@ describe('FakeAppApi', () => {
       relationLabel: 'tia',
     });
     expect(created.fullName).toBe('Carla Mendes');
+    await api.updateGuardian(created.id, {
+      fullName: 'Carla Mendes',
+      phone: '11999990003',
+      relationLabel: 'madrinha',
+      whatsappEnabled: false,
+    });
+    expect(
+      (await api.listGuardians()).find((item) => item.id === created.id)
+        ?.relationLabel,
+    ).toBe('madrinha');
     await expect(api.setRequireGuardianBelowAge(16)).rejects.toThrow(
       'FORBIDDEN',
     );
@@ -214,6 +231,17 @@ describe('FakeAppApi', () => {
     expect(
       (await api.listProducts()).some((item) => item.name === 'Pastel da hora'),
     ).toBe(false);
+
+    const lanches = await api.createCategory('Lanches');
+    expect(lanches.name).toBe('Lanches');
+    expect((await api.updateCategory(lanches.id, 'Lanche da tarde')).name).toBe(
+      'Lanche da tarde',
+    );
+    expect(
+      (await api.listProductCategories()).some(
+        (item) => item.name === 'Lanche da tarde',
+      ),
+    ).toBe(true);
   });
 
   it('opens demo stock, labels zero as ACABOU and keeps adjustments to the owner', async () => {
@@ -1156,6 +1184,24 @@ describe('FakeAppApi', () => {
     });
     expect(created.reservations[0]?.summaryLabel).toBe(
       'Ana Souza • 3º A • Coxinha • R$ 5,50 • Recreio tarde • reservada',
+    );
+    const ana = (await api.listStudents()).find(
+      (student) =>
+        student.fullName === 'Ana Souza' && student.ageLabel === '~8',
+    );
+    if (!ana) {
+      throw new Error('Ana Souza ~8 ausente');
+    }
+    const linked = await api.createReservation({
+      requestId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee24',
+      slotId: slot.id,
+      studentNameText: ana.fullName,
+      classroomText: ana.classroomName || '3º A',
+      linkedStudentId: ana.id,
+      items: [{ productId: coxinha.id, quantity: 1 }],
+    });
+    expect(linked.reservations.some((item) => item.linkedStudentLabel)).toBe(
+      true,
     );
     expect(
       created.availability.find((item) => item.productName === 'Coxinha')

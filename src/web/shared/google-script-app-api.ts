@@ -103,6 +103,8 @@ export interface GoogleScriptRunner {
   getGuardianSettings(token: string): void;
   setRequireGuardianBelowAge(token: string, age: number): void;
   listProductCategories(token: string): void;
+  createCategory(token: string, payload: unknown): void;
+  updateCategory(token: string, id: string, payload: unknown): void;
   listProducts(token: string, query?: unknown): void;
   createProduct(token: string, payload: unknown): void;
   updateProduct(token: string, id: string, payload: unknown): void;
@@ -484,6 +486,18 @@ export class GoogleScriptAppApi implements AppApi {
   listProductCategories(): Promise<ProductCategory[]> {
     return this.callWithToken((runner, token) =>
       runner.listProductCategories(token),
+    );
+  }
+
+  createCategory(name: string): Promise<ProductCategory> {
+    return this.callWithToken((runner, token) =>
+      runner.createCategory(token, { name }),
+    );
+  }
+
+  updateCategory(id: string, name: string): Promise<ProductCategory> {
+    return this.callWithToken((runner, token) =>
+      runner.updateCategory(token, id, { name }),
     );
   }
 

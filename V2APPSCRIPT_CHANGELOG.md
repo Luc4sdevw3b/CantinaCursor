@@ -9,6 +9,48 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-14 09:50 — Cadastro editável, seletor de aluno na reserva e aviso Processando
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 26
+
+### Pedido / objetivo
+
+- Editar o que já existe no cadastro (aluno, responsável, produto, categoria) e criar turma.
+- Na reserva interna, escolher aluno cadastrado com pesquisa, sem texto livre.
+- Mostrar **Processando…** enquanto o Google Sheets grava, e bloquear clique duplo.
+
+### Tentativa / implementação
+
+- API `createCategory` / `updateCategory` no catálogo em memória, `AppApi` e `Code.gs`.
+- Formulários de editar aluno, responsável e categoria; **Cadastrar turma** em Alunos.
+- Nova reserva interna: pesquisa + seletor `Ana Souza • ~8`; a turma preenche sozinha; a reserva já nasce vinculada ao aluno. Portal público e **Alterar reserva** continuam com texto livre.
+- Helper único `runBusyAction` / faixa **Processando ação…**: desliga o botão, mostra o aviso, e no fim deixa o texto de sucesso ou erro. Rótulos **Confirmar venda**, **Registrar pagamento** e **Registrar pagamento familiar** não mudaram.
+
+### Resultado
+
+- Dona e funcionário editam cadastro, escolhem aluno na reserva e veem que a ação ainda está rodando.
+
+### Diferenças do pedido
+
+- Nenhuma.
+
+### Impacto técnico
+
+- Reserva interna pode enviar `linkedStudentId` na criação; o portal público ignora esse campo.
+- Categoria continua append-only, sem `updated_at`.
+
+### Testes
+
+- Unit/integration: categoria, edição de aluno/responsável, reserva com aluno vinculado.
+- E2E local: editar aluno/responsável/categoria, seletor de reserva, turma nova.
+
+### Pendências / próxima versão
+
+- Nenhuma desta entrega.
+
 ## 2026-08-14 09:38 — Seed fictício gravado na planilha de teste
 
 **Origem:** Pedido do usuário

@@ -432,6 +432,7 @@ export class MemoryReservations {
     items?: unknown;
     partialPickup?: unknown;
     website?: unknown;
+    linkedStudentId?: unknown;
   }): Result<ReservationsSetupView> {
     const honeypot = rejectPublicHoneypot(input.website);
     if (!honeypot.ok) {
@@ -478,6 +479,24 @@ export class MemoryReservations {
     const studentName = parseReservationName(input.studentNameText);
     if (!studentName.ok) {
       return err(studentName.error);
+    }
+    let linkedStudentId = '';
+    if (input.linkedStudentId) {
+      if (!this.roster) {
+        return err(RESERVATION_STUDENT_NOT_FOUND_ERROR);
+      }
+      const studentId = parseImmutableId(input.linkedStudentId);
+      if (!studentId.ok) {
+        return err(studentId.error);
+      }
+      const student = this.roster.getStudent(studentId.data);
+      if (!student.ok) {
+        return err(RESERVATION_STUDENT_NOT_FOUND_ERROR);
+      }
+      if (!student.data.active) {
+        return err(RESERVATION_STUDENT_INACTIVE_ERROR);
+      }
+      linkedStudentId = student.data.id;
     }
     const classroom = parseClassroomText(input.classroomText);
     if (!classroom.ok) {
@@ -571,7 +590,7 @@ export class MemoryReservations {
       slot_id: slot.id,
       status: RESERVATION_STATUS_RESERVED,
       payment_status: RESERVATION_PAYMENT_UNPAID,
-      linked_student_id: '',
+      linked_student_id: linkedStudentId,
       total_cents: String(totalCents),
       created_at: now,
       updated_at: now,

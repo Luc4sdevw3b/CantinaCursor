@@ -1,7 +1,10 @@
 import { validateAdHocItem } from '../../domain/ad-hoc-item';
 import { isImmutableId, isSheetRowNumber } from '../../domain/ids';
 import { formatBrl } from '../../domain/money';
-import { DEFAULT_PRODUCT_CATEGORIES } from '../../domain/product-category';
+import {
+  DEFAULT_PRODUCT_CATEGORIES,
+  validateCategoryName,
+} from '../../domain/product-category';
 import {
   type ProductPriceHistoryRecord,
   planPriceChange,
@@ -212,6 +215,27 @@ export class MemoryCatalog {
       id: record.id,
       name: record.name,
       active: true,
+    });
+  }
+
+  updateCategory(id: string, name: string): Result<ProductCategoryView> {
+    const current = this.findCategory(id);
+    if (!current.ok) {
+      return err(current.error);
+    }
+    const trimmed = validateCategoryName(name);
+    if (!trimmed.ok) {
+      return err(trimmed.error);
+    }
+    const record: CategoryRecord = {
+      ...current.data,
+      name: trimmed.data,
+    };
+    this.categories.push(record);
+    return ok({
+      id: record.id,
+      name: record.name,
+      active: record.active === 'true',
     });
   }
 

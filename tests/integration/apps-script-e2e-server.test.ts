@@ -118,6 +118,20 @@ interface ServerContext {
     sessionToken: string,
     payload: Record<string, unknown>,
   ): { id: string; fullName: string; active: boolean; ageLabel: string };
+  updateStudent(
+    sessionToken: string,
+    id: string,
+    payload: Record<string, unknown>,
+  ): {
+    id: string;
+    fullName: string;
+    enrollments: Array<{ classroomId: string; endedOn: string | null }>;
+  };
+  enrollStudent(
+    sessionToken: string,
+    id: string,
+    payload: Record<string, unknown>,
+  ): { id: string; classroomName: string | null };
   deactivateStudent(
     sessionToken: string,
     id: string,
@@ -137,6 +151,11 @@ interface ServerContext {
     sessionToken: string,
     payload: Record<string, unknown>,
   ): { id: string; fullName: string };
+  updateGuardian(
+    sessionToken: string,
+    id: string,
+    payload: Record<string, unknown>,
+  ): { id: string; fullName: string; relationLabel: string };
   linkGuardian(
     sessionToken: string,
     studentId: string,
@@ -178,6 +197,15 @@ interface ServerContext {
     name: string;
     active: boolean;
   }>;
+  createCategory(
+    sessionToken: string,
+    payload: Record<string, unknown>,
+  ): { id: string; name: string; active: boolean };
+  updateCategory(
+    sessionToken: string,
+    id: string,
+    payload: Record<string, unknown>,
+  ): { id: string; name: string; active: boolean };
   listProducts(
     sessionToken: string,
     query?: { includeInactive?: boolean },
@@ -1577,6 +1605,13 @@ describe('Apps Script E2E server', () => {
 
     expect(created.fullName).toBe('Carla Nunes');
     expect(created.ageLabel).toBe('~7');
+    expect(
+      server.updateStudent(staff, created.id, {
+        fullName: 'Carla Nunes Silva',
+        approximateAge: 7,
+        approximateAgeReferenceYear: 2026,
+      }).fullName,
+    ).toBe('Carla Nunes Silva');
     expect(() => server.listStudents('')).toThrow('UNAUTHENTICATED');
   });
 
@@ -1642,6 +1677,20 @@ describe('Apps Script E2E server', () => {
         relationLabel: 'tia',
       }).fullName,
     ).toBe('Carla Mendes');
+    const carla = server
+      .listGuardians(staff)
+      .find((item) => item.fullName === 'Carla Mendes');
+    if (!carla) {
+      throw new Error('Carla Mendes ausente');
+    }
+    expect(
+      server.updateGuardian(staff, carla.id, {
+        fullName: 'Carla Mendes',
+        phone: '11999990003',
+        whatsappEnabled: false,
+        relationLabel: 'madrinha',
+      }).relationLabel,
+    ).toBe('madrinha');
     expect(() => server.setRequireGuardianBelowAge(staff, 16)).toThrow(
       'FORBIDDEN',
     );
@@ -1711,6 +1760,17 @@ describe('Apps Script E2E server', () => {
     expect(
       server.listProducts(owner).some((item) => item.name === 'Pastel da hora'),
     ).toBe(false);
+    const lanches = server.createCategory(owner, { name: 'Lanches' });
+    expect(lanches.name).toBe('Lanches');
+    expect(
+      server.updateCategory(owner, lanches.id, { name: 'Lanche da tarde' })
+        .name,
+    ).toBe('Lanche da tarde');
+    expect(
+      server
+        .listProductCategories(owner)
+        .some((item) => item.name === 'Lanche da tarde'),
+    ).toBe(true);
     expect(() => server.listProducts('')).toThrow('UNAUTHENTICATED');
   });
 

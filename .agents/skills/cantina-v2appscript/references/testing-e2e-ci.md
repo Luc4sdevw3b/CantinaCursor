@@ -103,12 +103,16 @@ Mínimo obrigatório do smoke local:
 25. caixa físico: abrir caixa; Coxinha + Brigadeiro em dinheiro com `R$ 10,00`; venda `Anônima • Coxinha, Brigadeiro • R$ 8,00 • Dinheiro • Troco R$ 2,00`; movimentos `entrada R$ 10,00` e `troco R$ 2,00`; esperado `R$ 8,00`; estoque `Coxinha • 9`. PIX continua sem caixa. Confirmar venda não muda de rótulo.
 26. estorno com retorno: PIX Coxinha; **Estornos** → **Sim, devolver ao estoque** → **Confirmar estorno da venda**; histórico `Produto retornado ao estoque: +1`; estoque `Coxinha • 10`.
 27. estorno sem retorno: PIX Coxinha; **Não, manter fora do estoque**; estoque permanece `Coxinha • 9`. Funcionário vê a auditoria e não vê **Confirmar estorno da venda**.
-28. reserva do recreio: **Reservas** → Recreio tarde → Ana Souza / 3º A / Coxinha → **Confirmar reserva**; lista `Ana Souza • 3º A • Coxinha • R$ 5,50 • Recreio tarde • reservada`; disponibilidade `Coxinha • disponível 9 • reservado 1`; estoque físico `Coxinha • 10`.
+28. reserva do recreio: **Reservas** → Recreio tarde → aluno cadastrado `Ana Souza • ~8` / turma `3º A` / Coxinha → **Confirmar reserva**; lista `Ana Souza • 3º A • Coxinha • R$ 5,50 • Recreio tarde • reservada`; disponibilidade `Coxinha • disponível 9 • reservado 1`; estoque físico `Coxinha • 10`.
 29. funcionário vê **Confirmar reserva** e não vê **Criar recreio**.
 30. portal público: `/?portal=reservas` sem login; catálogo `Coxinha • R$ 5,50 • disponível 10` e `Suco de uva • R$ 4,00 • ACABOU`; Ana Souza / 3º A / Coxinha → **Enviar reserva**; `Código` de 6 caracteres e `Ana Souza • 3º A • Coxinha • R$ 5,50 • Recreio tarde • reservada`. Sem **Entrar como dona** e sem área Alunos.
-31. fila da dona: **Reservas** → Recreio tarde → Ana Souza / 3º A / Coxinha → **Confirmar reserva**; produção `Coxinha • 1`; filtro Recreio manhã esconde a reserva; **Pesquisar reserva** `Ana` encontra e `ZZZZZZ` não; **Vincular aluno** `Ana Souza • ~8` → `vinculada a Ana Souza • ~8`; **Alterar reserva** turma `4º B`.
+31. fila da dona: **Reservas** → Recreio tarde → aluno cadastrado `Ana Souza • ~8` / Coxinha → **Confirmar reserva**; produção `Coxinha • 1`; filtro Recreio manhã esconde a reserva; **Pesquisar reserva** `Ana` encontra e `ZZZZZZ` não; **Vincular aluno** `Ana Souza • ~8` → `vinculada a Ana Souza • ~8`; **Alterar reserva** turma `4º B`.
 32. entrega vira venda: reserva Ana / 3º A / Coxinha; vincular `Ana Souza • ~8`; **Entregar reserva** abre **Vendas** com `Coxinha • 1`; **Confirmar venda** PIX → `Ana Souza • ~8 • Coxinha • R$ 5,50`; lista `… • retirada`; disponibilidade `Coxinha • disponível 9 • reservado 0`; estoque `Coxinha • 9`. Confirmar venda não muda de rótulo.
 33. override presencial: reservar 10 coxinhas; **Vendas** → Coxinha → **Usar unidade reservada** na reserva da Ana → **Confirmar venda**; `Anônima • Coxinha • R$ 5,50`; reserva `… • cancelada`; estoque `Coxinha • 9`. Funcionário não usa unidade reservada.
+34. editar aluno: **Alunos** → **Editar** em Ana ~8 → **Salvar aluno**; criar turma **5º C**.
+35. editar responsável: **Responsáveis** → **Editar** Maria → **Salvar responsável**.
+36. categoria: **Cardápio** → **Cadastrar categoria** `Lanches` → **Editar** → **Salvar categoria** `Lanche da tarde`.
+37. enquanto uma ação grava, a tela mostra **Processando…** / **Processando ação…** e o botão fica bloqueado; no fim volta o texto de sucesso ou erro.
 
 Não confundir com o ambiente Google E2E da Fase 3.
 

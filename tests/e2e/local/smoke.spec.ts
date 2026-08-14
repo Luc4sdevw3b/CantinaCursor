@@ -44,6 +44,14 @@ async function goToArea(page: Page, name: string) {
     .click();
 }
 
+async function fillInternalReservationStudent(page: Page) {
+  await page.locator('#reservation-student-search').fill('Ana Souza');
+  await page.locator('#reservation-student').selectOption({
+    label: 'Ana Souza • ~8',
+  });
+  await expect(page.locator('#reservation-classroom')).toHaveValue('3º A');
+}
+
 test.describe('E2E local (preview + FakeAppApi)', () => {
   test('opens the application', async ({ page }) => {
     await openLocalApp(page);
@@ -255,6 +263,82 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await expect(page.locator('#sale-product')).toContainText(
       'Coxinha • R$ 6,00',
     );
+  });
+
+  test('edits an existing student and creates a classroom', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await goToArea(page, 'Alunos');
+    await page.locator('#classroom-name').fill('5º C');
+    await page.getByRole('button', { name: 'Cadastrar turma' }).click();
+    await expect(page.locator('#student-classroom')).toContainText('5º C');
+    const ana = page
+      .locator('#students-list')
+      .getByRole('listitem')
+      .filter({ hasText: 'Ana Souza • ~8 • 3º A' });
+    await ana.getByRole('button', { name: 'Editar' }).click();
+    await expect(page.locator('#student-name')).toHaveValue('Ana Souza');
+    await page.locator('#student-classroom').selectOption({ label: '5º C' });
+    await page.getByRole('button', { name: 'Salvar aluno' }).click();
+    await expect(
+      page
+        .locator('#students-list')
+        .getByText('Ana Souza • ~8 • 5º C', { exact: false }),
+    ).toBeVisible();
+    await expect(page.locator('#busy-banner')).toBeHidden();
+    await expect(
+      page.getByRole('button', { name: 'Cadastrar aluno' }),
+    ).toBeVisible();
+  });
+
+  test('edits an existing guardian', async ({ page }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await goToArea(page, 'Responsáveis');
+    const maria = page
+      .locator('#guardians-list')
+      .getByRole('listitem')
+      .filter({ hasText: 'Maria Souza • mãe • WhatsApp' });
+    await maria.getByRole('button', { name: 'Editar' }).click();
+    await expect(page.locator('#guardian-name')).toHaveValue('Maria Souza');
+    await page.locator('#guardian-relation').fill('titia');
+    await page.getByRole('button', { name: 'Salvar responsável' }).click();
+    await expect(
+      page
+        .locator('#guardians-list')
+        .getByText('Maria Souza • titia • WhatsApp'),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Cadastrar responsável' }),
+    ).toBeVisible();
+  });
+
+  test('creates and edits a product category', async ({ page }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await goToArea(page, 'Cardápio');
+    await page.locator('#category-name').fill('Lanches');
+    await page.getByRole('button', { name: 'Cadastrar categoria' }).click();
+    const lanches = page
+      .locator('#categories-list')
+      .getByRole('listitem')
+      .filter({ hasText: 'Lanches' });
+    await expect(lanches).toBeVisible();
+    await lanches.getByRole('button', { name: 'Editar' }).click();
+    await expect(page.locator('#category-name')).toHaveValue('Lanches');
+    await page.locator('#category-name').fill('Lanche da tarde');
+    await page.getByRole('button', { name: 'Salvar categoria' }).click();
+    await expect(
+      page.locator('#categories-list').getByText('Lanche da tarde'),
+    ).toBeVisible();
+    await expect(page.locator('#product-category')).toContainText(
+      'Lanche da tarde',
+    );
+    await expect(
+      page.getByRole('button', { name: 'Cadastrar categoria' }),
+    ).toBeVisible();
   });
 
   test('shows daily stock after login and keeps adjustments to the owner', async ({
@@ -981,8 +1065,7 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await page.locator('#reservation-slot-id').selectOption({
       label: 'Recreio tarde • corte 18:00 • retirada 18:15–18:35',
     });
-    await page.locator('#reservation-student-name').fill('Ana Souza');
-    await page.locator('#reservation-classroom').fill('3º A');
+    await fillInternalReservationStudent(page);
     await page.locator('#reservation-product').selectOption({
       label: 'Coxinha • R$ 5,50',
     });
@@ -1015,6 +1098,8 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await expect(
       page.getByRole('button', { name: 'Confirmar reserva' }),
     ).toBeVisible();
+    await expect(page.getByLabel('Pesquisar aluno')).toBeVisible();
+    await expect(page.getByLabel('Aluno da reserva')).toBeVisible();
     await expect(page.getByLabel('Pesquisar reserva')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Produção' })).toBeVisible();
   });
@@ -1069,8 +1154,7 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await page.locator('#reservation-slot-id').selectOption({
       label: 'Recreio tarde • corte 18:00 • retirada 18:15–18:35',
     });
-    await page.locator('#reservation-student-name').fill('Ana Souza');
-    await page.locator('#reservation-classroom').fill('3º A');
+    await fillInternalReservationStudent(page);
     await page.locator('#reservation-product').selectOption({
       label: 'Coxinha • R$ 5,50',
     });
@@ -1132,8 +1216,7 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await page.locator('#reservation-slot-id').selectOption({
       label: 'Recreio tarde • corte 18:00 • retirada 18:15–18:35',
     });
-    await page.locator('#reservation-student-name').fill('Ana Souza');
-    await page.locator('#reservation-classroom').fill('3º A');
+    await fillInternalReservationStudent(page);
     await page.locator('#reservation-product').selectOption({
       label: 'Coxinha • R$ 5,50',
     });
@@ -1181,8 +1264,7 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await page.locator('#reservation-slot-id').selectOption({
       label: 'Recreio tarde • corte 18:00 • retirada 18:15–18:35',
     });
-    await page.locator('#reservation-student-name').fill('Ana Souza');
-    await page.locator('#reservation-classroom').fill('3º A');
+    await fillInternalReservationStudent(page);
     await page.locator('#reservation-product').selectOption({
       label: 'Coxinha • R$ 5,50',
     });

@@ -299,6 +299,16 @@ export class FakeAppApi implements AppApi {
     return throwResult(this.catalog.listCategories());
   }
 
+  async createCategory(name: string): Promise<ProductCategory> {
+    this.assertAction('products.write');
+    return throwResult(this.catalog.createCategory(name));
+  }
+
+  async updateCategory(id: string, name: string): Promise<ProductCategory> {
+    this.assertAction('products.write');
+    return throwResult(this.catalog.updateCategory(id, name));
+  }
+
   async listProducts(query?: {
     includeInactive?: boolean;
   }): Promise<Product[]> {
@@ -589,7 +599,12 @@ export class FakeAppApi implements AppApi {
     input: CreateReservationInput,
   ): Promise<PublicReservationConfirmation> {
     this.ensurePublicDemo();
-    throwResult(this.reservations.createReservation(input));
+    throwResult(
+      this.reservations.createReservation({
+        ...input,
+        linkedStudentId: undefined,
+      }),
+    );
     return throwResult(this.reservations.toPublicConfirmation(input.requestId));
   }
 

@@ -623,6 +623,7 @@ export interface CreateReservationInput {
   note?: string;
   items: Array<{ productId: string; quantity: number }>;
   website?: string;
+  linkedStudentId?: string;
 }
 
 export interface UpdateReservationInput {
@@ -719,6 +720,8 @@ export interface AppApi {
   getGuardianSettings(): Promise<GuardianSettings>;
   setRequireGuardianBelowAge(age: number): Promise<GuardianSettings>;
   listProductCategories(): Promise<ProductCategory[]>;
+  createCategory(name: string): Promise<ProductCategory>;
+  updateCategory(id: string, name: string): Promise<ProductCategory>;
   listProducts(query?: { includeInactive?: boolean }): Promise<Product[]>;
   createProduct(input: ProductFields): Promise<Product>;
   updateProduct(id: string, input: ProductFields): Promise<Product>;

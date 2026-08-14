@@ -65,6 +65,8 @@ function runnerWith(
     getGuardianSettings() {},
     setRequireGuardianBelowAge() {},
     listProductCategories() {},
+    createCategory() {},
+    updateCategory() {},
     listProducts() {},
     createProduct() {},
     updateProduct() {},

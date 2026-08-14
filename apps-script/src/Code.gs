@@ -3396,6 +3396,12 @@ function seedE2EProductsUnlocked() {
   });
 }
 
+function appendCategoryRecord(record) {
+  openNamedSheet(PRODUCT_CATEGORIES_SHEET, PRODUCT_CATEGORIES_HEADERS).appendRow(
+    [record.id, record.name, record.sort_order, record.active, record.created_at],
+  );
+}
+
 function listProductCategories(sessionToken) {
   requireAction(sessionToken, 'products.read');
   return latestRecordsById(listCategoryRecords())
@@ -3410,6 +3416,54 @@ function listProductCategories(sessionToken) {
         active: category.active === 'true',
       };
     });
+}
+
+function createCategory(sessionToken, payload) {
+  requireAction(sessionToken, 'products.write');
+  return withScriptLock(function () {
+    setupSchema();
+    const name = String((payload && payload.name) || '')
+      .trim()
+      .replace(/\s+/g, ' ');
+    if (name.length < 2) {
+      throw new Error('CATEGORY_NAME_REQUIRED: Informe o nome da categoria.');
+    }
+    const existing = latestRecordsById(listCategoryRecords());
+    const record = {
+      id: Utilities.getUuid(),
+      name: name,
+      sort_order: String(existing.length + 1),
+      active: 'true',
+      created_at: new Date().toISOString(),
+    };
+    appendCategoryRecord(record);
+    return {
+      id: record.id,
+      name: record.name,
+      active: true,
+    };
+  });
+}
+
+function updateCategory(sessionToken, id, payload) {
+  requireAction(sessionToken, 'products.write');
+  return withScriptLock(function () {
+    setupSchema();
+    const current = latestCategoryById(id, true);
+    const name = String((payload && payload.name) || '')
+      .trim()
+      .replace(/\s+/g, ' ');
+    if (name.length < 2) {
+      throw new Error('CATEGORY_NAME_REQUIRED: Informe o nome da categoria.');
+    }
+    const record = Object.assign({}, current, { name: name });
+    appendCategoryRecord(record);
+    return {
+      id: record.id,
+      name: record.name,
+      active: record.active === 'true',
+    };
+  });
 }
 
 function listProducts(sessionToken, query) {
@@ -8225,6 +8279,16 @@ function createReservationUnlocked(userId, payload) {
       'RESERVATION_STUDENT_NAME_REQUIRED: Informe o nome para a retirada.',
     );
   }
+  let linkedStudentId = '';
+  if (payload && payload.linkedStudentId && userId !== PUBLIC_ACTOR_ID) {
+    const linkedStudent = latestStudentById(String(payload.linkedStudentId));
+    if (linkedStudent.active !== 'true') {
+      throw new Error(
+        'STUDENT_INACTIVE: Aluno inativo não pode ser vinculado à reserva.',
+      );
+    }
+    linkedStudentId = linkedStudent.id;
+  }
   const classroom = String((payload && payload.classroomText) || '')
     .trim()
     .replace(/\s+/g, ' ');
@@ -8310,7 +8374,7 @@ function createReservationUnlocked(userId, payload) {
     slot.id,
     RESERVATION_STATUS_RESERVED,
     RESERVATION_PAYMENT_UNPAID,
-    '',
+    linkedStudentId,
     String(totalCents),
     now,
     now,
@@ -8737,7 +8801,9 @@ function createPublicReservation(payload) {
   return withScriptLock(function () {
     setupSchema();
     ensureE2EPublicCatalogUnlocked();
-    createReservationUnlocked(PUBLIC_ACTOR_ID, payload || {});
+    const safePayload = Object.assign({}, payload || {});
+    delete safePayload.linkedStudentId;
+    createReservationUnlocked(PUBLIC_ACTOR_ID, safePayload);
     return toPublicConfirmationGs(
       payload && payload.requestId ? String(payload.requestId) : '',
     );

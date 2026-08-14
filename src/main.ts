@@ -10,13 +10,16 @@ import {
 import type {
   AppSession,
   DueDateShortcuts,
+  Guardian,
   InventoryBalanceItem,
   Product,
+  ProductCategory,
   Receivable,
   Reservation,
   ReservationsSetup,
   ReversalsSetup,
   SiblingAuthorization,
+  StudentDetail,
   StudentSummary,
 } from './web/shared/app-api';
 import { createAppApi } from './web/shared/create-app-api';
@@ -67,6 +70,7 @@ app.innerHTML = `
             <p id="health-detail">Conectando à API local de demonstração.</p>
           </div>
         </div>
+        <p class="busy-banner" id="busy-banner" role="status" hidden></p>
         <div class="session-card" id="session-card" hidden>
           <div id="session-login">
             <button type="button" id="login-owner">Entrar como dona</button>
@@ -138,6 +142,13 @@ app.innerHTML = `
       <h2>Alunos</h2>
       <p id="students-status">Entre para ver o cadastro.</p>
       <ul id="students-list"></ul>
+      <form id="classroom-form">
+        <label>
+          Nova turma
+          <input id="classroom-name" required autocomplete="off" />
+        </label>
+        <button type="submit" id="classroom-submit">Cadastrar turma</button>
+      </form>
       <form id="student-form">
         <label>
           Nome completo
@@ -160,7 +171,8 @@ app.innerHTML = `
           Turma
           <select id="student-classroom"></select>
         </label>
-        <button type="submit">Cadastrar aluno</button>
+        <button type="submit" id="student-submit">Cadastrar aluno</button>
+        <button type="button" id="student-cancel" hidden>Cancelar</button>
       </form>
     </section>
 
@@ -185,7 +197,8 @@ app.innerHTML = `
           <input id="guardian-whatsapp" type="checkbox" />
           WhatsApp
         </label>
-        <button type="submit">Cadastrar responsável</button>
+        <button type="submit" id="guardian-submit">Cadastrar responsável</button>
+        <button type="button" id="guardian-cancel" hidden>Cancelar</button>
       </form>
       <h2>Irmãos autorizados</h2>
       <ul id="authorizations-list"></ul>
@@ -278,6 +291,16 @@ app.innerHTML = `
         <button type="submit" id="product-submit">Cadastrar produto</button>
         <button type="button" id="product-cancel" hidden>Cancelar</button>
       </form>
+      <h3>Categorias</h3>
+      <ul id="categories-list"></ul>
+      <form id="category-form">
+        <label>
+          Nome
+          <input id="category-name" required autocomplete="off" />
+        </label>
+        <button type="submit" id="category-submit">Cadastrar categoria</button>
+        <button type="button" id="category-cancel" hidden>Cancelar</button>
+      </form>
       <div id="ad-hoc-block">
         <h2>Item avulso</h2>
         <p id="ad-hoc-status">Só a dona registra item avulso. Ele não vira produto.</p>
@@ -349,8 +372,12 @@ app.innerHTML = `
           <select id="reservation-slot-id" aria-label="Recreio da reserva"></select>
         </label>
         <label>
-          Nome para retirada
-          <input id="reservation-student-name" required autocomplete="off" />
+          Pesquisar aluno
+          <input id="reservation-student-search" autocomplete="off" aria-label="Pesquisar aluno" />
+        </label>
+        <label>
+          Aluno cadastrado
+          <select id="reservation-student" required aria-label="Aluno da reserva"></select>
         </label>
         <label>
           Turma
@@ -894,6 +921,85 @@ const DEFAULT_AREA: AppArea = 'sales';
 let currentSession: AppSession | null = null;
 let activeArea: AppArea = DEFAULT_AREA;
 
+function submitButton(event: Event): HTMLButtonElement | null {
+  if (
+    event instanceof SubmitEvent &&
+    event.submitter instanceof HTMLButtonElement
+  ) {
+    return event.submitter;
+  }
+  const current = event.currentTarget;
+  if (current instanceof HTMLFormElement) {
+    const button = current.querySelector('button[type="submit"]');
+    if (button instanceof HTMLButtonElement) {
+      return button;
+    }
+  }
+  if (event.target instanceof HTMLButtonElement) {
+    return event.target;
+  }
+  return null;
+}
+
+function runBusyAction(
+  statusEl: Element | null,
+  button: HTMLButtonElement | null | undefined,
+  errorFallback: string,
+  work: () => Promise<unknown>,
+): void {
+  if (button?.disabled) {
+    return;
+  }
+  if (button) {
+    button.disabled = true;
+  }
+  const banner = document.querySelector('#busy-banner');
+  if (banner instanceof HTMLElement) {
+    banner.hidden = false;
+    banner.textContent = 'Processando ação…';
+  }
+  if (statusEl) {
+    statusEl.textContent = 'Processando…';
+  }
+  void work()
+    .catch((error: unknown) => {
+      if (statusEl) {
+        statusEl.textContent =
+          error instanceof Error
+            ? error.message.replace(/^[A-Z_]+:\s*/, '')
+            : errorFallback;
+      }
+    })
+    .finally(() => {
+      if (banner instanceof HTMLElement) {
+        banner.hidden = true;
+        banner.textContent = '';
+      }
+      if (button) {
+        button.disabled = false;
+      }
+    });
+}
+
+function busyFromEvent(
+  event: Event,
+  errorFallback: string,
+  work: () => Promise<unknown>,
+): void {
+  const origin =
+    event.currentTarget instanceof Element
+      ? event.currentTarget
+      : event.target instanceof Element
+        ? event.target
+        : null;
+  const section = origin?.closest('section') ?? origin;
+  const status =
+    section instanceof Element
+      ? section.querySelector('[id$="-status"]')
+      : null;
+  runBusyAction(status, submitButton(event), errorFallback, work);
+}
+
 function isAppArea(value: string | undefined): value is AppArea {
   return Boolean(value && value in AREA_PANELS);
 }
@@ -1067,6 +1173,8 @@ const studentsPanel = document.querySelector('#students-panel');
 const studentsStatus = document.querySelector('#students-status');
 const studentsList = document.querySelector('#students-list');
 const classroomSelect = document.querySelector('#student-classroom');
+let editingStudentId: string | null = null;
+let editingStudentClassroomId: string | null = null;
 
 function studentLine(student: StudentSummary): string {
   const classroom = student.classroomName || 'Sem turma';
@@ -1077,6 +1185,49 @@ function studentLine(student: StudentSummary): string {
       ? ' • Precisa de responsável'
       : '';
   return `${student.fullName} • ${student.ageLabel} • ${classroom}${guardian}${inactive}`;
+}
+
+function fillStudentForm(student: StudentDetail | null): void {
+  const name = document.querySelector('#student-name');
+  const birth = document.querySelector('#student-birth');
+  const approxAge = document.querySelector('#student-approx-age');
+  const approxYear = document.querySelector('#student-approx-year');
+  const submit = document.querySelector('#student-submit');
+  const cancel = document.querySelector('#student-cancel');
+  editingStudentId = student?.id ?? null;
+  const currentEnrollment = student?.enrollments.find((item) => !item.endedOn);
+  editingStudentClassroomId = currentEnrollment?.classroomId ?? null;
+  if (
+    !(name instanceof HTMLInputElement) ||
+    !(birth instanceof HTMLInputElement) ||
+    !(approxAge instanceof HTMLInputElement) ||
+    !(approxYear instanceof HTMLInputElement)
+  ) {
+    return;
+  }
+  name.value = student?.fullName ?? '';
+  birth.value = student?.birthDate ?? '';
+  approxAge.value =
+    student?.approximateAge === null || student?.approximateAge === undefined
+      ? ''
+      : String(student.approximateAge);
+  approxYear.value =
+    student?.approximateAgeReferenceYear === null ||
+    student?.approximateAgeReferenceYear === undefined
+      ? ''
+      : String(student.approximateAgeReferenceYear);
+  if (
+    classroomSelect instanceof HTMLSelectElement &&
+    editingStudentClassroomId
+  ) {
+    classroomSelect.value = editingStudentClassroomId;
+  }
+  if (submit instanceof HTMLButtonElement) {
+    submit.textContent = student ? 'Salvar aluno' : 'Cadastrar aluno';
+  }
+  if (cancel instanceof HTMLButtonElement) {
+    cancel.hidden = !student;
+  }
 }
 
 async function renderStudents(authenticated: boolean): Promise<void> {
@@ -1110,18 +1261,48 @@ async function renderStudents(authenticated: boolean): Promise<void> {
       option.textContent = classroom.name;
       classroomSelect.append(option);
     }
+    if (editingStudentClassroomId) {
+      classroomSelect.value = editingStudentClassroomId;
+    }
   }
 
   for (const student of students) {
     const item = document.createElement('li');
     item.textContent = studentLine(student);
     const actions = document.createElement('div');
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.textContent = 'Editar';
+    edit.addEventListener('click', () => {
+      void api
+        .getStudent(student.id)
+        .then((detail) => {
+          fillStudentForm(detail);
+          const nameField = document.querySelector('#student-name');
+          if (nameField instanceof HTMLInputElement) {
+            nameField.focus();
+          }
+        })
+        .catch((error: unknown) => {
+          studentsStatus.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível abrir o aluno.';
+        });
+    });
+    actions.append(edit);
     if (student.active) {
       const deactivate = document.createElement('button');
       deactivate.type = 'button';
       deactivate.textContent = 'Desativar';
       deactivate.addEventListener('click', () => {
-        void api.deactivateStudent(student.id).then(() => renderStudents(true));
+        runBusyAction(
+          studentsStatus,
+          deactivate,
+          'Não foi possível desativar o aluno.',
+          () =>
+            api.deactivateStudent(student.id).then(() => renderStudents(true)),
+        );
       });
       actions.append(deactivate);
     } else {
@@ -1137,18 +1318,18 @@ async function renderStudents(authenticated: boolean): Promise<void> {
       reactivate.type = 'button';
       reactivate.textContent = 'Reativar';
       reactivate.addEventListener('click', () => {
-        void api
-          .reactivateStudent(student.id, {
-            reviewed: checkbox.checked,
-            fullName: student.fullName,
-          })
-          .then(() => renderStudents(true))
-          .catch((error: unknown) => {
-            studentsStatus.textContent =
-              error instanceof Error
-                ? error.message.replace(/^[A-Z_]+:\s*/, '')
-                : 'Não foi possível reativar.';
-          });
+        runBusyAction(
+          studentsStatus,
+          reactivate,
+          'Não foi possível reativar.',
+          () =>
+            api
+              .reactivateStudent(student.id, {
+                reviewed: checkbox.checked,
+                fullName: student.fullName,
+              })
+              .then(() => renderStudents(true)),
+        );
       });
       actions.append(review, reactivate);
     }
@@ -1164,6 +1345,7 @@ const authorizationsList = document.querySelector('#authorizations-list');
 const guardianCreditLinks = document.querySelector('#guardian-credit-links');
 const ageSettingInput = document.querySelector('#guardian-age-setting');
 const saveAgeSetting = document.querySelector('#save-age-setting');
+let editingGuardianId: string | null = null;
 
 function guardianLine(guardian: {
   fullName: string;
@@ -1195,6 +1377,36 @@ function guardianCreditLinkLine(
     flags.push('autoquita dívida');
   }
   return `${student.fullName} • ${student.ageLabel} • ${link.guardianName}${flags.length ? ` • ${flags.join(' • ')}` : ''}`;
+}
+
+function fillGuardianForm(guardian: Guardian | null): void {
+  const name = document.querySelector('#guardian-name');
+  const phone = document.querySelector('#guardian-phone');
+  const relation = document.querySelector('#guardian-relation');
+  const whatsapp = document.querySelector('#guardian-whatsapp');
+  const submit = document.querySelector('#guardian-submit');
+  const cancel = document.querySelector('#guardian-cancel');
+  editingGuardianId = guardian?.id ?? null;
+  if (
+    !(name instanceof HTMLInputElement) ||
+    !(phone instanceof HTMLInputElement) ||
+    !(relation instanceof HTMLInputElement) ||
+    !(whatsapp instanceof HTMLInputElement)
+  ) {
+    return;
+  }
+  name.value = guardian?.fullName ?? '';
+  phone.value = guardian?.phone ?? '';
+  relation.value = guardian?.relationLabel ?? '';
+  whatsapp.checked = guardian?.whatsappEnabled ?? false;
+  if (submit instanceof HTMLButtonElement) {
+    submit.textContent = guardian
+      ? 'Salvar responsável'
+      : 'Cadastrar responsável';
+  }
+  if (cancel instanceof HTMLButtonElement) {
+    cancel.hidden = !guardian;
+  }
 }
 
 async function renderFamily(session: AppSession | null): Promise<void> {
@@ -1229,6 +1441,19 @@ async function renderFamily(session: AppSession | null): Promise<void> {
   for (const guardian of guardians) {
     const item = document.createElement('li');
     item.textContent = guardianLine(guardian);
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.textContent = 'Editar';
+    edit.addEventListener('click', () => {
+      fillGuardianForm(guardian);
+      const nameField = document.querySelector('#guardian-name');
+      if (nameField instanceof HTMLInputElement) {
+        nameField.focus();
+      }
+    });
+    const actions = document.createElement('div');
+    actions.append(edit);
+    item.append(actions);
     guardiansList.append(item);
   }
 
@@ -1246,18 +1471,18 @@ async function renderFamily(session: AppSession | null): Promise<void> {
     revoke.type = 'button';
     revoke.textContent = 'Revogar';
     revoke.addEventListener('click', () => {
-      void api
-        .revokeSiblingAuthorization(authorization.id)
-        .then(() => api.getSession())
-        .then((current) =>
-          renderFamily(current).then(() => renderSales(current)),
-        )
-        .catch((error: unknown) => {
-          familyStatus.textContent =
-            error instanceof Error
-              ? error.message.replace(/^[A-Z_]+:\s*/, '')
-              : 'Não foi possível revogar a autorização.';
-        });
+      runBusyAction(
+        familyStatus,
+        revoke,
+        'Não foi possível revogar a autorização.',
+        () =>
+          api
+            .revokeSiblingAuthorization(authorization.id)
+            .then(() => api.getSession())
+            .then((current) =>
+              renderFamily(current).then(() => renderSales(current)),
+            ),
+      );
     });
     item.append(label, revoke);
     authorizationsList.append(item);
@@ -1354,9 +1579,11 @@ const productsPanel = document.querySelector('#products-panel');
 const productsStatus = document.querySelector('#products-status');
 const productsList = document.querySelector('#products-list');
 const productCategorySelect = document.querySelector('#product-category');
+const categoriesList = document.querySelector('#categories-list');
 const adHocBlock = document.querySelector('#ad-hoc-block');
 const adHocStatus = document.querySelector('#ad-hoc-status');
 const adHocList = document.querySelector('#ad-hoc-list');
+let editingCategoryId: string | null = null;
 
 function productLine(product: Product): string {
   const inactive = product.active ? '' : ' • Inativo';
@@ -1403,6 +1630,23 @@ function fillProductForm(product: Product | null): void {
   }
 }
 
+function fillCategoryForm(category: ProductCategory | null): void {
+  const name = document.querySelector('#category-name');
+  const submit = document.querySelector('#category-submit');
+  const cancel = document.querySelector('#category-cancel');
+  editingCategoryId = category?.id ?? null;
+  if (!(name instanceof HTMLInputElement)) {
+    return;
+  }
+  name.value = category?.name ?? '';
+  if (submit instanceof HTMLButtonElement) {
+    submit.textContent = category ? 'Salvar categoria' : 'Cadastrar categoria';
+  }
+  if (cancel instanceof HTMLButtonElement) {
+    cancel.hidden = !category;
+  }
+}
+
 async function renderProducts(session: AppSession | null): Promise<void> {
   if (
     !(productsPanel instanceof HTMLElement) ||
@@ -1414,6 +1658,9 @@ async function renderProducts(session: AppSession | null): Promise<void> {
   productsList.replaceChildren();
   if (adHocList instanceof HTMLElement) {
     adHocList.replaceChildren();
+  }
+  if (categoriesList instanceof HTMLElement) {
+    categoriesList.replaceChildren();
   }
   if (!session) {
     productsStatus.textContent = 'Entre para ver o cardápio.';
@@ -1445,6 +1692,27 @@ async function renderProducts(session: AppSession | null): Promise<void> {
     }
   }
 
+  if (categoriesList instanceof HTMLElement) {
+    for (const category of categories) {
+      const item = document.createElement('li');
+      item.textContent = category.name;
+      const actions = document.createElement('div');
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.textContent = 'Editar';
+      edit.addEventListener('click', () => {
+        fillCategoryForm(category);
+        const nameField = document.querySelector('#category-name');
+        if (nameField instanceof HTMLInputElement) {
+          nameField.focus();
+        }
+      });
+      actions.append(edit);
+      item.append(actions);
+      categoriesList.append(item);
+    }
+  }
+
   for (const product of products) {
     const item = document.createElement('li');
     item.textContent = productLine(product);
@@ -1465,12 +1733,18 @@ async function renderProducts(session: AppSession | null): Promise<void> {
       deactivate.type = 'button';
       deactivate.textContent = 'Desativar';
       deactivate.addEventListener('click', () => {
-        void api.deactivateProduct(product.id).then(() => {
-          if (editingProductId === product.id) {
-            fillProductForm(null);
-          }
-          return api.getSession().then(renderProducts);
-        });
+        runBusyAction(
+          productsStatus,
+          deactivate,
+          'Não foi possível desativar o produto.',
+          () =>
+            api.deactivateProduct(product.id).then(() => {
+              if (editingProductId === product.id) {
+                fillProductForm(null);
+              }
+              return api.getSession().then(renderProducts);
+            }),
+        );
       });
       actions.append(deactivate);
     }
@@ -1578,7 +1852,64 @@ const reservationEditForm = document.querySelector('#reservation-edit-form');
 const reservationLinkStudent = document.querySelector(
   '#reservation-link-student',
 );
+const reservationStudentSearch = document.querySelector(
+  '#reservation-student-search',
+);
+const reservationStudentSelect = document.querySelector('#reservation-student');
 let reservationsSetup: ReservationsSetup | null = null;
+let reservationStudents: StudentSummary[] = [];
+
+function reservationStudentLabel(student: StudentSummary): string {
+  return `${student.fullName} • ${student.ageLabel}`;
+}
+
+function fillReservationStudentOptions(): void {
+  const query =
+    reservationStudentSearch instanceof HTMLInputElement
+      ? reservationStudentSearch.value.trim().toLowerCase()
+      : '';
+  const matches = reservationStudents.filter((student) => {
+    if (!student.active) {
+      return false;
+    }
+    if (!query) {
+      return true;
+    }
+    const haystack = [
+      student.fullName,
+      student.ageLabel,
+      student.classroomName ?? '',
+      reservationStudentLabel(student),
+    ]
+      .join(' ')
+      .toLowerCase();
+    return haystack.includes(query);
+  });
+  fillSelect(
+    reservationStudentSelect,
+    matches.map((student) => ({
+      value: student.id,
+      label: reservationStudentLabel(student),
+    })),
+    'Escolha o aluno',
+  );
+}
+
+function applyReservationStudentSelection(): void {
+  const classroom = document.querySelector('#reservation-classroom');
+  if (
+    !(reservationStudentSelect instanceof HTMLSelectElement) ||
+    !(classroom instanceof HTMLInputElement)
+  ) {
+    return;
+  }
+  const student = reservationStudents.find(
+    (item) => item.id === reservationStudentSelect.value,
+  );
+  if (student?.classroomName) {
+    classroom.value = student.classroomName;
+  }
+}
 
 function reservationQueueQuery(): { slotId: string; search: string } {
   return {
@@ -1753,6 +2084,8 @@ async function renderReservations(session: AppSession | null): Promise<void> {
         })),
       'Escolha o aluno',
     );
+    reservationStudents = students.filter((item) => item.active);
+    fillReservationStudentOptions();
     for (const item of setup.availability) {
       const row = document.createElement('li');
       row.textContent = item.summaryLabel;
@@ -2944,74 +3277,74 @@ document
       }
       installments = [{ dueDate: dueDateValue }];
     }
-    void api
-      .createSale({
-        consumerStudentId,
-        chargedStudentId: chargedStudentId || undefined,
-        items: cart.map((line) => ({
-          productId: line.productId,
-          quantity: line.quantity,
-          discountKind: line.discountKind,
-          discountInput: line.discountInput,
-        })),
-        paymentKind,
-        pixAmountCents,
-        cashTenderedCents,
-        installments,
-        sourceReservationId: saleSourceReservationId,
-        overrideReservationId:
-          currentSession?.role === 'owner' &&
-          document.querySelector('#sale-override-reserved') instanceof
-            HTMLInputElement &&
-          (
-            document.querySelector(
-              '#sale-override-reserved',
-            ) as HTMLInputElement
-          ).checked
-            ? (
+    runBusyAction(
+      salesStatus,
+      submitButton(event),
+      'Não foi possível confirmar a venda.',
+      () =>
+        api
+          .createSale({
+            consumerStudentId,
+            chargedStudentId: chargedStudentId || undefined,
+            items: cart.map((line) => ({
+              productId: line.productId,
+              quantity: line.quantity,
+              discountKind: line.discountKind,
+              discountInput: line.discountInput,
+            })),
+            paymentKind,
+            pixAmountCents,
+            cashTenderedCents,
+            installments,
+            sourceReservationId: saleSourceReservationId,
+            overrideReservationId:
+              currentSession?.role === 'owner' &&
+              document.querySelector('#sale-override-reserved') instanceof
+                HTMLInputElement &&
+              (
                 document.querySelector(
-                  '#sale-override-reservation',
-                ) as HTMLSelectElement | null
-              )?.value || undefined
-            : undefined,
-      })
-      .then(() => {
-        cart.length = 0;
-        saleSourceReservationId = null;
-        const overrideCheck = document.querySelector('#sale-override-reserved');
-        if (overrideCheck instanceof HTMLInputElement) {
-          overrideCheck.checked = false;
-        }
-        if (pixAmountInput instanceof HTMLInputElement) {
-          pixAmountInput.value = '';
-        }
-        if (cashAmountInput instanceof HTMLInputElement) {
-          cashAmountInput.value = '';
-        }
-        return api.getSession();
-      })
-      .then((session) =>
-        Promise.all([
-          renderSales(session),
-          renderInventory(session),
-          renderReservations(session),
-          renderCash(session),
-          renderReversals(session),
-          renderAgenda(session),
-        ]).then(() =>
-          renderPayments(session).then(() =>
-            renderCredits(session).then(() => renderAdjust(session)),
+                  '#sale-override-reserved',
+                ) as HTMLInputElement
+              ).checked
+                ? (
+                    document.querySelector(
+                      '#sale-override-reservation',
+                    ) as HTMLSelectElement | null
+                  )?.value || undefined
+                : undefined,
+          })
+          .then(() => {
+            cart.length = 0;
+            saleSourceReservationId = null;
+            const overrideCheck = document.querySelector(
+              '#sale-override-reserved',
+            );
+            if (overrideCheck instanceof HTMLInputElement) {
+              overrideCheck.checked = false;
+            }
+            if (pixAmountInput instanceof HTMLInputElement) {
+              pixAmountInput.value = '';
+            }
+            if (cashAmountInput instanceof HTMLInputElement) {
+              cashAmountInput.value = '';
+            }
+            return api.getSession();
+          })
+          .then((session) =>
+            Promise.all([
+              renderSales(session),
+              renderInventory(session),
+              renderReservations(session),
+              renderCash(session),
+              renderReversals(session),
+              renderAgenda(session),
+            ]).then(() =>
+              renderPayments(session).then(() =>
+                renderCredits(session).then(() => renderAdjust(session)),
+              ),
+            ),
           ),
-        ),
-      )
-      .catch((error: unknown) => {
-        if (salesStatus) {
-          salesStatus.textContent =
-            error instanceof Error
-              ? error.message.replace(/^[A-Z_]+:\s*/, '')
-              : 'Não foi possível confirmar a venda.';
-        }
-      });
+    );
   });
 
 document
@@ -3102,35 +3435,37 @@ document.querySelector('#payment-form')?.addEventListener('submit', (event) => {
     }
     amountCents = parsed.data;
   }
-  void api
-    .createPayment({
-      studentId,
-      amountCents,
-      method,
-      mode,
-      selectedReceivableIds:
-        mode === 'selected' ? selectedReceivableIds : undefined,
-      allocations: mode === 'manual' ? allocations : undefined,
-    })
-    .then(() => {
-      amountInput.value = '';
-      return api.getSession();
-    })
-    .then((session) =>
-      renderAgenda(session).then(() =>
-        renderPayments(session).then(() =>
-          renderCredits(session).then(() => renderAdjust(session)),
+  busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
+    api
+      .createPayment({
+        studentId,
+        amountCents,
+        method,
+        mode,
+        selectedReceivableIds:
+          mode === 'selected' ? selectedReceivableIds : undefined,
+        allocations: mode === 'manual' ? allocations : undefined,
+      })
+      .then(() => {
+        amountInput.value = '';
+        return api.getSession();
+      })
+      .then((session) =>
+        renderAgenda(session).then(() =>
+          renderPayments(session).then(() =>
+            renderCredits(session).then(() => renderAdjust(session)),
+          ),
         ),
-      ),
-    )
-    .catch((error: unknown) => {
-      if (status) {
-        status.textContent =
-          error instanceof Error
-            ? error.message.replace(/^[A-Z_]+:\s*/, '')
-            : 'Não foi possível registrar o pagamento.';
-      }
-    });
+      )
+      .catch((error: unknown) => {
+        if (status) {
+          status.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível registrar o pagamento.';
+        }
+      }),
+  );
 });
 
 document
@@ -3209,39 +3544,41 @@ document
       }
       return;
     }
-    void api
-      .createFamilyPayment({
-        guardianId: guardian.value,
-        amountCents: parsed.data,
-        method,
-        mode,
-        studentId: mode === 'oldest_first' ? child.value : undefined,
-        selectedReceivableIds:
-          mode === 'selected' ? selectedReceivableIds : undefined,
-        allocations:
-          mode === 'manual' || mode === 'credit_remainder'
-            ? allocations
-            : undefined,
-      })
-      .then(() => {
-        amountInput.value = '';
-        return api.getSession();
-      })
-      .then((session) =>
-        renderAgenda(session).then(() =>
-          renderPayments(session).then(() =>
-            renderCredits(session).then(() => renderAdjust(session)),
+    busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
+      api
+        .createFamilyPayment({
+          guardianId: guardian.value,
+          amountCents: parsed.data,
+          method,
+          mode,
+          studentId: mode === 'oldest_first' ? child.value : undefined,
+          selectedReceivableIds:
+            mode === 'selected' ? selectedReceivableIds : undefined,
+          allocations:
+            mode === 'manual' || mode === 'credit_remainder'
+              ? allocations
+              : undefined,
+        })
+        .then(() => {
+          amountInput.value = '';
+          return api.getSession();
+        })
+        .then((session) =>
+          renderAgenda(session).then(() =>
+            renderPayments(session).then(() =>
+              renderCredits(session).then(() => renderAdjust(session)),
+            ),
           ),
-        ),
-      )
-      .catch((error: unknown) => {
-        if (status) {
-          status.textContent =
-            error instanceof Error
-              ? error.message.replace(/^[A-Z_]+:\s*/, '')
-              : 'Não foi possível registrar o pagamento familiar.';
-        }
-      });
+        )
+        .catch((error: unknown) => {
+          if (status) {
+            status.textContent =
+              error instanceof Error
+                ? error.message.replace(/^[A-Z_]+:\s*/, '')
+                : 'Não foi possível registrar o pagamento familiar.';
+          }
+        }),
+    );
   });
 
 document
@@ -3277,31 +3614,33 @@ document
     if (method !== 'pix' && method !== 'cash') {
       return;
     }
-    void api
-      .depositPersonalCredit({
-        studentId,
-        amountCents: parsed.data,
-        method,
-      })
-      .then(() => {
-        amountInput.value = '';
-        return api.getSession();
-      })
-      .then((session) =>
-        renderAgenda(session).then(() =>
-          renderPayments(session).then(() =>
-            renderCredits(session).then(() => renderAdjust(session)),
+    busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
+      api
+        .depositPersonalCredit({
+          studentId,
+          amountCents: parsed.data,
+          method,
+        })
+        .then(() => {
+          amountInput.value = '';
+          return api.getSession();
+        })
+        .then((session) =>
+          renderAgenda(session).then(() =>
+            renderPayments(session).then(() =>
+              renderCredits(session).then(() => renderAdjust(session)),
+            ),
           ),
-        ),
-      )
-      .catch((error: unknown) => {
-        if (status) {
-          status.textContent =
-            error instanceof Error
-              ? error.message.replace(/^[A-Z_]+:\s*/, '')
-              : 'Não foi possível entrar o crédito.';
-        }
-      });
+        )
+        .catch((error: unknown) => {
+          if (status) {
+            status.textContent =
+              error instanceof Error
+                ? error.message.replace(/^[A-Z_]+:\s*/, '')
+                : 'Não foi possível entrar o crédito.';
+          }
+        }),
+    );
   });
 
 document
@@ -3333,26 +3672,28 @@ document
       }
       return;
     }
-    void api
-      .refundPersonalCredit({
-        studentId,
-        amountCents: parsed.data,
-        reason: reasonInput.value,
-      })
-      .then(() => {
-        amountInput.value = '';
-        reasonInput.value = '';
-        return api.getSession();
-      })
-      .then((session) => renderCredits(session))
-      .catch((error: unknown) => {
-        if (status) {
-          status.textContent =
-            error instanceof Error
-              ? error.message.replace(/^[A-Z_]+:\s*/, '')
-              : 'Não foi possível devolver o crédito.';
-        }
-      });
+    busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
+      api
+        .refundPersonalCredit({
+          studentId,
+          amountCents: parsed.data,
+          reason: reasonInput.value,
+        })
+        .then(() => {
+          amountInput.value = '';
+          reasonInput.value = '';
+          return api.getSession();
+        })
+        .then((session) => renderCredits(session))
+        .catch((error: unknown) => {
+          if (status) {
+            status.textContent =
+              error instanceof Error
+                ? error.message.replace(/^[A-Z_]+:\s*/, '')
+                : 'Não foi possível devolver o crédito.';
+          }
+        }),
+    );
   });
 
 document
@@ -3378,23 +3719,27 @@ document
       }
       return;
     }
-    void api
-      .authorizeSibling({
-        consumerStudentId: consumer.value,
-        accountStudentId: account.value,
-        canChargeAccount: charge.checked,
-        canUseAccountCredit: credit.checked,
-      })
-      .then(() => api.getSession())
-      .then((session) => renderFamily(session).then(() => renderSales(session)))
-      .catch((error: unknown) => {
-        if (status) {
-          status.textContent =
-            error instanceof Error
-              ? error.message.replace(/^[A-Z_]+:\s*/, '')
-              : 'Não foi possível autorizar o irmão.';
-        }
-      });
+    busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
+      api
+        .authorizeSibling({
+          consumerStudentId: consumer.value,
+          accountStudentId: account.value,
+          canChargeAccount: charge.checked,
+          canUseAccountCredit: credit.checked,
+        })
+        .then(() => api.getSession())
+        .then((session) =>
+          renderFamily(session).then(() => renderSales(session)),
+        )
+        .catch((error: unknown) => {
+          if (status) {
+            status.textContent =
+              error instanceof Error
+                ? error.message.replace(/^[A-Z_]+:\s*/, '')
+                : 'Não foi possível autorizar o irmão.';
+          }
+        }),
+    );
   });
 
 document
@@ -3420,28 +3765,30 @@ document
       }
       return;
     }
-    void api
-      .getStudentGuardians(studentSelect.value)
-      .then((links) => {
-        const current = links.find(
-          (link) => link.guardianId === guardianSelect.value && link.active,
-        );
-        return api.linkGuardian(studentSelect.value, guardianSelect.value, {
-          isPrimary: current?.isPrimary,
-          canUseGuardianCredit: canUse.checked,
-          autoSettle: autoSettle.checked,
-        });
-      })
-      .then(() => api.getSession())
-      .then((session) => renderFamily(session))
-      .catch((error: unknown) => {
-        if (status) {
-          status.textContent =
-            error instanceof Error
-              ? error.message.replace(/^[A-Z_]+:\s*/, '')
-              : 'Não foi possível salvar a autorização.';
-        }
-      });
+    busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
+      api
+        .getStudentGuardians(studentSelect.value)
+        .then((links) => {
+          const current = links.find(
+            (link) => link.guardianId === guardianSelect.value && link.active,
+          );
+          return api.linkGuardian(studentSelect.value, guardianSelect.value, {
+            isPrimary: current?.isPrimary,
+            canUseGuardianCredit: canUse.checked,
+            autoSettle: autoSettle.checked,
+          });
+        })
+        .then(() => api.getSession())
+        .then((session) => renderFamily(session))
+        .catch((error: unknown) => {
+          if (status) {
+            status.textContent =
+              error instanceof Error
+                ? error.message.replace(/^[A-Z_]+:\s*/, '')
+                : 'Não foi possível salvar a autorização.';
+          }
+        }),
+    );
   });
 
 document
@@ -3477,31 +3824,33 @@ document
     if (method !== 'pix' && method !== 'cash') {
       return;
     }
-    void api
-      .depositGuardianCredit({
-        guardianId,
-        amountCents: parsed.data,
-        method,
-      })
-      .then(() => {
-        amountInput.value = '';
-        return api.getSession();
-      })
-      .then((session) =>
-        renderAgenda(session).then(() =>
-          renderPayments(session).then(() =>
-            renderCredits(session).then(() => renderAdjust(session)),
+    busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
+      api
+        .depositGuardianCredit({
+          guardianId,
+          amountCents: parsed.data,
+          method,
+        })
+        .then(() => {
+          amountInput.value = '';
+          return api.getSession();
+        })
+        .then((session) =>
+          renderAgenda(session).then(() =>
+            renderPayments(session).then(() =>
+              renderCredits(session).then(() => renderAdjust(session)),
+            ),
           ),
-        ),
-      )
-      .catch((error: unknown) => {
-        if (status) {
-          status.textContent =
-            error instanceof Error
-              ? error.message.replace(/^[A-Z_]+:\s*/, '')
-              : 'Não foi possível entrar o crédito.';
-        }
-      });
+        )
+        .catch((error: unknown) => {
+          if (status) {
+            status.textContent =
+              error instanceof Error
+                ? error.message.replace(/^[A-Z_]+:\s*/, '')
+                : 'Não foi possível entrar o crédito.';
+          }
+        }),
+    );
   });
 
 document
@@ -3537,26 +3886,28 @@ document
       }
       return;
     }
-    void api
-      .refundGuardianCredit({
-        guardianId,
-        amountCents: parsed.data,
-        reason: reasonInput.value,
-      })
-      .then(() => {
-        amountInput.value = '';
-        reasonInput.value = '';
-        return api.getSession();
-      })
-      .then((session) => renderCredits(session))
-      .catch((error: unknown) => {
-        if (status) {
-          status.textContent =
-            error instanceof Error
-              ? error.message.replace(/^[A-Z_]+:\s*/, '')
-              : 'Não foi possível devolver o crédito.';
-        }
-      });
+    busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
+      api
+        .refundGuardianCredit({
+          guardianId,
+          amountCents: parsed.data,
+          reason: reasonInput.value,
+        })
+        .then(() => {
+          amountInput.value = '';
+          reasonInput.value = '';
+          return api.getSession();
+        })
+        .then((session) => renderCredits(session))
+        .catch((error: unknown) => {
+          if (status) {
+            status.textContent =
+              error instanceof Error
+                ? error.message.replace(/^[A-Z_]+:\s*/, '')
+                : 'Não foi possível devolver o crédito.';
+          }
+        }),
+    );
   });
 
 document
@@ -3629,31 +3980,33 @@ document
     } else {
       percent = Number(percentInput.value);
     }
-    void api
-      .addReceivableInterest({
-        receivableId,
-        kind,
-        amountCents,
-        percent,
-        reason: reasonInput.value,
-      })
-      .then(() => {
-        amountInput.value = '';
-        percentInput.value = '';
-        reasonInput.value = '';
-        return api.getSession();
-      })
-      .then((session) =>
-        renderAgenda(session).then(() => renderAdjust(session)),
-      )
-      .catch((error: unknown) => {
-        if (status) {
-          status.textContent =
-            error instanceof Error
-              ? error.message.replace(/^[A-Z_]+:\s*/, '')
-              : 'Não foi possível lançar o juros.';
-        }
-      });
+    busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
+      api
+        .addReceivableInterest({
+          receivableId,
+          kind,
+          amountCents,
+          percent,
+          reason: reasonInput.value,
+        })
+        .then(() => {
+          amountInput.value = '';
+          percentInput.value = '';
+          reasonInput.value = '';
+          return api.getSession();
+        })
+        .then((session) =>
+          renderAgenda(session).then(() => renderAdjust(session)),
+        )
+        .catch((error: unknown) => {
+          if (status) {
+            status.textContent =
+              error instanceof Error
+                ? error.message.replace(/^[A-Z_]+:\s*/, '')
+                : 'Não foi possível lançar o juros.';
+          }
+        }),
+    );
   });
 
 document
@@ -3684,27 +4037,29 @@ document
       }
       return;
     }
-    void api
-      .renegotiateReceivable({
-        receivableId,
-        dueDate: dueDate.value,
-        reason: reasonInput.value,
-      })
-      .then(() => {
-        reasonInput.value = '';
-        return api.getSession();
-      })
-      .then((session) =>
-        renderAgenda(session).then(() => renderAdjust(session)),
-      )
-      .catch((error: unknown) => {
-        if (status) {
-          status.textContent =
-            error instanceof Error
-              ? error.message.replace(/^[A-Z_]+:\s*/, '')
-              : 'Não foi possível renegociar o vencimento.';
-        }
-      });
+    busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
+      api
+        .renegotiateReceivable({
+          receivableId,
+          dueDate: dueDate.value,
+          reason: reasonInput.value,
+        })
+        .then(() => {
+          reasonInput.value = '';
+          return api.getSession();
+        })
+        .then((session) =>
+          renderAgenda(session).then(() => renderAdjust(session)),
+        )
+        .catch((error: unknown) => {
+          if (status) {
+            status.textContent =
+              error instanceof Error
+                ? error.message.replace(/^[A-Z_]+:\s*/, '')
+                : 'Não foi possível renegociar o vencimento.';
+          }
+        }),
+    );
   });
 
 document.querySelector('#student-form')?.addEventListener('submit', (event) => {
@@ -3725,34 +4080,80 @@ document.querySelector('#student-form')?.addEventListener('submit', (event) => {
     classroomSelect instanceof HTMLSelectElement
       ? classroomSelect.value || null
       : null;
-  void api
-    .createStudent({
-      fullName: name.value,
-      birthDate: birth.value || null,
-      approximateAge: approxAge.value ? Number(approxAge.value) : null,
-      approximateAgeReferenceYear: approxYear.value
-        ? Number(approxYear.value)
-        : null,
-      classroomId,
-      startedOn: '2026-08-13',
-    })
-    .then(() => {
-      name.value = '';
-      birth.value = '';
-      approxAge.value = '';
-      approxYear.value = '';
-      return renderStudents(true);
-    })
-    .then(() => api.getSession().then(renderFamily))
-    .catch((error: unknown) => {
-      if (studentsStatus) {
-        studentsStatus.textContent =
-          error instanceof Error
-            ? error.message.replace(/^[A-Z_]+:\s*/, '')
-            : 'Não foi possível cadastrar o aluno.';
-      }
-    });
+  const profile = {
+    fullName: name.value,
+    birthDate: birth.value || null,
+    approximateAge: approxAge.value ? Number(approxAge.value) : null,
+    approximateAgeReferenceYear: approxYear.value
+      ? Number(approxYear.value)
+      : null,
+  };
+  runBusyAction(
+    studentsStatus,
+    submitButton(event),
+    editingStudentId
+      ? 'Não foi possível salvar o aluno.'
+      : 'Não foi possível cadastrar o aluno.',
+    () => {
+      const saved = editingStudentId
+        ? api.updateStudent(editingStudentId, profile).then((student) => {
+            if (classroomId && classroomId !== editingStudentClassroomId) {
+              return api.enrollStudent(student.id, {
+                classroomId,
+                startedOn: '2026-08-13',
+              });
+            }
+            return student;
+          })
+        : api.createStudent({
+            ...profile,
+            classroomId,
+            startedOn: '2026-08-13',
+          });
+      return saved.then(() => {
+        fillStudentForm(null);
+        return renderStudents(true).then(() =>
+          api.getSession().then(renderFamily),
+        );
+      });
+    },
+  );
 });
+
+document.querySelector('#student-cancel')?.addEventListener('click', () => {
+  fillStudentForm(null);
+});
+
+document
+  .querySelector('#classroom-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const name = document.querySelector('#classroom-name');
+    if (!(name instanceof HTMLInputElement) || !name.value.trim()) {
+      return;
+    }
+    runBusyAction(
+      studentsStatus,
+      submitButton(event),
+      'Não foi possível cadastrar a turma.',
+      () =>
+        api.listSchoolYears().then((years) => {
+          const year = years.find((item) => item.active) ?? years[0];
+          if (!year) {
+            throw new Error('Nenhum ano letivo ativo para criar a turma.');
+          }
+          return api
+            .createClassroom({
+              schoolYearId: year.id,
+              name: name.value,
+            })
+            .then(() => {
+              name.value = '';
+              return renderStudents(true);
+            });
+        }),
+    );
+  });
 
 document
   .querySelector('#guardian-form')
@@ -3770,29 +4171,33 @@ document
     ) {
       return;
     }
-    void api
-      .createGuardian({
-        fullName: name.value,
-        phone: phone.value || null,
-        relationLabel: relation.value || null,
-        whatsappEnabled: whatsapp.checked,
-      })
-      .then(() => {
-        name.value = '';
-        phone.value = '';
-        relation.value = '';
-        whatsapp.checked = false;
-        return api.getSession().then(renderFamily);
-      })
-      .catch((error: unknown) => {
-        if (familyStatus) {
-          familyStatus.textContent =
-            error instanceof Error
-              ? error.message.replace(/^[A-Z_]+:\s*/, '')
-              : 'Não foi possível cadastrar o responsável.';
-        }
-      });
+    const fields = {
+      fullName: name.value,
+      phone: phone.value || null,
+      relationLabel: relation.value || null,
+      whatsappEnabled: whatsapp.checked,
+    };
+    runBusyAction(
+      familyStatus,
+      submitButton(event),
+      editingGuardianId
+        ? 'Não foi possível salvar o responsável.'
+        : 'Não foi possível cadastrar o responsável.',
+      () => {
+        const saved = editingGuardianId
+          ? api.updateGuardian(editingGuardianId, fields)
+          : api.createGuardian(fields);
+        return saved.then(() => {
+          fillGuardianForm(null);
+          return api.getSession().then(renderFamily);
+        });
+      },
+    );
   });
+
+document.querySelector('#guardian-cancel')?.addEventListener('click', () => {
+  fillGuardianForm(null);
+});
 
 document
   .querySelector('#age-setting-form')
@@ -3801,22 +4206,20 @@ document
     if (!(ageSettingInput instanceof HTMLInputElement)) {
       return;
     }
-    void api
-      .setRequireGuardianBelowAge(Number(ageSettingInput.value))
-      .then(() =>
-        Promise.all([
-          renderStudents(true),
-          api.getSession().then(renderFamily),
-        ]),
-      )
-      .catch((error: unknown) => {
-        if (familyStatus) {
-          familyStatus.textContent =
-            error instanceof Error
-              ? error.message.replace(/^[A-Z_]+:\s*/, '')
-              : 'Não foi possível salvar a idade.';
-        }
-      });
+    runBusyAction(
+      familyStatus,
+      submitButton(event),
+      'Não foi possível salvar a idade.',
+      () =>
+        api
+          .setRequireGuardianBelowAge(Number(ageSettingInput.value))
+          .then(() =>
+            Promise.all([
+              renderStudents(true),
+              api.getSession().then(renderFamily),
+            ]),
+          ),
+    );
   });
 
 document.querySelector('#product-form')?.addEventListener('submit', (event) => {
@@ -3854,31 +4257,55 @@ document.querySelector('#product-form')?.addEventListener('submit', (event) => {
   const saved = editingProductId
     ? api.updateProduct(editingProductId, fields)
     : api.createProduct(fields);
-  void saved
-    .then(() => {
-      fillProductForm(null);
-      return api
-        .getSession()
-        .then((session) =>
-          Promise.all([
-            renderProducts(session),
-            renderSales(session),
-            renderInventory(session),
-          ]),
-        );
-    })
-    .catch((error: unknown) => {
-      if (productsStatus) {
-        productsStatus.textContent =
-          error instanceof Error
-            ? error.message.replace(/^[A-Z_]+:\s*/, '')
-            : 'Não foi possível salvar o produto.';
-      }
-    });
+  runBusyAction(
+    productsStatus,
+    submitButton(event),
+    'Não foi possível salvar o produto.',
+    () =>
+      saved.then(() => {
+        fillProductForm(null);
+        return api
+          .getSession()
+          .then((session) =>
+            Promise.all([
+              renderProducts(session),
+              renderSales(session),
+              renderInventory(session),
+            ]),
+          );
+      }),
+  );
 });
 
 document.querySelector('#product-cancel')?.addEventListener('click', () => {
   fillProductForm(null);
+});
+
+document
+  .querySelector('#category-form')
+  ?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const name = document.querySelector('#category-name');
+    if (!(name instanceof HTMLInputElement)) {
+      return;
+    }
+    const saved = editingCategoryId
+      ? api.updateCategory(editingCategoryId, name.value)
+      : api.createCategory(name.value);
+    runBusyAction(
+      productsStatus,
+      submitButton(event),
+      'Não foi possível salvar a categoria.',
+      () =>
+        saved.then(() => {
+          fillCategoryForm(null);
+          return api.getSession().then(renderProducts);
+        }),
+    );
+  });
+
+document.querySelector('#category-cancel')?.addEventListener('click', () => {
+  fillCategoryForm(null);
 });
 
 document.querySelector('#ad-hoc-form')?.addEventListener('submit', (event) => {
@@ -3898,24 +4325,26 @@ document.querySelector('#ad-hoc-form')?.addEventListener('submit', (event) => {
     }
     return;
   }
-  void api
-    .createAdHocItem({
-      name: name.value,
-      priceCents: cents.data,
-    })
-    .then(() => {
-      name.value = '';
-      price.value = '';
-      return api.getSession().then(renderProducts);
-    })
-    .catch((error: unknown) => {
-      if (adHocStatus) {
-        adHocStatus.textContent =
-          error instanceof Error
-            ? error.message.replace(/^[A-Z_]+:\s*/, '')
-            : 'Não foi possível registrar o item avulso.';
-      }
-    });
+  busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
+    api
+      .createAdHocItem({
+        name: name.value,
+        priceCents: cents.data,
+      })
+      .then(() => {
+        name.value = '';
+        price.value = '';
+        return api.getSession().then(renderProducts);
+      })
+      .catch((error: unknown) => {
+        if (adHocStatus) {
+          adHocStatus.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível registrar o item avulso.';
+        }
+      }),
+  );
 });
 
 document
@@ -3931,25 +4360,27 @@ document
     ) {
       return;
     }
-    void api
-      .adjustInventory({
-        productId: inventoryAdjustProduct.value,
-        quantityDelta: Number(delta.value),
-        reason: reason.value,
-      })
-      .then(() => {
-        delta.value = '';
-        reason.value = '';
-        return api.getSession().then(renderInventory);
-      })
-      .catch((error: unknown) => {
-        if (inventoryStatus) {
-          inventoryStatus.textContent =
-            error instanceof Error
-              ? error.message.replace(/^[A-Z_]+:\s*/, '')
-              : 'Não foi possível ajustar o estoque.';
-        }
-      });
+    busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
+      api
+        .adjustInventory({
+          productId: inventoryAdjustProduct.value,
+          quantityDelta: Number(delta.value),
+          reason: reason.value,
+        })
+        .then(() => {
+          delta.value = '';
+          reason.value = '';
+          return api.getSession().then(renderInventory);
+        })
+        .catch((error: unknown) => {
+          if (inventoryStatus) {
+            inventoryStatus.textContent =
+              error instanceof Error
+                ? error.message.replace(/^[A-Z_]+:\s*/, '')
+                : 'Não foi possível ajustar o estoque.';
+          }
+        }),
+    );
   });
 
 document
@@ -3968,17 +4399,19 @@ document
       }
       return;
     }
-    void api
-      .openCashSession({ openingFloatCents: parsed.data })
-      .then(() => api.getSession().then(renderCash))
-      .catch((error: unknown) => {
-        if (cashStatus) {
-          cashStatus.textContent =
-            error instanceof Error
-              ? error.message.replace(/^[A-Z_]+:\s*/, '')
-              : 'Não foi possível abrir o caixa.';
-        }
-      });
+    busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
+      api
+        .openCashSession({ openingFloatCents: parsed.data })
+        .then(() => api.getSession().then(renderCash))
+        .catch((error: unknown) => {
+          if (cashStatus) {
+            cashStatus.textContent =
+              error instanceof Error
+                ? error.message.replace(/^[A-Z_]+:\s*/, '')
+                : 'Não foi possível abrir o caixa.';
+          }
+        }),
+    );
   });
 
 document
@@ -4000,21 +4433,23 @@ document
       }
       return;
     }
-    void api
-      .addCashForChange({ amountCents: parsed.data, note: noteInput.value })
-      .then(() => {
-        amountInput.value = '';
-        noteInput.value = '';
-        return api.getSession().then(renderCash);
-      })
-      .catch((error: unknown) => {
-        if (cashStatus) {
-          cashStatus.textContent =
-            error instanceof Error
-              ? error.message.replace(/^[A-Z_]+:\s*/, '')
-              : 'Não foi possível adicionar troco.';
-        }
-      });
+    busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
+      api
+        .addCashForChange({ amountCents: parsed.data, note: noteInput.value })
+        .then(() => {
+          amountInput.value = '';
+          noteInput.value = '';
+          return api.getSession().then(renderCash);
+        })
+        .catch((error: unknown) => {
+          if (cashStatus) {
+            cashStatus.textContent =
+              error instanceof Error
+                ? error.message.replace(/^[A-Z_]+:\s*/, '')
+                : 'Não foi possível adicionar troco.';
+          }
+        }),
+    );
   });
 
 document
@@ -4036,21 +4471,23 @@ document
       }
       return;
     }
-    void api
-      .removeCash({ amountCents: parsed.data, note: noteInput.value })
-      .then(() => {
-        amountInput.value = '';
-        noteInput.value = '';
-        return api.getSession().then(renderCash);
-      })
-      .catch((error: unknown) => {
-        if (cashStatus) {
-          cashStatus.textContent =
-            error instanceof Error
-              ? error.message.replace(/^[A-Z_]+:\s*/, '')
-              : 'Não foi possível retirar dinheiro.';
-        }
-      });
+    busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
+      api
+        .removeCash({ amountCents: parsed.data, note: noteInput.value })
+        .then(() => {
+          amountInput.value = '';
+          noteInput.value = '';
+          return api.getSession().then(renderCash);
+        })
+        .catch((error: unknown) => {
+          if (cashStatus) {
+            cashStatus.textContent =
+              error instanceof Error
+                ? error.message.replace(/^[A-Z_]+:\s*/, '')
+                : 'Não foi possível retirar dinheiro.';
+          }
+        }),
+    );
   });
 
 document
@@ -4072,24 +4509,26 @@ document
       }
       return;
     }
-    void api
-      .closeCashSession({
-        countedCents: parsed.data,
-        note: noteInput.value,
-      })
-      .then(() => {
-        countedInput.value = '';
-        noteInput.value = '';
-        return api.getSession().then(renderCash);
-      })
-      .catch((error: unknown) => {
-        if (cashStatus) {
-          cashStatus.textContent =
-            error instanceof Error
-              ? error.message.replace(/^[A-Z_]+:\s*/, '')
-              : 'Não foi possível fechar o caixa.';
-        }
-      });
+    busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
+      api
+        .closeCashSession({
+          countedCents: parsed.data,
+          note: noteInput.value,
+        })
+        .then(() => {
+          countedInput.value = '';
+          noteInput.value = '';
+          return api.getSession().then(renderCash);
+        })
+        .catch((error: unknown) => {
+          if (cashStatus) {
+            cashStatus.textContent =
+              error instanceof Error
+                ? error.message.replace(/^[A-Z_]+:\s*/, '')
+                : 'Não foi possível fechar o caixa.';
+          }
+        }),
+    );
   });
 
 reverseSaleId?.addEventListener('change', () => {
@@ -4183,47 +4622,49 @@ document
       reversalsStatus.textContent = 'Escolha a forma da devolução.';
       return;
     }
-    void api
-      .reverseSale({
-        saleId: reverseSaleId.value,
-        refundMethod:
-          refundMethod === 'pix' || refundMethod === 'cash'
-            ? refundMethod
-            : null,
-        confirmDifferentMethod:
-          reverseSaleDifferent instanceof HTMLInputElement &&
-          reverseSaleDifferent.checked,
-        returnItemsToStock:
-          stockChoice instanceof HTMLInputElement &&
-          stockChoice.value === 'yes',
-        reason,
-      })
-      .then(() => {
-        reverseSaleId.value = '';
-        if (reverseSaleMethod instanceof HTMLSelectElement) {
-          reverseSaleMethod.value = '';
-        }
-        if (reverseSaleDifferent instanceof HTMLInputElement) {
-          reverseSaleDifferent.checked = false;
-        }
-        if (reverseSaleReason instanceof HTMLTextAreaElement) {
-          reverseSaleReason.value = '';
-        }
-        document
-          .querySelectorAll<HTMLInputElement>('input[name="return-stock"]')
-          .forEach((input) => {
-            input.checked = false;
-          });
-        return refreshAfterReversal(
-          'Venda estornada; original e efeitos permanecem auditáveis.',
-        );
-      })
-      .catch((error: unknown) => {
-        reversalsStatus.textContent =
-          error instanceof Error
-            ? error.message.replace(/^[A-Z_]+:\s*/, '')
-            : 'Não foi possível estornar a venda.';
-      });
+    busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
+      api
+        .reverseSale({
+          saleId: reverseSaleId.value,
+          refundMethod:
+            refundMethod === 'pix' || refundMethod === 'cash'
+              ? refundMethod
+              : null,
+          confirmDifferentMethod:
+            reverseSaleDifferent instanceof HTMLInputElement &&
+            reverseSaleDifferent.checked,
+          returnItemsToStock:
+            stockChoice instanceof HTMLInputElement &&
+            stockChoice.value === 'yes',
+          reason,
+        })
+        .then(() => {
+          reverseSaleId.value = '';
+          if (reverseSaleMethod instanceof HTMLSelectElement) {
+            reverseSaleMethod.value = '';
+          }
+          if (reverseSaleDifferent instanceof HTMLInputElement) {
+            reverseSaleDifferent.checked = false;
+          }
+          if (reverseSaleReason instanceof HTMLTextAreaElement) {
+            reverseSaleReason.value = '';
+          }
+          document
+            .querySelectorAll<HTMLInputElement>('input[name="return-stock"]')
+            .forEach((input) => {
+              input.checked = false;
+            });
+          return refreshAfterReversal(
+            'Venda estornada; original e efeitos permanecem auditáveis.',
+          );
+        })
+        .catch((error: unknown) => {
+          reversalsStatus.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível estornar a venda.';
+        }),
+    );
   });
 
 document
@@ -4245,33 +4686,35 @@ document
       reversePaymentMethod instanceof HTMLSelectElement
         ? reversePaymentMethod.value
         : 'pix';
-    void api
-      .reversePayment({
-        paymentId: reversePaymentId.value,
-        refundMethod: method === 'cash' ? 'cash' : 'pix',
-        confirmDifferentMethod:
-          reversePaymentDifferent instanceof HTMLInputElement &&
-          reversePaymentDifferent.checked,
-        reason,
-      })
-      .then(() => {
-        reversePaymentId.value = '';
-        if (reversePaymentDifferent instanceof HTMLInputElement) {
-          reversePaymentDifferent.checked = false;
-        }
-        if (reversePaymentReason instanceof HTMLTextAreaElement) {
-          reversePaymentReason.value = '';
-        }
-        return refreshAfterReversal(
-          'Pagamento estornado; as dívidas correspondentes foram recalculadas.',
-        );
-      })
-      .catch((error: unknown) => {
-        reversalsStatus.textContent =
-          error instanceof Error
-            ? error.message.replace(/^[A-Z_]+:\s*/, '')
-            : 'Não foi possível estornar o pagamento.';
-      });
+    busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
+      api
+        .reversePayment({
+          paymentId: reversePaymentId.value,
+          refundMethod: method === 'cash' ? 'cash' : 'pix',
+          confirmDifferentMethod:
+            reversePaymentDifferent instanceof HTMLInputElement &&
+            reversePaymentDifferent.checked,
+          reason,
+        })
+        .then(() => {
+          reversePaymentId.value = '';
+          if (reversePaymentDifferent instanceof HTMLInputElement) {
+            reversePaymentDifferent.checked = false;
+          }
+          if (reversePaymentReason instanceof HTMLTextAreaElement) {
+            reversePaymentReason.value = '';
+          }
+          return refreshAfterReversal(
+            'Pagamento estornado; as dívidas correspondentes foram recalculadas.',
+          );
+        })
+        .catch((error: unknown) => {
+          reversalsStatus.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível estornar o pagamento.';
+        }),
+    );
   });
 
 document
@@ -4294,33 +4737,35 @@ document
       reverseCreditMethod instanceof HTMLSelectElement
         ? reverseCreditMethod.value
         : 'pix';
-    void api
-      .reverseCreditRefund({
-        creditMovementId: reverseCreditId.value,
-        recoveryMethod: method === 'cash' ? 'cash' : 'pix',
-        confirmDifferentMethod:
-          reverseCreditDifferent instanceof HTMLInputElement &&
-          reverseCreditDifferent.checked,
-        reason,
-      })
-      .then(() => {
-        reverseCreditId.value = '';
-        if (reverseCreditDifferent instanceof HTMLInputElement) {
-          reverseCreditDifferent.checked = false;
-        }
-        if (reverseCreditReason instanceof HTMLTextAreaElement) {
-          reverseCreditReason.value = '';
-        }
-        return refreshAfterReversal(
-          'Devolução de crédito estornada e saldo restaurado.',
-        );
-      })
-      .catch((error: unknown) => {
-        reversalsStatus.textContent =
-          error instanceof Error
-            ? error.message.replace(/^[A-Z_]+:\s*/, '')
-            : 'Não foi possível estornar a devolução de crédito.';
-      });
+    busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
+      api
+        .reverseCreditRefund({
+          creditMovementId: reverseCreditId.value,
+          recoveryMethod: method === 'cash' ? 'cash' : 'pix',
+          confirmDifferentMethod:
+            reverseCreditDifferent instanceof HTMLInputElement &&
+            reverseCreditDifferent.checked,
+          reason,
+        })
+        .then(() => {
+          reverseCreditId.value = '';
+          if (reverseCreditDifferent instanceof HTMLInputElement) {
+            reverseCreditDifferent.checked = false;
+          }
+          if (reverseCreditReason instanceof HTMLTextAreaElement) {
+            reverseCreditReason.value = '';
+          }
+          return refreshAfterReversal(
+            'Devolução de crédito estornada e saldo restaurado.',
+          );
+        })
+        .catch((error: unknown) => {
+          reversalsStatus.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível estornar a devolução de crédito.';
+        }),
+    );
   });
 
 document
@@ -4339,75 +4784,88 @@ document
     ) {
       return;
     }
-    void api
-      .createReservationSlot({
-        label: label.value,
-        cutoffTime: cutoff.value,
-        pickupStartTime: start.value,
-        pickupEndTime: end.value,
-      })
-      .then(() => {
-        label.value = '';
-        cutoff.value = '';
-        start.value = '';
-        end.value = '';
-        return refreshAfterReservation('Recreio criado.');
-      })
-      .catch((error: unknown) => {
-        if (reservationsStatus) {
-          reservationsStatus.textContent =
-            error instanceof Error
-              ? error.message.replace(/^[A-Z_]+:\s*/, '')
-              : 'Não foi possível criar o recreio.';
-        }
-      });
+    busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
+      api
+        .createReservationSlot({
+          label: label.value,
+          cutoffTime: cutoff.value,
+          pickupStartTime: start.value,
+          pickupEndTime: end.value,
+        })
+        .then(() => {
+          label.value = '';
+          cutoff.value = '';
+          start.value = '';
+          end.value = '';
+          return refreshAfterReservation('Recreio criado.');
+        })
+        .catch((error: unknown) => {
+          if (reservationsStatus) {
+            reservationsStatus.textContent =
+              error instanceof Error
+                ? error.message.replace(/^[A-Z_]+:\s*/, '')
+                : 'Não foi possível criar o recreio.';
+          }
+        }),
+    );
   });
 
 document
   .querySelector('#reservation-create-form')
   ?.addEventListener('submit', (event) => {
     event.preventDefault();
-    const name = document.querySelector('#reservation-student-name');
     const classroom = document.querySelector('#reservation-classroom');
     const quantity = document.querySelector('#reservation-quantity');
     if (
       !(reservationSlotId instanceof HTMLSelectElement) ||
       !(reservationProduct instanceof HTMLSelectElement) ||
-      !(name instanceof HTMLInputElement) ||
+      !(reservationStudentSelect instanceof HTMLSelectElement) ||
       !(classroom instanceof HTMLInputElement) ||
       !(quantity instanceof HTMLInputElement)
     ) {
       return;
     }
-    void api
-      .createReservation({
-        requestId: createRequestId(),
-        slotId: reservationSlotId.value,
-        studentNameText: name.value,
-        classroomText: classroom.value,
-        items: [
-          {
-            productId: reservationProduct.value,
-            quantity: Number(quantity.value),
-          },
-        ],
-      })
-      .then(() => {
-        name.value = '';
-        classroom.value = '';
-        quantity.value = '1';
-        return refreshAfterReservation(
-          'Reserva confirmada; o original e a disponibilidade permanecem auditáveis.',
-        );
-      })
-      .catch((error: unknown) => {
-        if (reservationsStatus) {
-          reservationsStatus.textContent =
-            error instanceof Error
-              ? error.message.replace(/^[A-Z_]+:\s*/, '')
-              : 'Não foi possível confirmar a reserva.';
-        }
-      });
+    const student = reservationStudents.find(
+      (item) => item.id === reservationStudentSelect.value,
+    );
+    if (!student) {
+      if (reservationsStatus) {
+        reservationsStatus.textContent = 'Escolha o aluno cadastrado.';
+      }
+      return;
+    }
+    runBusyAction(
+      reservationsStatus,
+      submitButton(event),
+      'Não foi possível confirmar a reserva.',
+      () =>
+        api
+          .createReservation({
+            requestId: createRequestId(),
+            slotId: reservationSlotId.value,
+            studentNameText: student.fullName,
+            classroomText: classroom.value,
+            linkedStudentId: student.id,
+            items: [
+              {
+                productId: reservationProduct.value,
+                quantity: Number(quantity.value),
+              },
+            ],
+          })
+          .then(() => {
+            if (reservationStudentSearch instanceof HTMLInputElement) {
+              reservationStudentSearch.value = '';
+            }
+            reservationStudentSelect.value = '';
+            classroom.value = '';
+            quantity.value = '1';
+            fillReservationStudentOptions();
+            return refreshAfterReservation(
+              'Reserva confirmada; o original e a disponibilidade permanecem auditáveis.',
+            );
+          }),
+    );
   });
 
 reservationsList?.addEventListener('click', (event) => {
@@ -4452,20 +4910,22 @@ reservationsList?.addEventListener('click', (event) => {
       }
       return;
     }
-    void api
-      .linkReservationStudent({
-        reservationId,
-        studentId: reservationLinkStudent.value,
-      })
-      .then(() => refreshAfterReservation('Aluno vinculado à reserva.'))
-      .catch((error: unknown) => {
-        if (reservationsStatus) {
-          reservationsStatus.textContent =
-            error instanceof Error
-              ? error.message.replace(/^[A-Z_]+:\s*/, '')
-              : 'Não foi possível vincular o aluno.';
-        }
-      });
+    busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
+      api
+        .linkReservationStudent({
+          reservationId,
+          studentId: reservationLinkStudent.value,
+        })
+        .then(() => refreshAfterReservation('Aluno vinculado à reserva.'))
+        .catch((error: unknown) => {
+          if (reservationsStatus) {
+            reservationsStatus.textContent =
+              error instanceof Error
+                ? error.message.replace(/^[A-Z_]+:\s*/, '')
+                : 'Não foi possível vincular o aluno.';
+          }
+        }),
+    );
     return;
   }
   if (action === 'fulfill') {
@@ -4487,21 +4947,23 @@ reservationsList?.addEventListener('click', (event) => {
     }
     saleSourceReservationId = entry.id;
     openArea('sales');
-    void api.getSession().then((session) =>
-      renderSales(session).then(() => {
-        if (
-          entry.linkedStudentId &&
-          saleStudentSelect instanceof HTMLSelectElement
-        ) {
-          saleStudentSelect.value = entry.linkedStudentId;
-          fillSaleAccounts();
-        }
-        renderCart();
-        if (salesStatus) {
-          salesStatus.textContent =
-            'Entrega da reserva. Escolha o pagamento e confirme a venda.';
-        }
-      }),
+    busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
+      api.getSession().then((session) =>
+        renderSales(session).then(() => {
+          if (
+            entry.linkedStudentId &&
+            saleStudentSelect instanceof HTMLSelectElement
+          ) {
+            saleStudentSelect.value = entry.linkedStudentId;
+            fillSaleAccounts();
+          }
+          renderCart();
+          if (salesStatus) {
+            salesStatus.textContent =
+              'Entrega da reserva. Escolha o pagamento e confirme a venda.';
+          }
+        }),
+      ),
     );
     return;
   }
@@ -4518,25 +4980,22 @@ reservationsList?.addEventListener('click', (event) => {
           reservationId,
           reason,
         });
-  void request
-    .then(() => {
-      if (reasonInput instanceof HTMLInputElement) {
-        reasonInput.value = '';
-      }
-      return refreshAfterReservation(
-        action === 'no-show'
-          ? 'Não retirada registrada; a disponibilidade foi liberada.'
-          : 'Reserva cancelada; a disponibilidade foi liberada.',
-      );
-    })
-    .catch((error: unknown) => {
-      if (reservationsStatus) {
-        reservationsStatus.textContent =
-          error instanceof Error
-            ? error.message.replace(/^[A-Z_]+:\s*/, '')
-            : 'Não foi possível atualizar a reserva.';
-      }
-    });
+  runBusyAction(
+    reservationsStatus,
+    event.target instanceof HTMLButtonElement ? event.target : null,
+    'Não foi possível atualizar a reserva.',
+    () =>
+      request.then(() => {
+        if (reasonInput instanceof HTMLInputElement) {
+          reasonInput.value = '';
+        }
+        return refreshAfterReservation(
+          action === 'no-show'
+            ? 'Não retirada registrada; a disponibilidade foi liberada.'
+            : 'Reserva cancelada; a disponibilidade foi liberada.',
+        );
+      }),
+  );
 });
 
 reservationFilterSlot?.addEventListener('change', () => {
@@ -4544,6 +5003,12 @@ reservationFilterSlot?.addEventListener('change', () => {
 });
 reservationSearch?.addEventListener('input', () => {
   paintReservationQueue();
+});
+reservationStudentSearch?.addEventListener('input', () => {
+  fillReservationStudentOptions();
+});
+reservationStudentSelect?.addEventListener('change', () => {
+  applyReservationStudentSelection();
 });
 
 reservationEditForm?.addEventListener('submit', (event) => {
@@ -4566,26 +5031,28 @@ reservationEditForm?.addEventListener('submit', (event) => {
     }
     return;
   }
-  void api
-    .updateReservation({
-      requestId: createRequestId(),
-      reservationId: editId.value,
-      studentNameText: editName.value,
-      classroomText: editClassroom.value,
-      contactOptional: editContact.value,
-    })
-    .then(() => {
-      editId.value = '';
-      return refreshAfterReservation('Reserva alterada.');
-    })
-    .catch((error: unknown) => {
-      if (reservationsStatus) {
-        reservationsStatus.textContent =
-          error instanceof Error
-            ? error.message.replace(/^[A-Z_]+:\s*/, '')
-            : 'Não foi possível alterar a reserva.';
-      }
-    });
+  busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
+    api
+      .updateReservation({
+        requestId: createRequestId(),
+        reservationId: editId.value,
+        studentNameText: editName.value,
+        classroomText: editClassroom.value,
+        contactOptional: editContact.value,
+      })
+      .then(() => {
+        editId.value = '';
+        return refreshAfterReservation('Reserva alterada.');
+      })
+      .catch((error: unknown) => {
+        if (reservationsStatus) {
+          reservationsStatus.textContent =
+            error instanceof Error
+              ? error.message.replace(/^[A-Z_]+:\s*/, '')
+              : 'Não foi possível alterar a reserva.';
+        }
+      }),
+  );
 });
 
 document
@@ -4612,49 +5079,51 @@ document
     ) {
       return;
     }
-    void api
-      .createPublicReservation({
-        requestId: createRequestId(),
-        slotId: slot.value,
-        studentNameText: name.value,
-        classroomText: classroom.value,
-        contactOptional: contact.value,
-        website: honeypot instanceof HTMLInputElement ? honeypot.value : '',
-        items: [
-          {
-            productId: product.value,
-            quantity: Number(quantity.value),
-          },
-        ],
-      })
-      .then((created) => {
-        name.value = '';
-        classroom.value = '';
-        contact.value = '';
-        quantity.value = '1';
-        if (code instanceof HTMLElement) {
-          code.hidden = false;
-          code.textContent = created.publicCodeLabel;
-        }
-        if (confirmation instanceof HTMLElement) {
-          confirmation.hidden = false;
-          confirmation.textContent = created.summaryLabel;
-        }
-        return renderPublicPortal().then(() => {
+    busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
+      api
+        .createPublicReservation({
+          requestId: createRequestId(),
+          slotId: slot.value,
+          studentNameText: name.value,
+          classroomText: classroom.value,
+          contactOptional: contact.value,
+          website: honeypot instanceof HTMLInputElement ? honeypot.value : '',
+          items: [
+            {
+              productId: product.value,
+              quantity: Number(quantity.value),
+            },
+          ],
+        })
+        .then((created) => {
+          name.value = '';
+          classroom.value = '';
+          contact.value = '';
+          quantity.value = '1';
+          if (code instanceof HTMLElement) {
+            code.hidden = false;
+            code.textContent = created.publicCodeLabel;
+          }
+          if (confirmation instanceof HTMLElement) {
+            confirmation.hidden = false;
+            confirmation.textContent = created.summaryLabel;
+          }
+          return renderPublicPortal().then(() => {
+            if (status) {
+              status.textContent =
+                'Reserva enviada. Guarde o código para a retirada.';
+            }
+          });
+        })
+        .catch((error: unknown) => {
           if (status) {
             status.textContent =
-              'Reserva enviada. Guarde o código para a retirada.';
+              error instanceof Error
+                ? error.message.replace(/^[A-Z_]+:\s*/, '')
+                : 'Não foi possível enviar a reserva.';
           }
-        });
-      })
-      .catch((error: unknown) => {
-        if (status) {
-          status.textContent =
-            error instanceof Error
-              ? error.message.replace(/^[A-Z_]+:\s*/, '')
-              : 'Não foi possível enviar a reserva.';
-        }
-      });
+        }),
+    );
   });
 
 void api
