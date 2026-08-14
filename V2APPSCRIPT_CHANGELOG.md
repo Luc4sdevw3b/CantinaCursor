@@ -43,7 +43,7 @@ Regras:
 ### Testes
 
 - typecheck, lint, format, Vitest (207) e E2E local (34) passaram.
-- E2E remoto: health smoke e reserva pública no deployment novo após `clasp push` + `clasp deploy`.
+- E2E remoto: o primeiro smoke do portal falhou com `INVENTORY_DAY_NOT_OPEN` porque a planilha E2E guarda `business_date` como Date; a leitura passou a normalizar para `YYYY-MM-DD`. Health e reserva pública no deployment seguinte.
 
 ## 2026-08-13 19:10 — Implementada a Fase 23: recreios e reservas
 

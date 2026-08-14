@@ -678,7 +678,9 @@ function listSheetRecords(sheet, headers) {
     .map(function (row) {
       const record = {};
       headers.forEach(function (header, index) {
-        record[header] = String(row[index] || '');
+        const raw = row[index];
+        record[header] =
+          header === 'business_date' ? toCivilDateGs(raw) : String(raw || '');
       });
       return record;
     });
@@ -1739,6 +1741,21 @@ function prepareRestore(sessionToken, backupId, confirmed) {
 
 function todayCivil() {
   return Utilities.formatDate(new Date(), 'America/Sao_Paulo', 'yyyy-MM-dd');
+}
+
+function toCivilDateGs(value) {
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, 'America/Sao_Paulo', 'yyyy-MM-dd');
+  }
+  const text = String(value || '').trim();
+  if (isCivilDate(text)) {
+    return text;
+  }
+  const parsed = new Date(text);
+  if (text && !isNaN(parsed.getTime())) {
+    return Utilities.formatDate(parsed, 'America/Sao_Paulo', 'yyyy-MM-dd');
+  }
+  return text;
 }
 
 function isCivilDate(value) {
@@ -8298,7 +8315,14 @@ function ensureE2EPublicCatalogUnlocked() {
   }
   const today = todayCivil();
   if (!findInventoryDayGs(today)) {
-    seedE2EInventoryUnlocked();
+    try {
+      seedE2EInventoryUnlocked();
+    } catch (error) {
+      const message = String(error && error.message ? error.message : error);
+      if (message.indexOf('INVENTORY_DAY_ALREADY_OPEN') === -1) {
+        throw error;
+      }
+    }
   }
   const slotsToday = latestRecordsById(listReservationSlotRecords()).filter(
     function (item) {
@@ -8402,9 +8426,11 @@ function toPublicConfirmationGs(requestId) {
 }
 
 function getPublicReservationPortal() {
-  setupSchema();
-  ensureE2EPublicCatalogUnlocked();
-  return toPublicPortalGs();
+  return withScriptLock(function () {
+    setupSchema();
+    ensureE2EPublicCatalogUnlocked();
+    return toPublicPortalGs();
+  });
 }
 
 function createPublicReservation(payload) {
