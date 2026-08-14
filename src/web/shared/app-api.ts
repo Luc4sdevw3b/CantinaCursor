@@ -663,6 +663,60 @@ export interface PublicReservationConfirmation {
   summaryLabel: string;
 }
 
+export interface SaleScreenData {
+  products: Product[];
+  students: StudentSummary[];
+  sales: Sale[];
+  pixCopyText: string;
+  dueDateShortcuts: DueDateShortcuts;
+  siblingAuthorizations: SiblingAuthorization[];
+  reservations: ReservationsSetup;
+  inventory: InventoryBalances;
+  receivables: ReceivableAgenda;
+  cash: CashSetup;
+}
+
+export interface SaleResult extends Sale {
+  screen?: SaleScreenData;
+}
+
+export interface StudentsScreenData {
+  students: StudentSummary[];
+  classrooms: Classroom[];
+}
+
+export interface FamilyScreenData {
+  guardians: Guardian[];
+  students: StudentSummary[];
+  siblingAuthorizations: SiblingAuthorization[];
+  settings: GuardianSettings;
+}
+
+export interface CatalogScreenData {
+  categories: ProductCategory[];
+  products: Product[];
+  adHocItems: AdHocItem[];
+}
+
+export interface PaymentsScreenData {
+  students: StudentSummary[];
+  payments: Payment[];
+  guardians: Guardian[];
+  links: StudentGuardianLink[];
+  receivables: ReceivableAgenda;
+}
+
+export interface CreditsScreenData {
+  students: StudentSummary[];
+  guardians: Guardian[];
+  accounts: CreditAccount[];
+}
+
+export interface ReservationScreenData {
+  setup: ReservationsSetup;
+  students: StudentSummary[];
+}
+
 /**
  * Contrato técnico da Fase 26.
  * Portal público não expõe cadastro privado. Sem envio de WhatsApp.
@@ -745,7 +799,14 @@ export interface AppApi {
   listInventoryBalances(businessDate?: string): Promise<InventoryBalances>;
   adjustInventory(input: AdjustInventoryInput): Promise<InventoryBalances>;
   listInventoryMovements(businessDate?: string): Promise<InventoryMovement[]>;
-  createSale(input: CreateSaleInput): Promise<Sale>;
+  getSaleScreenData(): Promise<SaleScreenData>;
+  getStudentsScreenData(): Promise<StudentsScreenData>;
+  getFamilyScreenData(): Promise<FamilyScreenData>;
+  getCatalogScreenData(): Promise<CatalogScreenData>;
+  getPaymentsScreenData(): Promise<PaymentsScreenData>;
+  getCreditsScreenData(): Promise<CreditsScreenData>;
+  getReservationScreenData(): Promise<ReservationScreenData>;
+  createSale(input: CreateSaleInput): Promise<SaleResult>;
   listSales(): Promise<Sale[]>;
   getPixCopyText(): Promise<{ text: string }>;
   listReceivables(): Promise<ReceivableAgenda>;

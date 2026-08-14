@@ -58,6 +58,14 @@ import type {
   LinkReservationStudentInput,
   PublicReservationConfirmation,
   PublicReservationPortal,
+  SaleResult,
+  SaleScreenData,
+  StudentsScreenData,
+  FamilyScreenData,
+  CatalogScreenData,
+  PaymentsScreenData,
+  CreditsScreenData,
+  ReservationScreenData,
 } from './app-api';
 
 export const SESSION_TOKEN_STORAGE_KEY = 'cantina.sessionToken';
@@ -159,6 +167,13 @@ export interface GoogleScriptRunner {
   linkReservationStudent(token: string, payload: unknown): void;
   getPublicReservationPortal(): void;
   createPublicReservation(payload: unknown): void;
+  getSaleScreenData(token: string): void;
+  getStudentsScreenData(token: string): void;
+  getFamilyScreenData(token: string): void;
+  getCatalogScreenData(token: string): void;
+  getPaymentsScreenData(token: string): void;
+  getCreditsScreenData(token: string): void;
+  getReservationScreenData(token: string): void;
 }
 
 export type SessionTokenStorage = Pick<
@@ -645,12 +660,54 @@ export class GoogleScriptAppApi implements AppApi {
     );
   }
 
-  createSale(input: CreateSaleInput): Promise<Sale> {
+  createSale(input: CreateSaleInput): Promise<SaleResult> {
     return this.callWithToken((runner, token) =>
       runner.createSale(token, {
         ...input,
         requestId: crypto.randomUUID(),
       }),
+    );
+  }
+
+  getSaleScreenData(): Promise<SaleScreenData> {
+    return this.callWithToken((runner, token) =>
+      runner.getSaleScreenData(token),
+    );
+  }
+
+  getStudentsScreenData(): Promise<StudentsScreenData> {
+    return this.callWithToken((runner, token) =>
+      runner.getStudentsScreenData(token),
+    );
+  }
+
+  getFamilyScreenData(): Promise<FamilyScreenData> {
+    return this.callWithToken((runner, token) =>
+      runner.getFamilyScreenData(token),
+    );
+  }
+
+  getCatalogScreenData(): Promise<CatalogScreenData> {
+    return this.callWithToken((runner, token) =>
+      runner.getCatalogScreenData(token),
+    );
+  }
+
+  getPaymentsScreenData(): Promise<PaymentsScreenData> {
+    return this.callWithToken((runner, token) =>
+      runner.getPaymentsScreenData(token),
+    );
+  }
+
+  getCreditsScreenData(): Promise<CreditsScreenData> {
+    return this.callWithToken((runner, token) =>
+      runner.getCreditsScreenData(token),
+    );
+  }
+
+  getReservationScreenData(): Promise<ReservationScreenData> {
+    return this.callWithToken((runner, token) =>
+      runner.getReservationScreenData(token),
     );
   }
 

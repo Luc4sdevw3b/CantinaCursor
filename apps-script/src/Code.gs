@@ -582,6 +582,41 @@ const OPERATION_COMPLETED = 'completed';
 const REQUEST_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SCRIPT_LOCK_TIMEOUT_MS = 30000;
+const CATALOG_CACHE_KEY = 'catalog:' + CURRENT_SCHEMA_VERSION;
+const SCHEMA_CACHE_KEY = 'schema:' + CURRENT_SCHEMA_VERSION;
+
+var cachedSpreadsheet = null;
+var namedSheetCache = {};
+var sheetRecordsCache = {};
+var sheetRecordsCacheEnabled = true;
+var schemaEnsured = false;
+var perfCounters = {
+  sheetReads: 0,
+  sheetWrites: 0,
+  lockWaitMs: 0,
+};
+
+function resetPerfCounters() {
+  perfCounters = { sheetReads: 0, sheetWrites: 0, lockWaitMs: 0 };
+}
+
+function logPerf(operation, startedAt) {
+  if (CANTINA_ENVIRONMENT === 'PROD') {
+    return;
+  }
+  Logger.log(
+    'PERF op=' +
+      operation +
+      ' totalMs=' +
+      (Date.now() - startedAt) +
+      ' sheetReads=' +
+      perfCounters.sheetReads +
+      ' sheetWrites=' +
+      perfCounters.sheetWrites +
+      ' lockWaitMs=' +
+      perfCounters.lockWaitMs,
+  );
+}
 
 function doGet(e) {
   ensureE2EConfigured();
@@ -646,18 +681,28 @@ function openConfiguredSpreadsheet() {
   if (!spreadsheetId) {
     throw new Error('CONFIGURATION_ERROR: SPREADSHEET_ID não configurado.');
   }
-  return SpreadsheetApp.openById(spreadsheetId);
+  if (!cachedSpreadsheet) {
+    cachedSpreadsheet = SpreadsheetApp.openById(spreadsheetId);
+  }
+  return cachedSpreadsheet;
 }
 
 function withScriptLock(work) {
   const lock = LockService.getScriptLock();
+  const waitStarted = Date.now();
   if (!lock.tryLock(SCRIPT_LOCK_TIMEOUT_MS)) {
     throw new Error('LOCK_TIMEOUT: não foi possível obter o lock.');
   }
+  perfCounters.lockWaitMs += Date.now() - waitStarted;
+  const previousCache = sheetRecordsCacheEnabled;
+  sheetRecordsCacheEnabled = false;
+  sheetRecordsCache = {};
   try {
     return work();
   } finally {
     lock.releaseLock();
+    sheetRecordsCacheEnabled = previousCache;
+    sheetRecordsCache = {};
   }
 }
 
@@ -670,11 +715,20 @@ function throwAuthError(code, message) {
 }
 
 function listSheetRecords(sheet, headers) {
+  const cacheKey = sheet.getName();
+  if (sheetRecordsCacheEnabled && sheetRecordsCache[cacheKey]) {
+    return sheetRecordsCache[cacheKey];
+  }
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) {
-    return [];
+    const empty = [];
+    if (sheetRecordsCacheEnabled) {
+      sheetRecordsCache[cacheKey] = empty;
+    }
+    return empty;
   }
-  return sheet
+  perfCounters.sheetReads += 1;
+  const records = sheet
     .getRange(2, 1, lastRow - 1, headers.length)
     .getValues()
     .map(function (row) {
@@ -686,6 +740,10 @@ function listSheetRecords(sheet, headers) {
       });
       return record;
     });
+  if (sheetRecordsCacheEnabled) {
+    sheetRecordsCache[cacheKey] = records;
+  }
+  return records;
 }
 
 function findLatestByField(records, field, value) {
@@ -780,7 +838,7 @@ function requireSession(sessionToken) {
 }
 
 function requireAction(sessionToken, action) {
-  setupSchema();
+  ensureSchemaOnce();
   const session = requireSession(sessionToken);
   const allowed = ACTION_ROLES[action] || [];
   if (allowed.indexOf(session.role) === -1) {
@@ -835,7 +893,7 @@ function loginWithGoogle() {
 }
 
 function getSession(sessionToken) {
-  setupSchema();
+  ensureSchemaOnce();
   return publicSession(requireSession(sessionToken));
 }
 
@@ -949,8 +1007,16 @@ function clearSheetData(sheet) {
 }
 
 function rewriteSheetRecords(sheetName, headers, records) {
+  if (
+    sheetName === PRODUCTS_SHEET ||
+    sheetName === PRODUCT_CATEGORIES_SHEET ||
+    sheetName === PRODUCT_PRICE_HISTORY_SHEET
+  ) {
+    invalidateCatalogCache();
+  }
   const sheet = openNamedSheet(sheetName, headers);
   clearSheetData(sheet);
+  perfCounters.sheetWrites += 1;
   if (!records.length) {
     return;
   }
@@ -1938,7 +2004,63 @@ function latestRecordsById(records) {
 }
 
 function openNamedSheet(name, headers) {
-  return getOrCreateSheet(openConfiguredSpreadsheet(), name, headers);
+  if (namedSheetCache[name]) {
+    return namedSheetCache[name];
+  }
+  const sheet = getOrCreateSheet(openConfiguredSpreadsheet(), name, headers);
+  namedSheetCache[name] = sheet;
+  return sheet;
+}
+
+function ensureSchemaOnce() {
+  if (schemaEnsured) {
+    return;
+  }
+  try {
+    const cached = CacheService.getScriptCache().get(SCHEMA_CACHE_KEY);
+    if (cached === 'ok') {
+      schemaEnsured = true;
+      return;
+    }
+  } catch (error) {
+    void error;
+  }
+  setupSchema();
+  schemaEnsured = true;
+  try {
+    CacheService.getScriptCache().put(SCHEMA_CACHE_KEY, 'ok', 21600);
+  } catch (error) {
+    void error;
+  }
+}
+
+function readCatalogCache() {
+  try {
+    const raw = CacheService.getScriptCache().get(CATALOG_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function writeCatalogCache(value) {
+  try {
+    CacheService.getScriptCache().put(
+      CATALOG_CACHE_KEY,
+      JSON.stringify(value),
+      600,
+    );
+  } catch (error) {
+    void error;
+  }
+}
+
+function invalidateCatalogCache() {
+  try {
+    CacheService.getScriptCache().remove(CATALOG_CACHE_KEY);
+  } catch (error) {
+    void error;
+  }
 }
 
 function isBlank(value) {
@@ -2434,6 +2556,10 @@ function createSchoolYear(sessionToken, payload) {
 
 function listClassrooms(sessionToken, schoolYearId) {
   requireAction(sessionToken, 'students.read');
+  return listClassroomsUnlocked(schoolYearId);
+}
+
+function listClassroomsUnlocked(schoolYearId) {
   return latestRecordsById(
     listSheetRecords(
       openNamedSheet(CLASSROOMS_SHEET, CLASSROOMS_HEADERS),
@@ -3013,6 +3139,10 @@ function listStudentGuardianLinksUnlocked(studentId) {
 function listGuardians(sessionToken, query) {
   requireAction(sessionToken, 'guardians.read');
   const includeInactive = !query || query.includeInactive !== false;
+  return listGuardiansUnlocked(includeInactive);
+}
+
+function listGuardiansUnlocked(includeInactive) {
   return latestRecordsById(listGuardianRecords())
     .filter(function (record) {
       return includeInactive || record.active === 'true';
@@ -3263,18 +3393,7 @@ function revokeSiblingAuthorization(sessionToken, id) {
 
 function listSiblingAuthorizations(sessionToken, studentId) {
   requireAction(sessionToken, 'guardians.read');
-  if (studentId) {
-    latestStudentById(studentId);
-  }
-  return latestRecordsById(listAuthorizationRecords())
-    .filter(function (record) {
-      return (
-        !studentId ||
-        record.consumer_student_id === studentId ||
-        record.account_student_id === studentId
-      );
-    })
-    .map(toAuthorizationGs);
+  return listSiblingAuthorizationsUnlocked(studentId);
 }
 
 function getGuardianSettings(sessionToken) {
@@ -3405,6 +3524,7 @@ function latestProductById(id) {
 }
 
 function appendProductRecord(record) {
+  invalidateCatalogCache();
   openNamedSheet(PRODUCTS_SHEET, PRODUCTS_HEADERS).appendRow([
     record.id,
     record.category_id,
@@ -3526,6 +3646,7 @@ function seedE2EProductsUnlocked() {
 }
 
 function appendCategoryRecord(record) {
+  invalidateCatalogCache();
   openNamedSheet(
     PRODUCT_CATEGORIES_SHEET,
     PRODUCT_CATEGORIES_HEADERS,
@@ -3540,7 +3661,19 @@ function appendCategoryRecord(record) {
 
 function listProductCategories(sessionToken) {
   requireAction(sessionToken, 'products.read');
-  return latestRecordsById(listCategoryRecords())
+  return listProductCategoriesUnlocked();
+}
+
+function listProductCategoriesUnlocked() {
+  const cached = readCatalogCache();
+  if (cached && cached.categories) {
+    return cached.categories;
+  }
+  return loadCatalogUnlocked().categories;
+}
+
+function loadCatalogUnlocked() {
+  const categories = latestRecordsById(listCategoryRecords())
     .slice()
     .sort(function (left, right) {
       return Number(left.sort_order) - Number(right.sort_order);
@@ -3552,6 +3685,10 @@ function listProductCategories(sessionToken) {
         active: category.active === 'true',
       };
     });
+  const products = latestRecordsById(listProductRecords()).map(toProductGs);
+  const payload = { categories: categories, products: products };
+  writeCatalogCache(payload);
+  return payload;
 }
 
 function createCategory(sessionToken, payload) {
@@ -3680,11 +3817,14 @@ function deleteCategory(sessionToken, id) {
 function listProducts(sessionToken, query) {
   requireAction(sessionToken, 'products.read');
   const includeInactive = !query || query.includeInactive !== false;
-  return latestRecordsById(listProductRecords())
-    .filter(function (product) {
-      return includeInactive || product.active === 'true';
-    })
-    .map(toProductGs);
+  const cached = readCatalogCache();
+  const products =
+    cached && cached.products
+      ? cached.products
+      : loadCatalogUnlocked().products;
+  return products.filter(function (product) {
+    return includeInactive || product.active;
+  });
 }
 
 function createProduct(sessionToken, payload) {
@@ -3893,6 +4033,10 @@ function createAdHocItem(sessionToken, payload) {
 
 function listAdHocItems(sessionToken) {
   requireAction(sessionToken, 'ad_hoc.create');
+  return listAdHocItemsUnlocked();
+}
+
+function listAdHocItemsUnlocked() {
   return listSheetRecords(
     openNamedSheet(AD_HOC_ITEMS_SHEET, AD_HOC_ITEMS_HEADERS),
     AD_HOC_ITEMS_HEADERS,
@@ -5800,8 +5944,10 @@ function createSaleUnlocked(userId, payload, actorIsOwner) {
 }
 
 function createSale(sessionToken, payload) {
+  const startedAt = Date.now();
+  resetPerfCounters();
   const session = requireAction(sessionToken, 'sales.write');
-  return withScriptLock(function () {
+  const sale = withScriptLock(function () {
     setupSchema();
     return createSaleUnlocked(
       session.user_id,
@@ -5809,16 +5955,191 @@ function createSale(sessionToken, payload) {
       session.role === 'owner',
     );
   });
+  sale.screen = getSaleScreenDataUnlocked(session.role);
+  logPerf('createSale', startedAt);
+  return sale;
 }
 
-function listSales(sessionToken) {
-  requireAction(sessionToken, 'sales.read');
+function getSaleScreenData(sessionToken) {
+  const startedAt = Date.now();
+  resetPerfCounters();
+  const session = requireAction(sessionToken, 'sales.read');
+  const data = getSaleScreenDataUnlocked(session.role);
+  logPerf('getSaleScreenData', startedAt);
+  return data;
+}
+
+function getSaleScreenDataUnlocked(role) {
+  void role;
+  return {
+    products: listProductsUnlocked(false),
+    students: listStudentsUnlocked(false),
+    sales: listSalesUnlocked(),
+    pixCopyText: readPixCopyTextUnlocked().text,
+    dueDateShortcuts: dueDateShortcutsGs(todayCivil()),
+    siblingAuthorizations: listSiblingAuthorizationsUnlocked(null),
+    reservations: toReservationsSetupGs(),
+    inventory: listBalancesUnlocked(todayCivil()),
+    receivables: listReceivablesUnlocked(),
+    cash: getCashSetupUnlocked(),
+  };
+}
+
+function listProductsUnlocked(includeInactive) {
+  const cached = readCatalogCache();
+  const products =
+    cached && cached.products
+      ? cached.products
+      : loadCatalogUnlocked().products;
+  return products.filter(function (product) {
+    return includeInactive || product.active;
+  });
+}
+
+function listStudentsUnlocked(includeInactive) {
+  const summaries = latestRecordsById(
+    listSheetRecords(
+      openNamedSheet(STUDENTS_SHEET, STUDENTS_HEADERS),
+      STUDENTS_HEADERS,
+    ),
+  )
+    .filter(function (student) {
+      return includeInactive || student.active === 'true';
+    })
+    .map(toStudentSummaryGs);
+  return markHomonymsGs(summaries);
+}
+
+function listSalesUnlocked() {
   return latestRecordsById(listSaleRecords())
     .slice()
     .reverse()
     .map(function (sale) {
       return toSaleViewGs(sale);
     });
+}
+
+function listSiblingAuthorizationsUnlocked(studentId) {
+  if (studentId) {
+    latestStudentById(studentId);
+  }
+  return latestRecordsById(listAuthorizationRecords())
+    .filter(function (record) {
+      return (
+        !studentId ||
+        record.consumer_student_id === studentId ||
+        record.account_student_id === studentId
+      );
+    })
+    .map(toAuthorizationGs);
+}
+
+function sortReceivablesByDueDateGs(items) {
+  return items.sort(function (left, right) {
+    return left.dueDate < right.dueDate
+      ? -1
+      : left.dueDate > right.dueDate
+        ? 1
+        : 0;
+  });
+}
+
+function listReceivablesUnlocked() {
+  const today = todayCivil();
+  const overdue = [];
+  const dueToday = [];
+  const upcoming = [];
+  latestRecordsById(listReceivableRecords()).forEach(function (receivable) {
+    const remaining = remainingCentsGs(receivable.id);
+    if (remaining <= 0) {
+      return;
+    }
+    const view = toReceivableViewGs(receivable, today, remaining);
+    if (view.bucket === 'overdue') {
+      overdue.push(view);
+    } else if (view.bucket === 'today') {
+      dueToday.push(view);
+    } else {
+      upcoming.push(view);
+    }
+  });
+  return {
+    overdue: sortReceivablesByDueDateGs(overdue),
+    today: sortReceivablesByDueDateGs(dueToday),
+    upcoming: sortReceivablesByDueDateGs(upcoming),
+    dueDateHistory: listDueDateHistoryUnlocked(),
+  };
+}
+
+function listDueDateHistoryUnlocked() {
+  return listDueDateHistoryRecords()
+    .slice()
+    .reverse()
+    .map(function (item) {
+      return toDueDateHistoryViewGs(item);
+    });
+}
+
+function listSales(sessionToken) {
+  requireAction(sessionToken, 'sales.read');
+  return listSalesUnlocked();
+}
+
+function getStudentsScreenData(sessionToken) {
+  requireAction(sessionToken, 'students.read');
+  return {
+    students: listStudentsUnlocked(true),
+    classrooms: listClassroomsUnlocked(),
+  };
+}
+
+function getFamilyScreenData(sessionToken) {
+  requireAction(sessionToken, 'guardians.read');
+  return {
+    guardians: listGuardiansUnlocked(true),
+    students: listStudentsUnlocked(true),
+    siblingAuthorizations: listSiblingAuthorizationsUnlocked(null),
+    settings: { requireGuardianBelowAge: requireGuardianBelowAgeGs() },
+  };
+}
+
+function getCatalogScreenData(sessionToken) {
+  const session = requireAction(sessionToken, 'products.read');
+  const cached = readCatalogCache();
+  const catalog = cached || loadCatalogUnlocked();
+  return {
+    categories: catalog.categories,
+    products: catalog.products,
+    adHocItems: session.role === 'owner' ? listAdHocItemsUnlocked() : [],
+  };
+}
+
+function getPaymentsScreenData(sessionToken) {
+  requireAction(sessionToken, 'receivables.read');
+  return {
+    students: listStudentsUnlocked(true),
+    payments: listPaymentsUnlocked(),
+    guardians: listGuardiansUnlocked(true),
+    links: latestRecordsById(listGuardianLinkRecords()).map(toGuardianLinkGs),
+    receivables: listReceivablesUnlocked(),
+  };
+}
+
+function getCreditsScreenData(sessionToken) {
+  requireAction(sessionToken, 'credits.read');
+  return {
+    students: listStudentsUnlocked(true),
+    guardians: listGuardiansUnlocked(true),
+    accounts: listCreditAccountsUnlocked(),
+  };
+}
+
+function getReservationScreenData(sessionToken) {
+  requireAction(sessionToken, 'reservations.read');
+  return {
+    setup: toReservationsSetupGs(),
+    students: listStudentsUnlocked(false),
+  };
 }
 
 function getPixCopyText(sessionToken) {
@@ -5858,57 +6179,7 @@ function toReceivableViewGs(receivable, today, remainingCents) {
 
 function listReceivables(sessionToken) {
   requireAction(sessionToken, 'receivables.read');
-  const today = todayCivil();
-  const overdue = [];
-  const dueToday = [];
-  const upcoming = [];
-  latestRecordsById(listReceivableRecords()).forEach(function (receivable) {
-    const remaining = remainingCentsGs(receivable.id);
-    if (remaining <= 0) {
-      return;
-    }
-    const view = toReceivableViewGs(receivable, today, remaining);
-    if (view.bucket === 'overdue') {
-      overdue.push(view);
-    } else if (view.bucket === 'today') {
-      dueToday.push(view);
-    } else {
-      upcoming.push(view);
-    }
-  });
-  overdue.sort(function (left, right) {
-    return left.dueDate < right.dueDate
-      ? -1
-      : left.dueDate > right.dueDate
-        ? 1
-        : 0;
-  });
-  dueToday.sort(function (left, right) {
-    return left.dueDate < right.dueDate
-      ? -1
-      : left.dueDate > right.dueDate
-        ? 1
-        : 0;
-  });
-  upcoming.sort(function (left, right) {
-    return left.dueDate < right.dueDate
-      ? -1
-      : left.dueDate > right.dueDate
-        ? 1
-        : 0;
-  });
-  const dueDateHistory = listDueDateHistoryRecords()
-    .slice()
-    .reverse()
-    .map(function (item) {
-      return toDueDateHistoryViewGs(item);
-    });
-  return {
-    overdue: overdue,
-    today: dueToday,
-    upcoming: upcoming,
-    dueDateHistory: dueDateHistory,
-  };
+  return listReceivablesUnlocked();
 }
 
 function parsePaymentMethodGs(value) {
@@ -6591,14 +6862,18 @@ function createFamilyPayment(sessionToken, payload) {
   });
 }
 
-function listPayments(sessionToken) {
-  requireAction(sessionToken, 'receivables.read');
+function listPaymentsUnlocked() {
   return latestRecordsById(listPaymentRecords())
     .slice()
     .reverse()
     .map(function (payment) {
       return toPaymentViewGs(payment);
     });
+}
+
+function listPayments(sessionToken) {
+  requireAction(sessionToken, 'receivables.read');
+  return listPaymentsUnlocked();
 }
 
 function parseRequiredReasonGs(value, errorCode, errorMessage) {
@@ -7177,6 +7452,10 @@ function refundPersonalCreditUnlocked(userId, payload) {
 
 function listCreditAccounts(sessionToken) {
   requireAction(sessionToken, 'credits.read');
+  return listCreditAccountsUnlocked();
+}
+
+function listCreditAccountsUnlocked() {
   const records = listCreditAccountRecords();
   const personal = records
     .filter(function (account) {
@@ -8452,7 +8731,6 @@ function toReservationsSetupGs() {
 
 function getReservationsSetup(sessionToken) {
   requireAction(sessionToken, 'reservations.read');
-  setupSchema();
   return toReservationsSetupGs();
 }
 

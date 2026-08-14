@@ -66,6 +66,14 @@ import type {
   LinkReservationStudentInput,
   PublicReservationConfirmation,
   PublicReservationPortal,
+  SaleResult,
+  SaleScreenData,
+  StudentsScreenData,
+  FamilyScreenData,
+  CatalogScreenData,
+  PaymentsScreenData,
+  CreditsScreenData,
+  ReservationScreenData,
 } from './app-api';
 
 const LOCAL_HEALTH: AppHealth = {
@@ -434,14 +442,118 @@ export class FakeAppApi implements AppApi {
     return throwResult(this.stock.listMovements(businessDate));
   }
 
-  async createSale(input: CreateSaleInput): Promise<Sale> {
+  async createSale(input: CreateSaleInput): Promise<SaleResult> {
     this.assertAction('sales.write');
-    return throwResult(
+    const sale = throwResult(
       this.sales.createSale({
         ...input,
         actorIsOwner: this.session?.role === 'owner',
       }),
     );
+    return { ...sale, screen: this.saleScreenUnlocked() };
+  }
+
+  async getSaleScreenData(): Promise<SaleScreenData> {
+    this.assertAction('sales.read');
+    return this.saleScreenUnlocked();
+  }
+
+  async getStudentsScreenData(): Promise<StudentsScreenData> {
+    this.assertAction('students.read');
+    return {
+      students: throwResult(
+        this.roster.listStudents({ includeInactive: true }),
+      ),
+      classrooms: throwResult(this.roster.listClassrooms()),
+    };
+  }
+
+  async getFamilyScreenData(): Promise<FamilyScreenData> {
+    this.assertAction('guardians.read');
+    return {
+      guardians: throwResult(
+        this.roster.listGuardians({ includeInactive: true }),
+      ),
+      students: throwResult(
+        this.roster.listStudents({ includeInactive: true }),
+      ),
+      siblingAuthorizations: throwResult(
+        this.roster.listSiblingAuthorizations(),
+      ),
+      settings: throwResult(this.roster.getGuardianSettings()),
+    };
+  }
+
+  async getCatalogScreenData(): Promise<CatalogScreenData> {
+    this.assertAction('products.read');
+    return {
+      categories: throwResult(this.catalog.listCategories()),
+      products: throwResult(
+        this.catalog.listProducts({ includeInactive: true }),
+      ),
+      adHocItems:
+        this.session?.role === 'owner'
+          ? throwResult(this.catalog.listAdHocItems())
+          : [],
+    };
+  }
+
+  async getPaymentsScreenData(): Promise<PaymentsScreenData> {
+    this.assertAction('receivables.read');
+    const students = throwResult(
+      this.roster.listStudents({ includeInactive: true }),
+    );
+    const links: StudentGuardianLink[] = [];
+    for (const student of students) {
+      links.push(...throwResult(this.roster.getStudentGuardians(student.id)));
+    }
+    return {
+      students,
+      payments: throwResult(this.sales.listPayments()),
+      guardians: throwResult(
+        this.roster.listGuardians({ includeInactive: true }),
+      ),
+      links,
+      receivables: throwResult(this.sales.listReceivables()),
+    };
+  }
+
+  async getCreditsScreenData(): Promise<CreditsScreenData> {
+    this.assertAction('credits.read');
+    return {
+      students: throwResult(
+        this.roster.listStudents({ includeInactive: true }),
+      ),
+      guardians: throwResult(
+        this.roster.listGuardians({ includeInactive: true }),
+      ),
+      accounts: throwResult(this.sales.listCreditAccounts()),
+    };
+  }
+
+  async getReservationScreenData(): Promise<ReservationScreenData> {
+    this.assertAction('reservations.read');
+    return {
+      setup: throwResult(this.reservations.getSetup()),
+      students: throwResult(this.roster.listStudents()),
+    };
+  }
+
+  private saleScreenUnlocked(): SaleScreenData {
+    return {
+      products: throwResult(this.catalog.listProducts()),
+      students: throwResult(this.roster.listStudents()),
+      sales: throwResult(this.sales.listSales()),
+      pixCopyText: throwResult(this.sales.getPixCopyText()).text,
+      dueDateShortcuts: throwResult(this.sales.getDueDateShortcuts()),
+      siblingAuthorizations: throwResult(
+        this.roster.listSiblingAuthorizations(),
+      ),
+      reservations: throwResult(this.reservations.getSetup()),
+      inventory: throwResult(this.stock.listBalances()),
+      receivables: throwResult(this.sales.listReceivables()),
+      cash: throwResult(this.cash.getSetup()),
+    };
   }
 
   async listSales(): Promise<Sale[]> {
