@@ -217,6 +217,10 @@ interface ServerContext {
     sessionToken: string,
     id: string,
   ): { id: string; active: boolean };
+  reactivateGuardian(
+    sessionToken: string,
+    id: string,
+  ): { id: string; active: boolean };
   linkGuardian(
     sessionToken: string,
     studentId: string,
@@ -566,6 +570,19 @@ interface ServerContext {
     payload: Record<string, unknown>,
   ): {
     slots: Array<{ id: string; label: string }>;
+  };
+  updateReservationSlot(
+    sessionToken: string,
+    id: string,
+    payload: Record<string, unknown>,
+  ): {
+    slots: Array<{ id: string; label: string; active: boolean }>;
+  };
+  deactivateReservationSlot(
+    sessionToken: string,
+    id: string,
+  ): {
+    slots: Array<{ id: string; label: string; active: boolean }>;
   };
   createReservation(
     sessionToken: string,
@@ -1949,6 +1966,11 @@ describe('Apps Script E2E server', () => {
     expect(() => server.deactivateGuardian(staff, carla.id)).toThrow(
       'GUARDIAN_ALREADY_INACTIVE',
     );
+    expect(server.reactivateGuardian(staff, carla.id).active).toBe(true);
+    expect(() => server.reactivateGuardian(staff, carla.id)).toThrow(
+      'GUARDIAN_ALREADY_ACTIVE',
+    );
+    expect(server.deactivateGuardian(staff, carla.id).active).toBe(false);
     expect(() => server.setRequireGuardianBelowAge(staff, 16)).toThrow(
       'FORBIDDEN',
     );
@@ -3247,6 +3269,91 @@ describe('Apps Script E2E server', () => {
         .listInventoryBalances(owner)
         .items.find((item) => item.productName === 'Coxinha')?.physicalQuantity,
     ).toBe(10);
+  });
+
+  it('lets only the owner edit and deactivate a recreio slot', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const staff = server.loginE2E('staff').token;
+    const slots = server.createReservationSlot(owner, {
+      label: 'Recreio tarde',
+      cutoffTime: '23:00',
+      pickupStartTime: '23:10',
+      pickupEndTime: '23:30',
+    });
+    const slot = slots.slots.find((item) => item.label === 'Recreio tarde');
+    if (!slot) {
+      throw new Error('recreio ausente');
+    }
+    expect(() =>
+      server.updateReservationSlot(staff, slot.id, {
+        label: 'Recreio da tarde',
+        cutoffTime: '22:30',
+        pickupStartTime: '22:40',
+        pickupEndTime: '23:00',
+      }),
+    ).toThrow('FORBIDDEN');
+    expect(() => server.deactivateReservationSlot(staff, slot.id)).toThrow(
+      'FORBIDDEN',
+    );
+    const updated = server.updateReservationSlot(owner, slot.id, {
+      label: 'Recreio da tarde',
+      cutoffTime: '22:30',
+      pickupStartTime: '22:40',
+      pickupEndTime: '23:00',
+    });
+    expect(updated.slots.find((item) => item.id === slot.id)?.label).toBe(
+      'Recreio da tarde',
+    );
+    expect(() =>
+      server.updateReservationSlot(owner, slot.id, {
+        label: 'Recreio da tarde',
+        cutoffTime: '22:50',
+        pickupStartTime: '22:40',
+        pickupEndTime: '23:00',
+      }),
+    ).toThrow('SLOT_CUTOFF_AFTER_PICKUP');
+    const coxinha = server
+      .getReservationsSetup(owner)
+      .reservableProducts.find((item) => item.name === 'Coxinha');
+    if (!coxinha) {
+      throw new Error('coxinha ausente');
+    }
+    const created2 = server.createReservation(owner, {
+      requestId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee99',
+      slotId: slot.id,
+      studentNameText: 'Ana Souza',
+      classroomText: '3º A',
+      items: [{ productId: coxinha.id, quantity: 1 }],
+    });
+    const reservationId = created2.reservations[0]?.id;
+    if (!reservationId) {
+      throw new Error('reserva ausente');
+    }
+    expect(() => server.deactivateReservationSlot(owner, slot.id)).toThrow(
+      'SLOT_HAS_OPEN_RESERVATIONS',
+    );
+    server.fulfillReservation(owner, { reservationId });
+    const after = server.deactivateReservationSlot(owner, slot.id);
+    expect(after.slots.find((item) => item.id === slot.id)?.active).toBe(
+      false,
+    );
+    expect(() => server.deactivateReservationSlot(owner, slot.id)).toThrow(
+      'SLOT_ALREADY_INACTIVE',
+    );
+    expect(() =>
+      server.updateReservationSlot(owner, slot.id, {
+        label: 'Recreio da tarde',
+        cutoffTime: '22:30',
+        pickupStartTime: '22:40',
+        pickupEndTime: '23:00',
+      }),
+    ).toThrow('SLOT_INACTIVE');
   });
 
   it('serves the public portal without login and hides private roster data', () => {

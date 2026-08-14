@@ -156,12 +156,12 @@ export class MemoryStock {
   }
 
   openDay(input: {
-    businessDate: string;
+    businessDate?: string;
     items: Array<{ productId: string; openingQuantity: number }>;
   }): Result<InventoryBalancesView> {
     const tracked = this.trackedProducts();
     const profile = validateOpeningItems({
-      businessDate: input.businessDate,
+      businessDate: this.resolveDate(input.businessDate),
       items: input.items,
       trackedProductIds: tracked.map((item) => item.id),
     });

@@ -233,7 +233,7 @@ export interface InventoryBalances {
 }
 
 export interface OpenInventoryDayInput {
-  businessDate: string;
+  businessDate?: string;
   items: Array<{ productId: string; openingQuantity: number }>;
 }
 
@@ -811,6 +811,7 @@ export interface AppApi {
     input: GuardianProfileFields,
   ): Promise<GuardianResult>;
   deactivateGuardian(id: string): Promise<GuardianResult>;
+  reactivateGuardian(id: string): Promise<GuardianResult>;
   getStudentGuardians(studentId: string): Promise<StudentGuardianLink[]>;
   linkGuardian(
     studentId: string,
@@ -911,6 +912,11 @@ export interface AppApi {
   createReservationSlot(
     input: CreateReservationSlotInput,
   ): Promise<ReservationsSetupResult>;
+  updateReservationSlot(
+    id: string,
+    input: CreateReservationSlotInput,
+  ): Promise<ReservationsSetupResult>;
+  deactivateReservationSlot(id: string): Promise<ReservationsSetupResult>;
   createReservation(
     input: CreateReservationInput,
   ): Promise<ReservationsSetupResult>;

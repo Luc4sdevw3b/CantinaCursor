@@ -411,6 +411,31 @@ footer {
   align-items: center;
 }
 
+#inventory-open-items {
+  display: contents;
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.stepper input {
+  width: 5rem;
+  text-align: center;
+}
+
+.stepper button {
+  width: 2.4rem;
+  height: 2.4rem;
+  padding: 0;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
 .form-or {
   margin: 0;
   align-self: end;

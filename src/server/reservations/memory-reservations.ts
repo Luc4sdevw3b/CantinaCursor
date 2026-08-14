@@ -425,6 +425,88 @@ export class MemoryReservations {
     return this.getSetup();
   }
 
+  updateSlot(
+    id: string,
+    input: {
+      label?: unknown;
+      cutoffTime?: unknown;
+      pickupStartTime?: unknown;
+      pickupEndTime?: unknown;
+    },
+  ): Result<ReservationsSetupView> {
+    const slotId = parseImmutableId(id);
+    if (!slotId.ok) {
+      return err(slotId.error);
+    }
+    const previous = latestById(this.slots).find((item) => item.id === slotId.data);
+    if (!previous) {
+      return err(SLOT_NOT_FOUND_ERROR);
+    }
+    if (previous.active !== 'true') {
+      return err(SLOT_INACTIVE_ERROR);
+    }
+    const label = parseSlotLabel(input.label);
+    if (!label.ok) {
+      return err(label.error);
+    }
+    const times = buildSlotTimes({
+      businessDate: previous.business_date,
+      cutoffTime: input.cutoffTime,
+      pickupStartTime: input.pickupStartTime,
+      pickupEndTime: input.pickupEndTime,
+      fallbackCivil: todayCivilSaoPaulo(this.nowIso()),
+    });
+    if (!times.ok) {
+      return err(times.error);
+    }
+    this.slots.push({
+      ...previous,
+      label: label.data,
+      pickup_starts_at: times.data.pickupStartsAt,
+      pickup_ends_at: times.data.pickupEndsAt,
+      cutoff_at: times.data.cutoffAt,
+      created_at: this.nowIso(),
+    });
+    return this.getSetup();
+  }
+
+  deactivateSlot(id: string): Result<ReservationsSetupView> {
+    const slotId = parseImmutableId(id);
+    if (!slotId.ok) {
+      return err(slotId.error);
+    }
+    const previous = latestById(this.slots).find((item) => item.id === slotId.data);
+    if (!previous) {
+      return err(SLOT_NOT_FOUND_ERROR);
+    }
+    if (previous.active !== 'true') {
+      return err({
+        code: 'SLOT_ALREADY_INACTIVE',
+        message: 'Este recreio já está inativo.',
+        retryable: false,
+      });
+    }
+    const hasOpenReservation = latestById(this.reservations).some(
+      (item) =>
+        item.slot_id === slotId.data &&
+        item.status === RESERVATION_STATUS_RESERVED,
+    );
+    if (hasOpenReservation) {
+      return err({
+        code: 'SLOT_HAS_OPEN_RESERVATIONS',
+        message:
+          'Cancele ou entregue as reservas ativas antes de desativar o recreio.',
+        retryable: false,
+      });
+    }
+    this.slots.push({
+      ...previous,
+      active: 'false',
+      created_at: this.nowIso(),
+    });
+    return this.getSetup();
+  }
+
   createReservation(input: {
     requestId?: unknown;
     slotId?: unknown;

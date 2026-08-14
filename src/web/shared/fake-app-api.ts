@@ -291,6 +291,13 @@ export class FakeAppApi implements AppApi {
     );
   }
 
+  async reactivateGuardian(id: string): Promise<GuardianResult> {
+    this.assertAction('guardians.write');
+    return this.withFamilyScreen(
+      throwResult(this.roster.reactivateGuardian(id)),
+    );
+  }
+
   async getStudentGuardians(studentId: string): Promise<StudentGuardianLink[]> {
     this.assertAction('guardians.read');
     return throwResult(this.roster.getStudentGuardians(studentId));
@@ -870,6 +877,25 @@ export class FakeAppApi implements AppApi {
     this.assertAction('reservation_slots.write');
     return this.withReservationScreen(
       throwResult(this.reservations.createSlot(input)),
+    );
+  }
+
+  async updateReservationSlot(
+    id: string,
+    input: CreateReservationSlotInput,
+  ): Promise<ReservationsSetupResult> {
+    this.assertAction('reservation_slots.write');
+    return this.withReservationScreen(
+      throwResult(this.reservations.updateSlot(id, input)),
+    );
+  }
+
+  async deactivateReservationSlot(
+    id: string,
+  ): Promise<ReservationsSetupResult> {
+    this.assertAction('reservation_slots.write');
+    return this.withReservationScreen(
+      throwResult(this.reservations.deactivateSlot(id)),
     );
   }
 

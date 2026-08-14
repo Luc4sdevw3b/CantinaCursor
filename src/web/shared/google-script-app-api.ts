@@ -105,6 +105,7 @@ export interface GoogleScriptRunner {
   createGuardian(token: string, payload: unknown): void;
   updateGuardian(token: string, id: string, payload: unknown): void;
   deactivateGuardian(token: string, id: string): void;
+  reactivateGuardian(token: string, id: string): void;
   getStudentGuardians(token: string, studentId: string): void;
   linkGuardian(
     token: string,
@@ -170,6 +171,8 @@ export interface GoogleScriptRunner {
   reverseCreditRefund(token: string, payload: unknown): void;
   getReservationsSetup(token: string): void;
   createReservationSlot(token: string, payload: unknown): void;
+  updateReservationSlot(token: string, id: string, payload: unknown): void;
+  deactivateReservationSlot(token: string, id: string): void;
   createReservation(token: string, payload: unknown): void;
   cancelReservation(token: string, payload: unknown): void;
   markReservationNoShow(token: string, payload: unknown): void;
@@ -487,6 +490,12 @@ export class GoogleScriptAppApi implements AppApi {
   deactivateGuardian(id: string): Promise<GuardianResult> {
     return this.callWithToken((runner, token) =>
       runner.deactivateGuardian(token, id),
+    );
+  }
+
+  reactivateGuardian(id: string): Promise<GuardianResult> {
+    return this.callWithToken((runner, token) =>
+      runner.reactivateGuardian(token, id),
     );
   }
 
@@ -916,6 +925,21 @@ export class GoogleScriptAppApi implements AppApi {
   ): Promise<ReservationsSetupResult> {
     return this.callWithToken((runner, token) =>
       runner.createReservationSlot(token, input),
+    );
+  }
+
+  updateReservationSlot(
+    id: string,
+    input: CreateReservationSlotInput,
+  ): Promise<ReservationsSetupResult> {
+    return this.callWithToken((runner, token) =>
+      runner.updateReservationSlot(token, id, input),
+    );
+  }
+
+  deactivateReservationSlot(id: string): Promise<ReservationsSetupResult> {
+    return this.callWithToken((runner, token) =>
+      runner.deactivateReservationSlot(token, id),
     );
   }
 

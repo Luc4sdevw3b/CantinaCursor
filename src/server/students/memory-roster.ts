@@ -768,6 +768,27 @@ export class MemoryRoster {
     return ok(this.toGuardian(record));
   }
 
+  reactivateGuardian(id: string): Result<GuardianView> {
+    const found = this.findGuardian(id);
+    if (!found.ok) {
+      return err(found.error);
+    }
+    if (found.data.active === 'true') {
+      return err({
+        code: 'GUARDIAN_ALREADY_ACTIVE',
+        message: 'Este responsável já está ativo.',
+        retryable: false,
+      });
+    }
+    const record: GuardianRecord = {
+      ...found.data,
+      active: 'true',
+      updated_at: this.nowIso(),
+    };
+    this.guardians.push(record);
+    return ok(this.toGuardian(record));
+  }
+
   getStudentGuardians(studentId: string): Result<StudentGuardianLinkView[]> {
     const student = this.getStudent(studentId);
     if (!student.ok) {

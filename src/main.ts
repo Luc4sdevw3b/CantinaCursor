@@ -27,6 +27,7 @@ import type {
   ReservationsSetup,
   ReservationsSetupResult,
   ReservationScreenData,
+  ReservationSlot,
   ReversalsSetup,
   SiblingAuthorization,
   StudentDetail,
@@ -331,6 +332,11 @@ app.innerHTML = `
     <section class="students-panel" id="inventory-panel" hidden>
       <h2>Estoque do dia</h2>
       <p id="inventory-status">Entre para ver o estoque.</p>
+      <form id="inventory-open-form" hidden>
+        <h3>Abrir estoque do dia</h3>
+        <div id="inventory-open-items"></div>
+        <button type="submit">Abrir estoque</button>
+      </form>
       <ul id="inventory-list"></ul>
       <form id="inventory-adjust-form">
         <label>
@@ -339,11 +345,22 @@ app.innerHTML = `
         </label>
         <label>
           Ajuste
-          <input id="inventory-adjust-delta" inputmode="numeric" placeholder="-1" required />
+          <span class="stepper">
+            <button type="button" id="inventory-delta-minus" aria-label="Diminuir uma unidade">−</button>
+            <input id="inventory-adjust-delta" inputmode="numeric" placeholder="0" required aria-label="Quantidade do ajuste" />
+            <button type="button" id="inventory-delta-plus" aria-label="Aumentar uma unidade">+</button>
+          </span>
         </label>
         <label>
           Motivo
-          <input id="inventory-adjust-reason" required />
+          <input id="inventory-adjust-reason" list="inventory-reason-options" required />
+          <datalist id="inventory-reason-options">
+            <option value="Reposição"></option>
+            <option value="Sobra do dia anterior"></option>
+            <option value="Correção de contagem"></option>
+            <option value="Perda ou estrago"></option>
+            <option value="Consumo da equipe"></option>
+          </datalist>
         </label>
         <button type="submit">Ajustar estoque</button>
       </form>
@@ -355,7 +372,7 @@ app.innerHTML = `
       <p id="reservations-status">Entre para ver as reservas.</p>
       <ul id="reservation-availability"></ul>
       <form id="reservation-slot-form">
-        <h3>Criar recreio</h3>
+        <h3 id="reservation-slot-title">Criar recreio</h3>
         <label>
           Nome
           <input id="reservation-slot-label" required />
@@ -372,8 +389,10 @@ app.innerHTML = `
           Fim da retirada
           <input id="reservation-slot-end" type="time" required />
         </label>
-        <button type="submit">Criar recreio</button>
+        <button type="submit" id="reservation-slot-submit">Criar recreio</button>
+        <button type="button" id="reservation-slot-cancel" hidden>Cancelar</button>
       </form>
+      <ul id="reservation-slots-list"></ul>
       <form id="reservation-create-form" aria-label="Confirmar reserva">
         <h3>Nova reserva</h3>
         <label>
@@ -1838,6 +1857,19 @@ async function renderFamily(
         );
       });
       actions.append(deactivate);
+    } else {
+      const reactivate = document.createElement('button');
+      reactivate.type = 'button';
+      reactivate.textContent = 'Reativar';
+      reactivate.addEventListener('click', () => {
+        runBusyAction(
+          familyStatus,
+          reactivate,
+          'Não foi possível reativar o responsável.',
+          () => api.reactivateGuardian(guardian.id).then(applyFamilyResult),
+        );
+      });
+      actions.append(reactivate);
     }
     item.append(actions);
     guardiansList.append(item);
@@ -1941,7 +1973,42 @@ async function renderFamily(
   );
   for (const { student, link } of linkGroups) {
     const item = document.createElement('li');
-    item.textContent = guardianCreditLinkLine(student, link);
+    const label = document.createElement('span');
+    label.textContent = guardianCreditLinkLine(student, link);
+    const actions = document.createElement('div');
+    if (!link.isPrimary) {
+      const makePrimary = document.createElement('button');
+      makePrimary.type = 'button';
+      makePrimary.textContent = 'Tornar principal';
+      makePrimary.addEventListener('click', () => {
+        runBusyAction(
+          familyStatus,
+          makePrimary,
+          'Não foi possível definir o responsável principal.',
+          () =>
+            api
+              .setPrimaryGuardian(student.id, link.guardianId)
+              .then(applyFamilyResult),
+        );
+      });
+      actions.append(makePrimary);
+    }
+    const unlink = document.createElement('button');
+    unlink.type = 'button';
+    unlink.textContent = 'Desvincular';
+    unlink.addEventListener('click', () => {
+      runBusyAction(
+        familyStatus,
+        unlink,
+        'Não foi possível desvincular o responsável.',
+        () =>
+          api
+            .unlinkGuardian(student.id, link.guardianId)
+            .then(applyFamilyResult),
+      );
+    });
+    actions.append(unlink);
+    item.append(label, actions);
     guardianCreditLinks.append(item);
   }
 
@@ -2246,12 +2313,51 @@ const inventoryPanel = document.querySelector('#inventory-panel');
 const inventoryStatus = document.querySelector('#inventory-status');
 const inventoryList = document.querySelector('#inventory-list');
 const inventoryAdjustForm = document.querySelector('#inventory-adjust-form');
+const inventoryOpenForm = document.querySelector('#inventory-open-form');
+const inventoryOpenItems = document.querySelector('#inventory-open-items');
 const inventoryAdjustProduct = document.querySelector(
   '#inventory-adjust-product',
 );
 
 function inventoryLine(item: InventoryBalanceItem): string {
   return `${item.productName} • ${item.quantityLabel}`;
+}
+
+async function showInventoryOpenForm(): Promise<void> {
+  if (
+    !(inventoryOpenForm instanceof HTMLElement) ||
+    !(inventoryOpenItems instanceof HTMLElement)
+  ) {
+    return;
+  }
+  inventoryOpenItems.replaceChildren();
+  const catalog = await api.getCatalogScreenData();
+  const tracked = catalog.products.filter(
+    (item) => item.active && item.stockTracked,
+  );
+  if (tracked.length === 0) {
+    inventoryOpenForm.hidden = true;
+    if (inventoryStatus) {
+      inventoryStatus.textContent =
+        'Nenhum produto controla estoque. Marque "Controla estoque" no Cardápio antes de abrir o dia.';
+    }
+    return;
+  }
+  for (const product of tracked) {
+    const label = document.createElement('label');
+    label.textContent = product.name;
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '0';
+    input.step = '1';
+    input.required = true;
+    input.value = '0';
+    input.dataset.productId = product.id;
+    input.setAttribute('aria-label', `Quantidade inicial de ${product.name}`);
+    label.append(input);
+    inventoryOpenItems.append(label);
+  }
+  inventoryOpenForm.hidden = false;
 }
 
 async function renderInventory(
@@ -2268,6 +2374,9 @@ async function renderInventory(
   inventoryList.replaceChildren();
   if (inventoryAdjustForm instanceof HTMLElement) {
     inventoryAdjustForm.hidden = true;
+  }
+  if (inventoryOpenForm instanceof HTMLElement) {
+    inventoryOpenForm.hidden = true;
   }
   if (!session) {
     inventoryStatus.textContent = 'Entre para ver o estoque.';
@@ -2293,10 +2402,31 @@ async function renderInventory(
     }
     for (const item of balances.items) {
       const row = document.createElement('li');
-      row.textContent = inventoryLine(item);
+      const label = document.createElement('span');
+      label.textContent = inventoryLine(item);
+      row.append(label);
+      if (session.role === 'owner') {
+        const pick = document.createElement('button');
+        pick.type = 'button';
+        pick.textContent = 'Ajustar';
+        pick.dataset.inventoryProductId = item.productId;
+        row.append(pick);
+      }
       inventoryList.append(row);
     }
   } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : '';
+    if (message.includes('INVENTORY_DAY_NOT_OPEN') && session.role === 'owner') {
+      inventoryStatus.textContent =
+        'Estoque do dia ainda fechado. Informe a quantidade inicial de cada produto.';
+      try {
+        await showInventoryOpenForm();
+      } catch {
+        inventoryStatus.textContent =
+          'Não foi possível preparar a abertura do estoque.';
+      }
+      return;
+    }
     inventoryStatus.textContent =
       error instanceof Error
         ? error.message.replace(/^[A-Z_]+:\s*/, '')
@@ -2331,6 +2461,49 @@ const reservationStudentSearch = document.querySelector(
 const reservationStudentSelect = document.querySelector('#reservation-student');
 let reservationsSetup: ReservationsSetup | null = null;
 let reservationStudents: StudentSummary[] = [];
+const reservationSlotsList = document.querySelector('#reservation-slots-list');
+let editingSlotId: string | null = null;
+
+function saoPauloClock(iso: string): string {
+  return new Intl.DateTimeFormat('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'America/Sao_Paulo',
+  }).format(new Date(iso));
+}
+
+function fillSlotForm(slot: ReservationSlot | null): void {
+  editingSlotId = slot?.id ?? null;
+  const label = document.querySelector('#reservation-slot-label');
+  const cutoff = document.querySelector('#reservation-slot-cutoff');
+  const start = document.querySelector('#reservation-slot-start');
+  const end = document.querySelector('#reservation-slot-end');
+  const title = document.querySelector('#reservation-slot-title');
+  const submit = document.querySelector('#reservation-slot-submit');
+  const cancel = document.querySelector('#reservation-slot-cancel');
+  if (label instanceof HTMLInputElement) {
+    label.value = slot?.label ?? '';
+  }
+  if (cutoff instanceof HTMLInputElement) {
+    cutoff.value = slot ? saoPauloClock(slot.cutoffAt) : '';
+  }
+  if (start instanceof HTMLInputElement) {
+    start.value = slot ? saoPauloClock(slot.pickupStartsAt) : '';
+  }
+  if (end instanceof HTMLInputElement) {
+    end.value = slot ? saoPauloClock(slot.pickupEndsAt) : '';
+  }
+  if (title) {
+    title.textContent = slot ? 'Editar recreio' : 'Criar recreio';
+  }
+  if (submit instanceof HTMLButtonElement) {
+    submit.textContent = slot ? 'Salvar recreio' : 'Criar recreio';
+  }
+  if (cancel instanceof HTMLButtonElement) {
+    cancel.hidden = !slot;
+  }
+}
 
 function reservationStudentLabel(student: StudentSummary): string {
   return `${student.fullName} • ${student.ageLabel}`;
@@ -2561,6 +2734,59 @@ async function renderReservations(
     );
     reservationStudents = students.filter((item) => item.active);
     fillReservationStudentOptions();
+    if (reservationSlotsList instanceof HTMLElement) {
+      reservationSlotsList.replaceChildren();
+      if (session.role === 'owner') {
+        const stillEditing = setup.slots.some(
+          (item) => item.id === editingSlotId && item.active,
+        );
+        if (!stillEditing) {
+          fillSlotForm(null);
+        }
+        for (const slot of setup.slots) {
+          const row = document.createElement('li');
+          const label = document.createElement('span');
+          label.textContent = slot.active
+            ? slot.summaryLabel
+            : `${slot.summaryLabel} • Inativo`;
+          row.append(label);
+          if (slot.active) {
+            const actions = document.createElement('div');
+            const edit = document.createElement('button');
+            edit.type = 'button';
+            edit.textContent = 'Editar';
+            edit.addEventListener('click', () => {
+              fillSlotForm(slot);
+              const labelField = document.querySelector(
+                '#reservation-slot-label',
+              );
+              if (labelField instanceof HTMLInputElement) {
+                labelField.focus();
+              }
+            });
+            const deactivate = document.createElement('button');
+            deactivate.type = 'button';
+            deactivate.textContent = 'Desativar';
+            deactivate.addEventListener('click', () => {
+              runBusyAction(
+                reservationsStatus,
+                deactivate,
+                'Não foi possível desativar o recreio.',
+                () =>
+                  api
+                    .deactivateReservationSlot(slot.id)
+                    .then((result) =>
+                      applyReservationResult(result, 'Recreio desativado.'),
+                    ),
+              );
+            });
+            actions.append(edit, deactivate);
+            row.append(actions);
+          }
+          reservationSlotsList.append(row);
+        }
+      }
+    }
     for (const item of setup.availability) {
       const row = document.createElement('li');
       row.textContent = item.summaryLabel;
@@ -4816,6 +5042,78 @@ document.querySelector('#ad-hoc-form')?.addEventListener('submit', (event) => {
   );
 });
 
+function stepInventoryDelta(step: number): void {
+  const delta = document.querySelector('#inventory-adjust-delta');
+  if (!(delta instanceof HTMLInputElement)) {
+    return;
+  }
+  const current = Number(delta.value) || 0;
+  delta.value = String(current + step);
+}
+
+document
+  .querySelector('#inventory-delta-minus')
+  ?.addEventListener('click', () => stepInventoryDelta(-1));
+document
+  .querySelector('#inventory-delta-plus')
+  ?.addEventListener('click', () => stepInventoryDelta(1));
+
+inventoryList?.addEventListener('click', (event) => {
+  const target = event.target;
+  if (
+    !(target instanceof HTMLButtonElement) ||
+    !target.dataset.inventoryProductId
+  ) {
+    return;
+  }
+  if (
+    !(inventoryAdjustForm instanceof HTMLElement) ||
+    inventoryAdjustForm.hidden ||
+    !(inventoryAdjustProduct instanceof HTMLSelectElement)
+  ) {
+    return;
+  }
+  inventoryAdjustProduct.value = target.dataset.inventoryProductId;
+  const delta = document.querySelector('#inventory-adjust-delta');
+  if (delta instanceof HTMLInputElement) {
+    delta.value = '';
+    delta.focus();
+  }
+  if (inventoryStatus) {
+    const name =
+      inventoryAdjustProduct.selectedOptions[0]?.textContent ?? 'produto';
+    inventoryStatus.textContent = `Ajustando ${name}: use −/+ ou digite a quantidade.`;
+  }
+});
+
+document
+  .querySelector('#inventory-open-form')
+  ?.addEventListener('submit', (event) => {    event.preventDefault();
+    const inputs = Array.from(
+      document.querySelectorAll<HTMLInputElement>('#inventory-open-items input'),
+    );
+    if (inputs.length === 0) {
+      return;
+    }
+    const items = inputs.map((input) => ({
+      productId: input.dataset.productId ?? '',
+      openingQuantity: Number(input.value),
+    }));
+    busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
+      api
+        .openInventoryDay({ items })
+        .then((balances) => applyInventoryResult(balances))
+        .catch((error: unknown) => {
+          if (inventoryStatus) {
+            inventoryStatus.textContent =
+              error instanceof Error
+                ? error.message.replace(/^[A-Z_]+:\s*/, '')
+                : 'Não foi possível abrir o estoque.';
+          }
+        }),
+    );
+  });
+
 document
   .querySelector('#inventory-adjust-form')
   ?.addEventListener('submit', (event) => {
@@ -5242,30 +5540,40 @@ document
     ) {
       return;
     }
+    const input = {
+      label: label.value,
+      cutoffTime: cutoff.value,
+      pickupStartTime: start.value,
+      pickupEndTime: end.value,
+    };
+    const editingId = editingSlotId;
     busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
-      api
-        .createReservationSlot({
-          label: label.value,
-          cutoffTime: cutoff.value,
-          pickupStartTime: start.value,
-          pickupEndTime: end.value,
-        })
+      (editingId
+        ? api.updateReservationSlot(editingId, input)
+        : api.createReservationSlot(input)
+      )
         .then((result) => {
-          label.value = '';
-          cutoff.value = '';
-          start.value = '';
-          end.value = '';
-          return refreshAfterReservation(result, 'Recreio criado.');
+          fillSlotForm(null);
+          return refreshAfterReservation(
+            result,
+            editingId ? 'Recreio atualizado.' : 'Recreio criado.',
+          );
         })
         .catch((error: unknown) => {
           if (reservationsStatus) {
             reservationsStatus.textContent =
               error instanceof Error
                 ? error.message.replace(/^[A-Z_]+:\s*/, '')
-                : 'Não foi possível criar o recreio.';
+                : 'Não foi possível salvar o recreio.';
           }
         }),
     );
+  });
+
+document
+  .querySelector('#reservation-slot-cancel')
+  ?.addEventListener('click', () => {
+    fillSlotForm(null);
   });
 
 document

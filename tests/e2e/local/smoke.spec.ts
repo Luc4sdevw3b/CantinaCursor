@@ -432,6 +432,59 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await expect(
       extraGuardian.getByRole('button', { name: 'Desativar' }),
     ).toHaveCount(0);
+    await extraGuardian.getByRole('button', { name: 'Reativar' }).click();
+    await expect(extraGuardian).toBeVisible();
+    await expect(extraGuardian).not.toContainText('Inativo');
+    await expect(
+      extraGuardian.getByRole('button', { name: 'Desativar' }),
+    ).toBeVisible();
+  });
+
+  test('sets a primary guardian and unlinks via the links list', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await goToArea(page, 'Responsáveis');
+    await page.locator('#credit-auth-student').selectOption({
+      label: 'Ana Souza • ~8',
+    });
+    await page.locator('#credit-auth-guardian').selectOption({
+      label: 'Paulo Nunes • pai',
+    });
+    await page.getByRole('button', { name: 'Salvar autorização' }).click();
+    const pauloLink = page
+      .locator('#guardian-credit-links')
+      .getByRole('listitem')
+      .filter({ hasText: 'Ana Souza • ~8 • Paulo Nunes' });
+    await expect(pauloLink).toBeVisible();
+    await pauloLink.getByRole('button', { name: 'Tornar principal' }).click();
+    await expect(
+      page.locator('#guardian-credit-links').getByText(
+        'Ana Souza • ~8 • Paulo Nunes • principal',
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(
+      page.locator('#guardian-credit-links').getByText(
+        'Ana Souza • ~8 • Maria Souza • principal',
+        { exact: true },
+      ),
+    ).toHaveCount(0);
+    await pauloLink.getByRole('button', { name: 'Desvincular' }).click();
+    await expect(pauloLink).toHaveCount(0);
+    await expect(
+      page.locator('#guardian-credit-links').getByText(
+        'Ana Souza • ~8 • Maria Souza',
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(
+      page.locator('#guardian-credit-links').getByText(
+        'Ana Souza • 10 • Paulo Nunes • principal',
+        { exact: true },
+      ),
+    ).toBeVisible();
   });
 
   test('creates and edits a product category', async ({ page }) => {
@@ -1265,6 +1318,45 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     await expect(page.getByLabel('Aluno da reserva')).toBeVisible();
     await expect(page.getByLabel('Pesquisar reserva')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Produção' })).toBeVisible();
+    await expect(page.locator('#reservation-slots-list')).toBeEmpty();
+  });
+
+  test('lets the owner edit and deactivate a recreio slot', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await goToArea(page, 'Reservas');
+    const tarde = page
+      .locator('#reservation-slots-list')
+      .getByRole('listitem')
+      .filter({ hasText: 'Recreio tarde' });
+    await expect(tarde).toBeVisible();
+    await tarde.getByRole('button', { name: 'Editar' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Editar recreio' }),
+    ).toBeVisible();
+    await expect(page.locator('#reservation-slot-label')).toHaveValue(
+      'Recreio tarde',
+    );
+    await expect(page.locator('#reservation-slot-cutoff')).toHaveValue('18:00');
+    await page.locator('#reservation-slot-label').fill('Recreio da tarde');
+    await page.getByRole('button', { name: 'Salvar recreio' }).click();
+    await expect(
+      page.locator('#reservation-slots-list').getByText('Recreio da tarde'),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Criar recreio' }),
+    ).toBeVisible();
+    const updated = page
+      .locator('#reservation-slots-list')
+      .getByRole('listitem')
+      .filter({ hasText: 'Recreio da tarde' });
+    await updated.getByRole('button', { name: 'Desativar' }).click();
+    await expect(updated).toContainText('Inativo');
+    await expect(
+      updated.getByRole('button', { name: 'Desativar' }),
+    ).toHaveCount(0);
   });
 
   test('filters the internal reservation student selector by search', async ({
@@ -1747,6 +1839,38 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     });
     expect(afterAdjust.methods).toEqual(['adjustInventory']);
     expect(afterAdjust.calls).toBe(1);
+  });
+
+  test('adjusts stock from the item button with stepper and reason suggestions', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await goToArea(page, 'Estoque');
+    await expect(page.locator('#inventory-adjust-form')).toBeVisible();
+    await expect(
+      page.locator('#inventory-reason-options option[value="Reposição"]'),
+    ).toHaveCount(1);
+    const coxinhaRow = page
+      .locator('#inventory-list')
+      .getByRole('listitem')
+      .filter({ hasText: 'Coxinha • 10' });
+    await coxinhaRow.getByRole('button', { name: 'Ajustar' }).click();
+    await expect(page.locator('#inventory-adjust-product')).toHaveValue(
+      /^[0-9a-f-]{36}$/,
+    );
+    await expect(page.locator('#inventory-status')).toContainText(
+      'Ajustando Coxinha',
+    );
+    await page.locator('#inventory-delta-plus').click();
+    await page.locator('#inventory-delta-plus').click();
+    await page.locator('#inventory-delta-minus').click();
+    await expect(page.locator('#inventory-adjust-delta')).toHaveValue('1');
+    await page.locator('#inventory-adjust-reason').fill('Reposição');
+    await page.getByRole('button', { name: 'Ajustar estoque' }).click();
+    await expect(
+      page.locator('#inventory-list').getByText('Coxinha • 11'),
+    ).toBeVisible();
   });
 
   test('uses one createStudent call when registering a student', async ({

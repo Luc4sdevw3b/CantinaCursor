@@ -4006,6 +4006,24 @@ function deactivateGuardian(sessionToken, id) {
   return withFamilyScreen(guardian);
 }
 
+function reactivateGuardian(sessionToken, id) {
+  requireAction(sessionToken, 'guardians.write');
+  const guardian = withScriptLock(function () {
+    ensureSchemaOnce();
+    const previous = latestGuardianById(id, true);
+    if (previous.active === 'true') {
+      throw new Error('GUARDIAN_ALREADY_ACTIVE: Este responsável já está ativo.');
+    }
+    const record = Object.assign({}, previous, {
+      active: 'true',
+      updated_at: new Date().toISOString(),
+    });
+    appendGuardianRecord(record);
+    return toGuardianGs(record);
+  });
+  return withFamilyScreen(guardian);
+}
+
 function getStudentGuardians(sessionToken, studentId) {
   requireAction(sessionToken, 'guardians.read');
   latestStudentById(studentId);
@@ -9824,7 +9842,7 @@ function getReservationsSetup(sessionToken) {
   return toReservationsSetupGs();
 }
 
-function createReservationSlotUnlocked(userId, payload) {
+function slotFieldsGs(payload) {
   const label = String((payload && payload.label) || '')
     .trim()
     .replace(/\s+/g, ' ');
@@ -9856,19 +9874,116 @@ function createReservationSlotUnlocked(userId, payload) {
       'SLOT_CUTOFF_AFTER_PICKUP: O corte das reservas precisa ser até o início da retirada.',
     );
   }
+  return {
+    label: label,
+    businessDate: businessDate,
+    cutoffAt: cutoffAt,
+    pickupStartsAt: pickupStartsAt,
+    pickupEndsAt: pickupEndsAt,
+  };
+}
+
+function createReservationSlotUnlocked(userId, payload) {
+  const fields = slotFieldsGs(payload);
   const now = new Date().toISOString();
   openNamedSheet(RESERVATION_SLOTS_SHEET, RESERVATION_SLOTS_HEADERS).appendRow([
     Utilities.getUuid(),
-    businessDate,
-    label,
-    pickupStartsAt,
-    pickupEndsAt,
-    cutoffAt,
+    fields.businessDate,
+    fields.label,
+    fields.pickupStartsAt,
+    fields.pickupEndsAt,
+    fields.cutoffAt,
     'true',
     userId,
     now,
   ]);
   return toReservationsSetupGs();
+}
+
+function latestReservationSlotByIdGs(id) {
+  if (!REQUEST_ID_PATTERN.test(id)) {
+    throw new Error(
+      'INVALID_ID: ID deve ser UUID imutável, nunca número da linha.',
+    );
+  }
+  const slot = latestRecordsById(listReservationSlotRecords()).filter(
+    function (item) {
+      return item.id === id;
+    },
+  )[0];
+  if (!slot) {
+    throw new Error('SLOT_NOT_FOUND: Recreio não encontrado.');
+  }
+  return slot;
+}
+
+function appendReservationSlotRecordGs(slot, active, userId) {
+  openNamedSheet(RESERVATION_SLOTS_SHEET, RESERVATION_SLOTS_HEADERS).appendRow([
+    slot.id,
+    slot.business_date,
+    slot.label,
+    slot.pickup_starts_at,
+    slot.pickup_ends_at,
+    slot.cutoff_at,
+    active,
+    userId,
+    new Date().toISOString(),
+  ]);
+}
+
+function updateReservationSlot(sessionToken, id, payload) {
+  const session = requireAction(sessionToken, 'reservation_slots.write');
+  const setup = withScriptLock(function () {
+    ensureSchemaOnce();
+    const previous = latestReservationSlotByIdGs(String(id || ''));
+    if (previous.active !== 'true') {
+      throw new Error('SLOT_INACTIVE: Este recreio não está ativo.');
+    }
+    const fields = slotFieldsGs(
+      Object.assign({}, payload || {}, { businessDate: previous.business_date }),
+    );
+    appendReservationSlotRecordGs(
+      {
+        id: previous.id,
+        business_date: previous.business_date,
+        label: fields.label,
+        pickup_starts_at: fields.pickupStartsAt,
+        pickup_ends_at: fields.pickupEndsAt,
+        cutoff_at: fields.cutoffAt,
+      },
+      'true',
+      session.user_id,
+    );
+    return toReservationsSetupGs();
+  });
+  return attachReservationScreen(setup);
+}
+
+function deactivateReservationSlot(sessionToken, id) {
+  const session = requireAction(sessionToken, 'reservation_slots.write');
+  const setup = withScriptLock(function () {
+    ensureSchemaOnce();
+    const slotId = String(id || '');
+    const previous = latestReservationSlotByIdGs(slotId);
+    if (previous.active !== 'true') {
+      throw new Error('SLOT_ALREADY_INACTIVE: Este recreio já está inativo.');
+    }
+    const hasOpenReservation = latestRecordsById(listReservationRecords()).some(
+      function (item) {
+        return (
+          item.slot_id === slotId && item.status === RESERVATION_STATUS_RESERVED
+        );
+      },
+    );
+    if (hasOpenReservation) {
+      throw new Error(
+        'SLOT_HAS_OPEN_RESERVATIONS: Cancele ou entregue as reservas ativas antes de desativar o recreio.',
+      );
+    }
+    appendReservationSlotRecordGs(previous, 'false', session.user_id);
+    return toReservationsSetupGs();
+  });
+  return attachReservationScreen(setup);
 }
 
 function createReservationSlot(sessionToken, payload) {
