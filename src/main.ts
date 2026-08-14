@@ -88,6 +88,7 @@ app.innerHTML = `
       </nav>
     </section>
 
+    <div class="workspace" id="workspace">
     <section class="students-panel" id="public-portal" hidden>
       <h2>Reservar recreio</h2>
       <p>Escolha o recreio e o lanche. Não é preciso entrar na cantina.</p>
@@ -127,8 +128,6 @@ app.innerHTML = `
       <p id="public-portal-code" hidden></p>
       <p id="public-portal-confirmation" hidden></p>
     </section>
-
-    <div class="workspace" id="workspace">
     <section class="students-panel" id="students-panel" hidden>
       <h2>Alunos</h2>
       <p id="students-status">Entre para ver o cadastro.</p>

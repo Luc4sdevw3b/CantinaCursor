@@ -43,7 +43,7 @@ Regras:
 ### Testes
 
 - typecheck, lint, format, Vitest (207) e E2E local (34) passaram.
-- E2E remoto: o primeiro smoke do portal falhou com `INVENTORY_DAY_NOT_OPEN` porque o Sheets converte `business_date` em Date UTC (um dia a menos em São Paulo). A leitura usa o dia civil UTC e a escrita força texto. Health e reserva pública no deployment seguinte.
+- E2E remoto: o primeiro smoke do portal falhou com `INVENTORY_DAY_NOT_OPEN` (Date UTC no Sheets) e o botão **Enviar reserva** ficou atrás do rodapé no iframe do Apps Script. Datas civis passam a texto; o portal entrou na área rolável. Health e reserva pública no deployment seguinte.
 
 ## 2026-08-13 19:10 — Implementada a Fase 23: recreios e reservas
 

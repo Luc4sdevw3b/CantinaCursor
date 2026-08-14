@@ -63,6 +63,7 @@ test.describe('E2E remoto (Apps Script E2E + planilha isolada)', () => {
   test('creates a public recreio reservation without login', async ({
     page,
   }) => {
+    test.setTimeout(90_000);
     await page.goto(`${e2eBaseUrl as string}?portal=reservas`);
     expect(isLoadedE2EWebAppUrl(page.url())).toBe(true);
 
@@ -90,6 +91,9 @@ test.describe('E2E remoto (Apps Script E2E + planilha isolada)', () => {
     await app.locator('#public-portal-product').selectOption({
       label: 'Coxinha • R$ 5,50',
     });
+    await app
+      .getByRole('button', { name: 'Enviar reserva' })
+      .scrollIntoViewIfNeeded();
     await app.getByRole('button', { name: 'Enviar reserva' }).click();
     await expect(app.locator('#public-portal-code')).toHaveText(
       /^Código [A-HJ-NP-Z2-9]{6}$/,
