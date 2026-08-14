@@ -941,6 +941,27 @@ const DEFAULT_AREA: AppArea = 'sales';
 let currentSession: AppSession | null = null;
 let activeArea: AppArea = DEFAULT_AREA;
 const loadedAreas = new Set<AppArea>();
+let saleScreenShare: SaleScreenData | null = null;
+
+function rememberSaleScreen(screen: SaleScreenData): void {
+  saleScreenShare = screen;
+}
+
+function sharedSaleSlice<K extends keyof SaleScreenData>(
+  key: K,
+): SaleScreenData[K] | undefined {
+  return saleScreenShare?.[key];
+}
+
+function sharedReservationScreen(): ReservationScreenData | undefined {
+  if (!saleScreenShare) {
+    return undefined;
+  }
+  return {
+    setup: saleScreenShare.reservations,
+    students: saleScreenShare.students,
+  };
+}
 
 function submitButton(event: Event): HTMLButtonElement | null {
   if (
@@ -1109,18 +1130,20 @@ function openArea(area: AppArea): void {
 async function ensureAreaLoaded(area: AppArea, force = false): Promise<void> {
   if (!currentSession) {
     loadedAreas.clear();
+    saleScreenShare = null;
     return;
   }
   if (!force && loadedAreas.has(area)) {
     return;
   }
-  await renderArea(area, currentSession);
+  await renderArea(area, currentSession, !force);
   loadedAreas.add(area);
 }
 
 async function renderArea(
   area: AppArea,
   session: AppSession | null,
+  allowShare = true,
 ): Promise<void> {
   switch (area) {
     case 'sales':
@@ -1136,19 +1159,31 @@ async function renderArea(
       await renderProducts(session);
       return;
     case 'inventory':
-      await renderInventory(session);
+      await renderInventory(
+        session,
+        allowShare ? sharedSaleSlice('inventory') : undefined,
+      );
       return;
     case 'reservations':
-      await renderReservations(session);
+      await renderReservations(
+        session,
+        allowShare ? sharedReservationScreen() : undefined,
+      );
       return;
     case 'cash':
-      await renderCash(session);
+      await renderCash(
+        session,
+        allowShare ? sharedSaleSlice('cash') : undefined,
+      );
       return;
     case 'reversals':
       await renderReversals(session);
       return;
     case 'agenda':
-      await renderAgenda(session);
+      await renderAgenda(
+        session,
+        allowShare ? sharedSaleSlice('receivables') : undefined,
+      );
       return;
     case 'payments':
       await renderPayments(session);
@@ -1158,7 +1193,10 @@ async function renderArea(
       return;
     case 'adjust':
       if (!loadedAreas.has('agenda')) {
-        await renderAgenda(session);
+        await renderAgenda(
+          session,
+          allowShare ? sharedSaleSlice('receivables') : undefined,
+        );
         loadedAreas.add('agenda');
       }
       await renderAdjust(session);
@@ -1169,6 +1207,7 @@ async function renderArea(
 }
 
 function invalidateAreas(...areas: AppArea[]): void {
+  saleScreenShare = null;
   for (const area of areas) {
     loadedAreas.delete(area);
   }
@@ -1378,6 +1417,7 @@ async function loginAs(role: UserRole): Promise<void> {
 
 async function showAuthenticated(session: AppSession | null): Promise<void> {
   loadedAreas.clear();
+  saleScreenShare = null;
   if (!session) {
     activeArea = DEFAULT_AREA;
     fillProductForm(null);
@@ -3020,6 +3060,7 @@ async function renderSales(
 
   try {
     const screen = preloaded ?? (await api.getSaleScreenData());
+    rememberSaleScreen(screen);
     const products = screen.products;
     const students = screen.students;
     const sales = screen.sales;

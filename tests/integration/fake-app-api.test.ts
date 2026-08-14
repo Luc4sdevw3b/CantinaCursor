@@ -1543,5 +1543,8 @@ describe('FakeAppApi', () => {
     expect(screen.students.length).toBeGreaterThan(0);
     expect(screen.pixCopyText).toContain('PIX');
     expect(screen.dueDateShortcuts.tomorrow).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(screen.inventory.items.length).toBeGreaterThan(0);
+    expect(screen.reservations.availability.length).toBeGreaterThan(0);
+    expect(screen.cash.businessDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });

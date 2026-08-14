@@ -590,11 +590,22 @@ var namedSheetCache = {};
 var sheetRecordsCache = {};
 var sheetRecordsCacheEnabled = true;
 var schemaEnsured = false;
+var derivedPhysicalByDay = {};
+var derivedReservedByKey = {};
+var derivedRemainingByIgnore = {};
+var derivedCashMovementsBySession = null;
 var perfCounters = {
   sheetReads: 0,
   sheetWrites: 0,
   lockWaitMs: 0,
 };
+
+function clearDerivedPerfCaches() {
+  derivedPhysicalByDay = {};
+  derivedReservedByKey = {};
+  derivedRemainingByIgnore = {};
+  derivedCashMovementsBySession = null;
+}
 
 function resetPerfCounters() {
   perfCounters = { sheetReads: 0, sheetWrites: 0, lockWaitMs: 0 };
@@ -697,12 +708,14 @@ function withScriptLock(work) {
   const previousCache = sheetRecordsCacheEnabled;
   sheetRecordsCacheEnabled = false;
   sheetRecordsCache = {};
+  clearDerivedPerfCaches();
   try {
     return work();
   } finally {
     lock.releaseLock();
     sheetRecordsCacheEnabled = previousCache;
     sheetRecordsCache = {};
+    clearDerivedPerfCaches();
   }
 }
 
@@ -4229,23 +4242,52 @@ function requireInventoryDayGs(businessDate) {
   return day;
 }
 
-function physicalForGs(dayId, productId) {
-  const opening = listOpeningRecords().filter(function (item) {
-    return item.inventory_day_id === dayId && item.product_id === productId;
-  })[0];
-  let physical = opening ? Number(opening.opening_quantity) : 0;
-  listMovementRecords()
-    .filter(function (item) {
-      return item.inventory_day_id === dayId && item.product_id === productId;
-    })
-    .forEach(function (item) {
-      physical += Number(item.quantity_delta);
-    });
-  return physical;
+function buildPhysicalMapGs(dayId) {
+  const qty = {};
+  listOpeningRecords().forEach(function (item) {
+    if (item.inventory_day_id === dayId) {
+      qty[item.product_id] = Number(item.opening_quantity);
+    }
+  });
+  listMovementRecords().forEach(function (item) {
+    if (item.inventory_day_id === dayId) {
+      qty[item.product_id] =
+        (qty[item.product_id] || 0) + Number(item.quantity_delta);
+    }
+  });
+  return qty;
 }
 
-function reservedQuantityGs(productId, businessDate, excludeReservationId) {
-  let total = 0;
+function physicalMapGs(dayId) {
+  if (!sheetRecordsCacheEnabled) {
+    return buildPhysicalMapGs(dayId);
+  }
+  if (!derivedPhysicalByDay[dayId]) {
+    derivedPhysicalByDay[dayId] = buildPhysicalMapGs(dayId);
+  }
+  return derivedPhysicalByDay[dayId];
+}
+
+function physicalForGs(dayId, productId) {
+  const qty = physicalMapGs(dayId)[productId];
+  return qty === undefined ? 0 : qty;
+}
+
+function buildReservedMapGs(businessDate, excludeReservationId) {
+  const slotsById = {};
+  latestRecordsById(listReservationSlotRecords()).forEach(function (slot) {
+    slotsById[slot.id] = slot;
+  });
+  const itemsByReservation = {};
+  listReservationItemRecords().forEach(function (item) {
+    const current = itemsByReservation[item.reservation_id];
+    if (current) {
+      current.push(item);
+    } else {
+      itemsByReservation[item.reservation_id] = [item];
+    }
+  });
+  const qty = {};
   latestRecordsById(listReservationRecords()).forEach(function (reservation) {
     if (reservation.status !== RESERVATION_STATUS_RESERVED) {
       return;
@@ -4253,26 +4295,36 @@ function reservedQuantityGs(productId, businessDate, excludeReservationId) {
     if (excludeReservationId && reservation.id === excludeReservationId) {
       return;
     }
-    const slot = latestRecordsById(listReservationSlotRecords()).filter(
-      function (item) {
-        return item.id === reservation.slot_id;
-      },
-    )[0];
+    const slot = slotsById[reservation.slot_id];
     if (!slot || slot.business_date !== businessDate) {
       return;
     }
-    listReservationItemRecords()
-      .filter(function (item) {
-        return (
-          item.reservation_id === reservation.id &&
-          item.product_id === productId
-        );
-      })
-      .forEach(function (item) {
-        total += Number(item.quantity);
-      });
+    const items = itemsByReservation[reservation.id] || [];
+    items.forEach(function (item) {
+      qty[item.product_id] = (qty[item.product_id] || 0) + Number(item.quantity);
+    });
   });
-  return total;
+  return qty;
+}
+
+function reservedQuantityMapGs(businessDate, excludeReservationId) {
+  const key = businessDate + '\0' + (excludeReservationId || '');
+  if (!sheetRecordsCacheEnabled) {
+    return buildReservedMapGs(businessDate, excludeReservationId);
+  }
+  if (!derivedReservedByKey[key]) {
+    derivedReservedByKey[key] = buildReservedMapGs(
+      businessDate,
+      excludeReservationId,
+    );
+  }
+  return derivedReservedByKey[key];
+}
+
+function reservedQuantityGs(productId, businessDate, excludeReservationId) {
+  return (
+    reservedQuantityMapGs(businessDate, excludeReservationId)[productId] || 0
+  );
 }
 
 function reservationHeldQuantityGs(reservationId, productId) {
@@ -4639,6 +4691,25 @@ function cashMovementSummaryGs(kind, amountDeltaCents) {
   return formatBrlGs(Math.abs(amountDeltaCents));
 }
 
+function cashMovementsBySessionGs() {
+  if (sheetRecordsCacheEnabled && derivedCashMovementsBySession) {
+    return derivedCashMovementsBySession;
+  }
+  const bySession = {};
+  listCashMovementRecords().forEach(function (item) {
+    const current = bySession[item.cash_session_id];
+    if (current) {
+      current.push(item);
+    } else {
+      bySession[item.cash_session_id] = [item];
+    }
+  });
+  if (sheetRecordsCacheEnabled) {
+    derivedCashMovementsBySession = bySession;
+  }
+  return bySession;
+}
+
 function expectedCashForSessionGs(session) {
   if (
     session.status === CASH_STATUS_CLOSED &&
@@ -4647,13 +4718,10 @@ function expectedCashForSessionGs(session) {
     return Number(session.expected_close_cents);
   }
   let expected = Number(session.opening_float_cents);
-  listCashMovementRecords()
-    .filter(function (item) {
-      return item.cash_session_id === session.id;
-    })
-    .forEach(function (item) {
-      expected += Number(item.amount_delta_cents);
-    });
+  const movements = cashMovementsBySessionGs()[session.id] || [];
+  movements.forEach(function (item) {
+    expected += Number(item.amount_delta_cents);
+  });
   return expected;
 }
 
@@ -4799,13 +4867,8 @@ function toCashSessionGs(session, today) {
       ' • diferença ' +
       differenceLabel;
   }
-  const movements = listCashMovementRecords()
-    .filter(function (item) {
-      return item.cash_session_id === session.id;
-    })
-    .slice()
-    .reverse()
-    .map(toCashMovementGs);
+  const movementRows = cashMovementsBySessionGs()[session.id] || [];
+  const movements = movementRows.slice().reverse().map(toCashMovementGs);
   return {
     id: session.id,
     businessDate: session.business_date,
@@ -5207,22 +5270,11 @@ function listPaymentCreditAllocationRecords() {
   );
 }
 
-function remainingCentsGs(receivableId, ignorePaymentId) {
-  const receivable = latestRecordsById(listReceivableRecords()).filter(
-    function (item) {
-      return item.id === receivableId;
-    },
-  )[0];
-  if (!receivable || receivable.status === RECEIVABLE_STATUS_REVERSED) {
-    return 0;
+function remainingCentsMapGs(ignorePaymentId) {
+  const key = ignorePaymentId || '';
+  if (sheetRecordsCacheEnabled && derivedRemainingByIgnore[key]) {
+    return derivedRemainingByIgnore[key];
   }
-  const charged = listReceivableChargeRecords()
-    .filter(function (item) {
-      return item.receivable_id === receivableId;
-    })
-    .reduce(function (total, item) {
-      return total + Number(item.amount_cents);
-    }, 0);
   const reversedPaymentIds = {};
   latestRecordsById(listPaymentRecords()).forEach(function (item) {
     if (item.status === PAYMENT_STATUS_REVERSED) {
@@ -5232,17 +5284,37 @@ function remainingCentsGs(receivableId, ignorePaymentId) {
   if (ignorePaymentId) {
     reversedPaymentIds[ignorePaymentId] = true;
   }
-  const allocated = listPaymentAllocationRecords()
-    .filter(function (item) {
-      return (
-        item.receivable_id === receivableId &&
-        !reversedPaymentIds[item.payment_id]
-      );
-    })
-    .reduce(function (total, item) {
-      return total + Number(item.amount_cents);
-    }, 0);
-  return charged - allocated;
+  const chargedBy = {};
+  listReceivableChargeRecords().forEach(function (item) {
+    chargedBy[item.receivable_id] =
+      (chargedBy[item.receivable_id] || 0) + Number(item.amount_cents);
+  });
+  const allocatedBy = {};
+  listPaymentAllocationRecords().forEach(function (item) {
+    if (reversedPaymentIds[item.payment_id]) {
+      return;
+    }
+    allocatedBy[item.receivable_id] =
+      (allocatedBy[item.receivable_id] || 0) + Number(item.amount_cents);
+  });
+  const remaining = {};
+  latestRecordsById(listReceivableRecords()).forEach(function (item) {
+    if (item.status === RECEIVABLE_STATUS_REVERSED) {
+      remaining[item.id] = 0;
+      return;
+    }
+    remaining[item.id] =
+      (chargedBy[item.id] || 0) - (allocatedBy[item.id] || 0);
+  });
+  if (sheetRecordsCacheEnabled) {
+    derivedRemainingByIgnore[key] = remaining;
+  }
+  return remaining;
+}
+
+function remainingCentsGs(receivableId, ignorePaymentId) {
+  const remaining = remainingCentsMapGs(ignorePaymentId)[receivableId];
+  return remaining === undefined ? 0 : remaining;
 }
 
 function saleConsumerLabelGs(consumerStudentId) {
@@ -6070,6 +6142,7 @@ function getSaleScreenData(sessionToken) {
 
 function getSaleScreenDataUnlocked(role) {
   void role;
+  const inventory = listBalancesUnlocked(todayCivil());
   return {
     products: listProductsUnlocked(false),
     students: listStudentsUnlocked(false),
@@ -6077,8 +6150,8 @@ function getSaleScreenDataUnlocked(role) {
     pixCopyText: readPixCopyTextUnlocked().text,
     dueDateShortcuts: dueDateShortcutsGs(todayCivil()),
     siblingAuthorizations: listSiblingAuthorizationsUnlocked(null),
-    reservations: toReservationsSetupGs(),
-    inventory: listBalancesUnlocked(todayCivil()),
+    reservations: toReservationsSetupGs(inventory),
+    inventory: inventory,
     receivables: listReceivablesUnlocked(),
     cash: getCashSetupUnlocked(),
   };
@@ -8894,7 +8967,7 @@ function productionSummaryGs(reservations) {
     });
 }
 
-function toReservationsSetupGs() {
+function toReservationsSetupGs(preloadedInventory) {
   const now = new Date().toISOString();
   const today = todayCivil();
   const slots = latestRecordsById(listReservationSlotRecords())
@@ -8912,7 +8985,8 @@ function toReservationsSetupGs() {
     });
   let availability = [];
   try {
-    availability = listBalancesUnlocked(today).items.map(function (item) {
+    const balances = preloadedInventory || listBalancesUnlocked(today);
+    availability = balances.items.map(function (item) {
       return {
         productId: item.productId,
         productName: item.productName,

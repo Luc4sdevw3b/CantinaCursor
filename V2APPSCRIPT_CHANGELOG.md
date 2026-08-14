@@ -9,6 +9,76 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-14 12:40 — Cortar laços do Sheets e reusar Vendas
+
+**Origem:** Pedido do usuário
+**Status:** Implementado
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 26.5
+
+### Pedido / objetivo
+
+- Inspecionar DOM, console, rede e headers no DevTools.
+- Corrigir a lentidão ao carregar as páginas pelo caminho mais viável.
+
+### Tentativa / implementação
+
+- MCP/CDP no casco do Google: load ~1,8–2,3 s; um XHR de 540 bytes ~3,9 s; iframe `sandboxFrame` cross-origin (sandbox + allow). Sem cookies (CDP bloqueado). Console/rede da UI ficam no iframe — cliques do MCP não entram.
+- Causa real: cada `google.script.run` relia estoque/reservas/dívidas/caixa em laços por item; Vendas já trazia esses dados e as outras abas pediam de novo.
+- Apps Script: mapa de físico/reservado/remainingCents/movimentos de caixa uma vez por execução; Vendas não calcula estoque duas vezes.
+- UI: Estoque, Agenda, Reservas e Caixa reusam o payload de Vendas até um **Atualizar** ou mutação.
+
+### Resultado
+
+- Abrir essas quatro abas depois do login: 0 chamadas extras no E2E local.
+- Reserva/estoque/fiado continuam com o mesmo número; só o CPU da montagem cai.
+
+### Diferenças do pedido
+
+- Perfil JS do iframe não é visível no MCP (cross-origin). A correção usa o ranking medido + o grafo de `Code.gs`.
+- Uma ida fria ao Google ainda existe (login + Vendas). Não dá para zerar o piso de `google.script.run`.
+
+### Impacto técnico
+
+- Leituras usam índices em memória da mesma execução; mutação sob lock continua sem esse cache.
+- `invalidateAreas` descarta o payload compartilhado.
+
+### Testes
+
+- Vitest: alinhamento `getSaleScreenData` × estoque/reservas.
+- E2E local: 0 chamadas ao abrir Estoque/Agenda/Reservas/Caixa após Vendas.
+
+### Pendências / próxima versão
+
+- Alunos/Estornos ainda relêem a planilha na primeira abertura.
+- Publicar o `Code.gs` no Web App DEV para a dona sentir o corte no Google.
+
+## 2026-08-14 12:33 — Auditoria de lentidão no Web App
+
+**Origem:** Pedido do usuário
+**Status:** Auditoria (sem correção de código)
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 26.5
+
+### Pedido / objetivo
+
+- Descobrir as áreas mais lentas navegando pelo Web App.
+
+### Tentativa / implementação
+
+- MCP no casco do Google: load ~2,3 s; iframe `sandboxFrame` de outro domínio — cliques não entram na UI.
+- Playwright no mesmo Web App: login dona + cada aba a frio, esperando o status; tempos de `window.__cantinaPerf`.
+- Ranking e causas em `PERFORMANCE_BASELINE.md`.
+
+### Resultado
+
+- Piores: Reservas 20,1 s, Atualizar/Vendas 16,9 s, login+Vendas 15,5 s (2 chamadas), Alunos 10,4 s.
+- Piso de uma chamada barata ~3 s. Segunda abertura de Vendas e Juros depois da Agenda: ~0,4 s, 0 chamadas.
+
+### Diferenças do pedido
+
+- Não foi possível auditar as abas só com MCP (iframe). A medição das abas usou Playwright no mesmo endereço.
+
 ## 2026-08-14 12:10 — Estoque, alunos e demais abas em 1 round trip
 
 **Origem:** Pedido do usuário

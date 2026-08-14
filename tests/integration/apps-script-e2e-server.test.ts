@@ -325,6 +325,7 @@ interface ServerContext {
     items: Array<{
       productName: string;
       physicalQuantity: number;
+      reservedQuantity: number;
       quantityLabel: string;
       soldOut: boolean;
     }>;
@@ -373,7 +374,17 @@ interface ServerContext {
     sales: Array<{ summaryLabel: string }>;
     pixCopyText: string;
     inventory: {
-      items: Array<{ productName: string; physicalQuantity: number }>;
+      items: Array<{
+        productName: string;
+        physicalQuantity: number;
+        reservedQuantity: number;
+      }>;
+    };
+    reservations: {
+      availability: Array<{
+        productName: string;
+        reservedQuantity: number;
+      }>;
     };
   };
   getStudentsScreenData(sessionToken: string): {
@@ -3435,6 +3446,43 @@ describe('Apps Script E2E server', () => {
     });
     expect(second.netTotalCents).toBe(550);
     expect(second.summaryLabel).toBe('Anônima • Coxinha • R$ 5,50');
+  });
+
+  it('keeps sale screen inventory aligned with balances and reservation availability', () => {
+    const { server } = loadServer({
+      ENVIRONMENT: 'E2E',
+      SPREADSHEET_ID: 'e2e-sheet-id',
+      APP_VERSION: '0.1.0-dev',
+    });
+    server.seedE2E(ownerToken(server));
+    const owner = ownerToken(server);
+    const screen = server.getSaleScreenData(owner);
+    const balances = server.listInventoryBalances(owner);
+    const setup = server.getReservationsSetup(owner);
+    expect(
+      screen.inventory.items.map((item) => [
+        item.productName,
+        item.physicalQuantity,
+        item.reservedQuantity,
+      ]),
+    ).toEqual(
+      balances.items.map((item) => [
+        item.productName,
+        item.physicalQuantity,
+        item.reservedQuantity,
+      ]),
+    );
+    expect(
+      screen.reservations.availability.map((item) => [
+        item.productName,
+        item.reservedQuantity,
+      ]),
+    ).toEqual(
+      setup.availability.map((item) => [
+        item.productName,
+        item.reservedQuantity,
+      ]),
+    );
   });
 
   it('returns catalog screen from createProduct and lists homonyms on students screen', () => {

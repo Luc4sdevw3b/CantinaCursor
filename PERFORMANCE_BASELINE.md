@@ -27,6 +27,7 @@ Não usar estes milissegundos como assert de CI.
 | Cadastrar produto                                            |                    2 round trips (~4–5 s no Google) |    1 mutação; lista do cardápio volta no mesmo retorno |                                                                                                  **2** (`createProduct` + `getCatalogScreenData`) |                        **1** (`createProduct`, inclui `screen`) |
 | Excluir produto / categoria                                  |                    2 round trips (~4–5 s no Google) |                  1 mutação; cardápio volta no `screen` |                                                                                 **2** (`deleteProduct`/`deleteCategory` + `getCatalogScreenData`) |    **1** (`deleteProduct` ou `deleteCategory`, inclui `screen`) |
 | Abrir aba Alunos                                             | 1 chamada, mas com leitura de cabeçalho em cada aba | 1 chamada; abas já conhecidas pulam checagem de header |                                                                                                                   **1** (`getStudentsScreenData`) |          **1** (`getStudentsScreenData`, mais barata no Sheets) |
+| Abrir Estoque / Agenda / Reservas / Caixa depois de Vendas   | 1 chamada Google cada | 0 se Vendas já carregou | **1** cada | **0** (reusa `getSaleScreenData`) |
 | Cadastrar aluno / ajustar estoque / abrir caixa              |                                    mutação + reload |                1 mutação; a aba usa o retorno/`screen` |                                                                                                **2** (mutação + `get*ScreenData`/`listInventory`) | **1** (`createStudent` / `adjustInventory` / `openCashSession`) |
 | Entregar reserva                                             |       preenchia carrinho e recarregava sessão/telas |           preenche carrinho local; Vendas já lazy-load |                                                                                                                                            várias |                                   **0** até **Confirmar venda** |
 | Atualizar estoque                                            |                                    1 leitura da aba |                                              1 leitura |                                                                                                                                             **1** |                                 **1** (`listInventoryBalances`) |
@@ -51,9 +52,33 @@ Leituras de UI **não** precisam de `LockService`; mutação sim. O lock agora c
 - `CacheService`: catálogo/categorias (600 s) e flag de schema. Invalidado em escrita de produto/categoria. Miss reconstrói do Sheets. Totais financeiros nunca saem do cache.
 - Índice mínimo de alunos: vem no payload da tela (`getSaleScreenData.students`, `getReservationScreenData.students`). Pesquisa/filtro é local.
 
+## Medição ao vivo — 2026-08-14 12:33 BRT
+
+Web App DEV, Playwright dentro do iframe, `window.__cantinaPerf`. Uma aba por vez até o status sair do texto de “entre para…”. Seed pequeno (3 alunos, 7 produtos, 2 reservas, 0 vendas). Sem PII. O navegador MCP do Cursor não clica no `sandboxFrame` (outro domínio); o casco do Google levou ~2,3 s no load.
+
+| Aba / fluxo | API | Chamadas | Tempo |
+| --- | --- | ---: | ---: |
+| Reservas | `getReservationScreenData` | 1 | **20,1 s** |
+| Atualizar (Vendas) | `getSaleScreenData` | 1 | **16,9 s** |
+| Login + Vendas | `loginE2E` + `getSaleScreenData` | 2 | 5,5 + 9,9 s |
+| Alunos | `getStudentsScreenData` | 1 | 10,4 s |
+| Estornos | `getReversalsSetup` | 1 | 9,1 s |
+| Caixa | `getCashSetup` | 1 | 7,8 s |
+| Estoque | `listInventoryBalances` | 1 | 7,8 s |
+| Responsáveis | `getFamilyScreenData` | 1 | 7,2 s |
+| Pagamentos | `getPaymentsScreenData` | 1 | 4,8 s |
+| Crédito | `getCreditsScreenData` | 1 | 4,4 s |
+| Cardápio | `getCatalogScreenData` | 1 | 3,5 s |
+| Agenda | `listReceivables` | 1 | 3,1 s |
+| Juros (depois da Agenda) | — | 0 | 0,4 s |
+| Vendas de novo | — | 0 | 0,4 s |
+
+O piso de uma chamada “barata” neste ambiente ficou em ~3 s (Agenda vazia / Cardápio em cache), não 400–600 ms. A mesma `getSaleScreenData` oscilou 9,9 s → 16,9 s na sessão. Lazy load da segunda abertura funciona (0 chamadas).
+
 ## Gargalos que continuam (intrínsecos)
 
-- Uma `google.script.run` fria ainda custa centenas de ms, mesmo com payload único.
+- Uma `google.script.run` fria ainda custa **~3 s** neste DEV, mesmo com payload único ou catálogo em cache.
+- Estoque, Agenda, Reservas e Caixa **depois de Vendas** não disparam nova chamada: reusam o payload. **Atualizar** na aba ativa continua 1 chamada.
 - `createSale` ainda lê várias abas para validar, gravar e montar `screen`.
 - Excluir produto ainda consulta venda/estoque/reserva na mesma chamada (regra `PRODUCT_IN_USE`).
 - Cadastrar 10 produtos ainda é 10 idas ao Google (uma por produto), não um lote.

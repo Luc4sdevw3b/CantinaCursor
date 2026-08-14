@@ -83,7 +83,7 @@ Definir `AppApi` com funções específicas do domínio, nunca ranges/SQL/Sheets
 
 Até a Fase 26.5 o contrato `AppApi` inclui sessão, cadastro, cardápio, estoque diário, vendas, agenda, pagamento parcial, juros, renegociação, crédito pessoal, crédito de responsável, pagamento familiar, venda na conta do irmão, caixa físico, reservas internas, o portal público (`getPublicReservationPortal` / `createPublicReservation`) sem cadastro privado, `createSale` com `sourceReservationId` / `overrideReservationId`, e payloads agregados de tela (`getSaleScreenData`, `getStudentsScreenData`, `getFamilyScreenData`, `getCatalogScreenData`, `getPaymentsScreenData`, `getCreditsScreenData`, `getReservationScreenData`). `createSale`, as mutações de cardápio e as mutações das demais abas (aluno, turma, responsável, estoque, caixa, pagamento, crédito, juros, reserva e estorno) devolvem `screen` ou o payload da tela para atualizar a UI sem reload. Sem envio de WhatsApp.
 
-A tela privada é uma só: hero com atalhos e uma área visível por vez. Só a área ativa é carregada; o botão **Atualizar** relê essa área.
+A tela privada é uma só: hero com atalhos e uma área visível por vez. Só a área ativa é carregada; o botão **Atualizar** relê essa área. Depois do login, Vendas já traz estoque, reservas, dívidas e caixa: abrir essas abas reusa o payload, sem nova ida ao Google.
 
 O adapter `google.script.run` é usado no Web App Apps Script (ambiente E2E isolado nesta fase). **E2E local usa somente `FakeAppApi`.** Isso permite Playwright desde o início sem Google.
 

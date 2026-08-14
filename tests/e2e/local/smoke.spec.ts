@@ -1874,4 +1874,54 @@ test.describe('E2E local (preview + FakeAppApi)', () => {
     expect(afterStudents.methods).toEqual(['getStudentsScreenData']);
     expect(afterStudents.calls).toBe(1);
   });
+
+  test('reuses the sale screen for estoque, agenda, reservas and caixa', async ({
+    page,
+  }) => {
+    await openLocalApp(page);
+    await page.getByRole('button', { name: 'Entrar como dona' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Vendas', exact: true }),
+    ).toBeVisible();
+    await page.evaluate(() => {
+      const perf = (
+        window as Window & {
+          __cantinaPerf?: { reset: () => void };
+        }
+      ).__cantinaPerf;
+      if (!perf) {
+        throw new Error('__cantinaPerf ausente');
+      }
+      perf.reset();
+    });
+    await goToArea(page, 'Estoque');
+    await expect(page.locator('#inventory-adjust-form')).toBeVisible();
+    await goToArea(page, 'Agenda');
+    await expect(page.locator('#agenda-status')).not.toHaveText(
+      'Entre para ver os vencimentos.',
+    );
+    await goToArea(page, 'Reservas');
+    await expect(page.locator('#reservations-status')).not.toHaveText(
+      'Entre para ver as reservas.',
+    );
+    await goToArea(page, 'Caixa');
+    await expect(
+      page.getByRole('heading', { name: 'Caixa', exact: true }),
+    ).toBeVisible();
+    const afterTabs = await page.evaluate(() => {
+      const perf = (
+        window as Window & {
+          __cantinaPerf?: {
+            snapshot: () => { calls: number; methods: string[] };
+          };
+        }
+      ).__cantinaPerf;
+      if (!perf) {
+        throw new Error('__cantinaPerf ausente');
+      }
+      return perf.snapshot();
+    });
+    expect(afterTabs.methods).toEqual([]);
+    expect(afterTabs.calls).toBe(0);
+  });
 });
