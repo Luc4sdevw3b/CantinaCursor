@@ -22,8 +22,10 @@ import type {
   SiblingAuthorization,
   StudentDetail,
   StudentSummary,
+  SaleScreenData,
 } from './web/shared/app-api';
 import { createAppApi } from './web/shared/create-app-api';
+import { getClientPerf, resetClientPerf } from './web/shared/perf';
 import {
   applyTheme,
   isThemePreference,
@@ -79,6 +81,7 @@ app.innerHTML = `
           </div>
           <div id="session-active" hidden>
             <p id="session-label"></p>
+            <button type="button" id="refresh-area">Atualizar</button>
             <button type="button" id="logout">Sair</button>
           </div>
         </div>
@@ -926,6 +929,7 @@ const AREA_PANELS: Record<AppArea, string> = {
 const DEFAULT_AREA: AppArea = 'sales';
 let currentSession: AppSession | null = null;
 let activeArea: AppArea = DEFAULT_AREA;
+const loadedAreas = new Set<AppArea>();
 
 function submitButton(event: Event): HTMLButtonElement | null {
   if (
@@ -1088,6 +1092,75 @@ function syncWorkspace(session: AppSession | null): void {
 function openArea(area: AppArea): void {
   activeArea = area;
   syncWorkspace(currentSession);
+  void ensureAreaLoaded(area);
+}
+
+async function ensureAreaLoaded(area: AppArea, force = false): Promise<void> {
+  if (!currentSession) {
+    loadedAreas.clear();
+    return;
+  }
+  if (!force && loadedAreas.has(area)) {
+    return;
+  }
+  await renderArea(area, currentSession);
+  loadedAreas.add(area);
+}
+
+async function renderArea(
+  area: AppArea,
+  session: AppSession | null,
+): Promise<void> {
+  switch (area) {
+    case 'sales':
+      await renderSales(session);
+      return;
+    case 'students':
+      await renderStudents(Boolean(session));
+      return;
+    case 'family':
+      await renderFamily(session);
+      return;
+    case 'products':
+      await renderProducts(session);
+      return;
+    case 'inventory':
+      await renderInventory(session);
+      return;
+    case 'reservations':
+      await renderReservations(session);
+      return;
+    case 'cash':
+      await renderCash(session);
+      return;
+    case 'reversals':
+      await renderReversals(session);
+      return;
+    case 'agenda':
+      await renderAgenda(session);
+      return;
+    case 'payments':
+      await renderPayments(session);
+      return;
+    case 'credits':
+      await renderCredits(session);
+      return;
+    case 'adjust':
+      if (!loadedAreas.has('agenda')) {
+        await renderAgenda(session);
+        loadedAreas.add('agenda');
+      }
+      await renderAdjust(session);
+      return;
+    default:
+      return;
+  }
+}
+
+function invalidateAreas(...areas: AppArea[]): void {
+  for (const area of areas) {
+    loadedAreas.delete(area);
+  }
 }
 
 function renderTheme(): void {
@@ -1119,6 +1192,12 @@ systemTheme.addEventListener('change', renderTheme);
 renderTheme();
 
 const api = createAppApi();
+Object.assign(window, {
+  __cantinaPerf: {
+    reset: resetClientPerf,
+    snapshot: getClientPerf,
+  },
+});
 const sessionCard = document.querySelector('#session-card');
 const sessionLogin = document.querySelector('#session-login');
 const sessionActive = document.querySelector('#session-active');
@@ -1148,24 +1227,16 @@ async function loginAs(role: UserRole): Promise<void> {
 }
 
 async function showAuthenticated(session: AppSession | null): Promise<void> {
+  loadedAreas.clear();
   if (!session) {
     activeArea = DEFAULT_AREA;
     fillProductForm(null);
   }
   syncWorkspace(session);
   renderSession(session, true);
-  await renderStudents(Boolean(session));
-  await renderFamily(session);
-  await renderProducts(session);
-  await renderInventory(session);
-  await renderReservations(session);
-  await renderCash(session);
-  await renderReversals(session);
-  await renderSales(session);
-  await renderAgenda(session);
-  await renderPayments(session);
-  await renderCredits(session);
-  await renderAdjust(session);
+  if (session) {
+    await ensureAreaLoaded(activeArea, true);
+  }
 }
 
 document.querySelector('#login-owner')?.addEventListener('click', () => {
@@ -1177,6 +1248,9 @@ document.querySelector('#login-staff')?.addEventListener('click', () => {
 document.querySelector('#logout')?.addEventListener('click', () => {
   void api.logout().then(() => showAuthenticated(null));
 });
+document.querySelector('#refresh-area')?.addEventListener('click', () => {
+  void ensureAreaLoaded(activeArea, true);
+});
 
 document
   .querySelectorAll<HTMLButtonElement>('#area-nav [data-area]')
@@ -1184,9 +1258,6 @@ document
     button.addEventListener('click', () => {
       if (isAppArea(button.dataset.area)) {
         openArea(button.dataset.area);
-        if (button.dataset.area === 'sales') {
-          void renderSales(currentSession);
-        }
       }
     });
   });
@@ -1288,10 +1359,10 @@ async function renderStudents(authenticated: boolean): Promise<void> {
     return;
   }
 
-  const [students, classrooms] = await Promise.all([
-    api.listStudents({ includeInactive: true }),
-    api.listClassrooms(),
-  ]);
+  const [students, classrooms] = await (async () => {
+    const data = await api.getStudentsScreenData();
+    return [data.students, data.classrooms] as const;
+  })();
   studentsStatus.textContent =
     students.length === 0
       ? 'Nenhum aluno cadastrado ainda.'
@@ -1516,12 +1587,15 @@ async function renderFamily(session: AppSession | null): Promise<void> {
     return;
   }
 
-  const [guardians, students, authorizations, settings] = await Promise.all([
-    api.listGuardians({ includeInactive: true }),
-    api.listStudents({ includeInactive: true }),
-    api.listSiblingAuthorizations(),
-    api.getGuardianSettings(),
-  ]);
+  const [guardians, students, authorizations, settings] = await (async () => {
+    const data = await api.getFamilyScreenData();
+    return [
+      data.guardians,
+      data.students,
+      data.siblingAuthorizations,
+      data.settings,
+    ] as const;
+  })();
   familyStatus.textContent =
     guardians.length === 0
       ? 'Nenhum responsável cadastrado ainda.'
@@ -1556,7 +1630,7 @@ async function renderFamily(session: AppSession | null): Promise<void> {
               if (editingGuardianId === guardian.id) {
                 fillGuardianForm(null);
               }
-              return api.getSession().then(renderFamily);
+              return ensureAreaLoaded('family', true);
             }),
         );
       });
@@ -1585,12 +1659,10 @@ async function renderFamily(session: AppSession | null): Promise<void> {
         revoke,
         'Não foi possível revogar a autorização.',
         () =>
-          api
-            .revokeSiblingAuthorization(authorization.id)
-            .then(() => api.getSession())
-            .then((current) =>
-              renderFamily(current).then(() => renderSales(current)),
-            ),
+          api.revokeSiblingAuthorization(authorization.id).then(() => {
+            invalidateAreas('sales');
+            return ensureAreaLoaded('family', true);
+          }),
       );
     });
     item.append(label, revoke);
@@ -1776,10 +1848,9 @@ async function renderProducts(session: AppSession | null): Promise<void> {
     return;
   }
 
-  const [categories, products] = await Promise.all([
-    api.listProductCategories(),
-    api.listProducts({ includeInactive: true }),
-  ]);
+  const catalog = await api.getCatalogScreenData();
+  const categories = catalog.categories;
+  const products = catalog.products;
   productsStatus.textContent =
     products.length === 0
       ? 'Nenhum produto cadastrado ainda.'
@@ -1833,7 +1904,7 @@ async function renderProducts(session: AppSession | null): Promise<void> {
                 if (editingCategoryId === category.id) {
                   fillCategoryForm(null);
                 }
-                return api.getSession().then(renderProducts);
+                return ensureAreaLoaded('products', true);
               }),
           );
         });
@@ -1850,7 +1921,7 @@ async function renderProducts(session: AppSession | null): Promise<void> {
             () =>
               api
                 .activateCategory(category.id)
-                .then(() => api.getSession().then(renderProducts)),
+                .then(() => ensureAreaLoaded('products', true)),
           );
         });
         actions.append(activate);
@@ -1868,7 +1939,7 @@ async function renderProducts(session: AppSession | null): Promise<void> {
               if (editingCategoryId === category.id) {
                 fillCategoryForm(null);
               }
-              return api.getSession().then(renderProducts);
+              return ensureAreaLoaded('products', true);
             }),
         );
       });
@@ -1985,7 +2056,7 @@ async function renderProducts(session: AppSession | null): Promise<void> {
     return;
   }
 
-  const adHocItems = await api.listAdHocItems();
+  const adHocItems = catalog.adHocItems;
   adHocStatus.textContent =
     adHocItems.length === 0
       ? 'Só a dona registra item avulso. Ele não vira produto.'
@@ -2265,10 +2336,9 @@ async function renderReservations(session: AppSession | null): Promise<void> {
     return;
   }
   try {
-    const [setup, students] = await Promise.all([
-      api.getReservationsSetup(),
-      api.listStudents(),
-    ]);
+    const data = await api.getReservationScreenData();
+    const setup = data.setup;
+    const students = data.students;
     reservationsSetup = setup;
     if (reservationSlotForm instanceof HTMLElement) {
       reservationSlotForm.hidden = session.role !== 'owner';
@@ -2331,15 +2401,12 @@ async function renderReservations(session: AppSession | null): Promise<void> {
 }
 
 function refreshAfterReservation(successMessage: string): Promise<void> {
-  return api.getSession().then((session) =>
-    Promise.all([renderReservations(session), renderInventory(session)]).then(
-      () => {
-        if (reservationsStatus) {
-          reservationsStatus.textContent = successMessage;
-        }
-      },
-    ),
-  );
+  invalidateAreas('inventory', 'sales');
+  return ensureAreaLoaded('reservations', true).then(() => {
+    if (reservationsStatus) {
+      reservationsStatus.textContent = successMessage;
+    }
+  });
 }
 
 const cashPanel = document.querySelector('#cash-panel');
@@ -2784,7 +2851,10 @@ function fillSaleAccounts(): void {
   }
 }
 
-async function renderSales(session: AppSession | null): Promise<void> {
+async function renderSales(
+  session: AppSession | null,
+  preloaded?: SaleScreenData,
+): Promise<void> {
   if (
     !(salesPanel instanceof HTMLElement) ||
     !salesStatus ||
@@ -2811,16 +2881,14 @@ async function renderSales(session: AppSession | null): Promise<void> {
   }
 
   try {
-    const [products, students, sales, pix, shortcuts, authorizations, setup] =
-      await Promise.all([
-        api.listProducts(),
-        api.listStudents(),
-        api.listSales(),
-        api.getPixCopyText(),
-        api.getDueDateShortcuts(),
-        api.listSiblingAuthorizations(),
-        api.getReservationsSetup(),
-      ]);
+    const screen = preloaded ?? (await api.getSaleScreenData());
+    const products = screen.products;
+    const students = screen.students;
+    const sales = screen.sales;
+    const pix = { text: screen.pixCopyText };
+    const shortcuts = screen.dueDateShortcuts;
+    const authorizations = screen.siblingAuthorizations;
+    const setup = screen.reservations;
     dueDateShortcuts = shortcuts;
     saleStudents = students;
     saleAuthorizations = authorizations;
@@ -3127,26 +3195,25 @@ async function renderPayments(session: AppSession | null): Promise<void> {
     return;
   }
   try {
-    const [students, payments, guardians] = await Promise.all([
-      api.listStudents({ includeInactive: true }),
-      api.listPayments(),
-      api.listGuardians({ includeInactive: true }),
-    ]);
+    const data = await api.getPaymentsScreenData();
+    const students = data.students;
+    const payments = data.payments;
+    const guardians = data.guardians;
     familyStudents = students;
-    const linkEntries = await Promise.all(
-      students.map(async (student) => ({
-        studentId: student.id,
-        links: await api.getStudentGuardians(student.id),
-      })),
-    );
     familyLinksByGuardian = new Map();
-    for (const entry of linkEntries) {
-      for (const link of entry.links.filter((item) => item.active)) {
-        const current = familyLinksByGuardian.get(link.guardianId) ?? new Set();
-        current.add(entry.studentId);
-        familyLinksByGuardian.set(link.guardianId, current);
-      }
+    for (const link of data.links.filter((item) => item.active)) {
+      const current = familyLinksByGuardian.get(link.guardianId) ?? new Set();
+      current.add(link.studentId);
+      familyLinksByGuardian.set(link.guardianId, current);
     }
+    openReceivables = [
+      ...data.receivables.overdue,
+      ...data.receivables.today,
+      ...data.receivables.upcoming,
+    ];
+    dueDateHistoryLabels = data.receivables.dueDateHistory.map(
+      (item) => item.summaryLabel,
+    );
     if (studentSelect instanceof HTMLSelectElement) {
       const current = studentSelect.value;
       studentSelect.replaceChildren();
@@ -3256,11 +3323,10 @@ async function renderCredits(session: AppSession | null): Promise<void> {
     return;
   }
   try {
-    const [students, guardians, accounts] = await Promise.all([
-      api.listStudents({ includeInactive: true }),
-      api.listGuardians({ includeInactive: true }),
-      api.listCreditAccounts(),
-    ]);
+    const data = await api.getCreditsScreenData();
+    const students = data.students;
+    const guardians = data.guardians;
+    const accounts = data.accounts;
     if (studentSelect instanceof HTMLSelectElement) {
       const current = studentSelect.value;
       studentSelect.replaceChildren();
@@ -3538,7 +3604,7 @@ document
                   )?.value || undefined
                 : undefined,
           })
-          .then(() => {
+          .then((result) => {
             cart.length = 0;
             saleSourceReservationId = null;
             const overrideCheck = document.querySelector(
@@ -3553,22 +3619,19 @@ document
             if (cashAmountInput instanceof HTMLInputElement) {
               cashAmountInput.value = '';
             }
-            return api.getSession();
-          })
-          .then((session) =>
-            Promise.all([
-              renderSales(session),
-              renderInventory(session),
-              renderReservations(session),
-              renderCash(session),
-              renderReversals(session),
-              renderAgenda(session),
-            ]).then(() =>
-              renderPayments(session).then(() =>
-                renderCredits(session).then(() => renderAdjust(session)),
-              ),
-            ),
-          ),
+            invalidateAreas(
+              'inventory',
+              'reservations',
+              'cash',
+              'reversals',
+              'agenda',
+              'payments',
+              'credits',
+              'adjust',
+            );
+            loadedAreas.add('sales');
+            return renderSales(currentSession, result.screen);
+          }),
     );
   });
 
@@ -3673,15 +3736,16 @@ document.querySelector('#payment-form')?.addEventListener('submit', (event) => {
       })
       .then(() => {
         amountInput.value = '';
-        return api.getSession();
+        invalidateAreas(
+          'agenda',
+          'payments',
+          'credits',
+          'adjust',
+          'cash',
+          'sales',
+        );
+        return ensureAreaLoaded('payments', true);
       })
-      .then((session) =>
-        renderAgenda(session).then(() =>
-          renderPayments(session).then(() =>
-            renderCredits(session).then(() => renderAdjust(session)),
-          ),
-        ),
-      )
       .catch((error: unknown) => {
         if (status) {
           status.textContent =
@@ -3786,15 +3850,16 @@ document
         })
         .then(() => {
           amountInput.value = '';
-          return api.getSession();
+          invalidateAreas(
+            'agenda',
+            'payments',
+            'credits',
+            'adjust',
+            'cash',
+            'sales',
+          );
+          return ensureAreaLoaded('payments', true);
         })
-        .then((session) =>
-          renderAgenda(session).then(() =>
-            renderPayments(session).then(() =>
-              renderCredits(session).then(() => renderAdjust(session)),
-            ),
-          ),
-        )
         .catch((error: unknown) => {
           if (status) {
             status.textContent =
@@ -3848,15 +3913,16 @@ document
         })
         .then(() => {
           amountInput.value = '';
-          return api.getSession();
+          invalidateAreas(
+            'agenda',
+            'payments',
+            'credits',
+            'adjust',
+            'cash',
+            'sales',
+          );
+          return ensureAreaLoaded('credits', true);
         })
-        .then((session) =>
-          renderAgenda(session).then(() =>
-            renderPayments(session).then(() =>
-              renderCredits(session).then(() => renderAdjust(session)),
-            ),
-          ),
-        )
         .catch((error: unknown) => {
           if (status) {
             status.textContent =
@@ -3907,9 +3973,8 @@ document
         .then(() => {
           amountInput.value = '';
           reasonInput.value = '';
-          return api.getSession();
+          return ensureAreaLoaded('credits', true);
         })
-        .then((session) => renderCredits(session))
         .catch((error: unknown) => {
           if (status) {
             status.textContent =
@@ -3952,10 +4017,10 @@ document
           canChargeAccount: charge.checked,
           canUseAccountCredit: credit.checked,
         })
-        .then(() => api.getSession())
-        .then((session) =>
-          renderFamily(session).then(() => renderSales(session)),
-        )
+        .then(() => {
+          invalidateAreas('sales');
+          return ensureAreaLoaded('family', true);
+        })
         .catch((error: unknown) => {
           if (status) {
             status.textContent =
@@ -4003,8 +4068,7 @@ document
             autoSettle: autoSettle.checked,
           });
         })
-        .then(() => api.getSession())
-        .then((session) => renderFamily(session))
+        .then(() => ensureAreaLoaded('family', true))
         .catch((error: unknown) => {
           if (status) {
             status.textContent =
@@ -4058,15 +4122,16 @@ document
         })
         .then(() => {
           amountInput.value = '';
-          return api.getSession();
+          invalidateAreas(
+            'agenda',
+            'payments',
+            'credits',
+            'adjust',
+            'cash',
+            'sales',
+          );
+          return ensureAreaLoaded('credits', true);
         })
-        .then((session) =>
-          renderAgenda(session).then(() =>
-            renderPayments(session).then(() =>
-              renderCredits(session).then(() => renderAdjust(session)),
-            ),
-          ),
-        )
         .catch((error: unknown) => {
           if (status) {
             status.textContent =
@@ -4121,9 +4186,8 @@ document
         .then(() => {
           amountInput.value = '';
           reasonInput.value = '';
-          return api.getSession();
+          return ensureAreaLoaded('credits', true);
         })
-        .then((session) => renderCredits(session))
         .catch((error: unknown) => {
           if (status) {
             status.textContent =
@@ -4218,11 +4282,9 @@ document
           amountInput.value = '';
           percentInput.value = '';
           reasonInput.value = '';
-          return api.getSession();
+          invalidateAreas('agenda');
+          return ensureAreaLoaded('adjust', true);
         })
-        .then((session) =>
-          renderAgenda(session).then(() => renderAdjust(session)),
-        )
         .catch((error: unknown) => {
           if (status) {
             status.textContent =
@@ -4271,11 +4333,9 @@ document
         })
         .then(() => {
           reasonInput.value = '';
-          return api.getSession();
+          invalidateAreas('agenda');
+          return ensureAreaLoaded('adjust', true);
         })
-        .then((session) =>
-          renderAgenda(session).then(() => renderAdjust(session)),
-        )
         .catch((error: unknown) => {
           if (status) {
             status.textContent =
@@ -4337,9 +4397,9 @@ document.querySelector('#student-form')?.addEventListener('submit', (event) => {
           });
       return saved.then(() => {
         fillStudentForm(null);
-        return renderStudents(true).then(() =>
-          api.getSession().then(renderFamily),
-        );
+        return renderStudents(true).then(() => {
+          invalidateAreas('family', 'sales');
+        });
       });
     },
   );
@@ -4421,7 +4481,7 @@ document
           : api.createGuardian(fields);
         return saved.then(() => {
           fillGuardianForm(null);
-          return api.getSession().then(renderFamily);
+          return ensureAreaLoaded('family', true);
         });
       },
     );
@@ -4448,7 +4508,7 @@ document
           .then(() =>
             Promise.all([
               renderStudents(true),
-              api.getSession().then(renderFamily),
+              ensureAreaLoaded('family', true),
             ]),
           ),
     );
@@ -4531,7 +4591,7 @@ document
       () =>
         saved.then(() => {
           fillCategoryForm(null);
-          return api.getSession().then(renderProducts);
+          return ensureAreaLoaded('products', true);
         }),
     );
   });
@@ -4566,7 +4626,7 @@ document.querySelector('#ad-hoc-form')?.addEventListener('submit', (event) => {
       .then(() => {
         name.value = '';
         price.value = '';
-        return api.getSession().then(renderProducts);
+        return ensureAreaLoaded('products', true);
       })
       .catch((error: unknown) => {
         if (adHocStatus) {
@@ -4602,7 +4662,7 @@ document
         .then(() => {
           delta.value = '';
           reason.value = '';
-          return api.getSession().then(renderInventory);
+          return ensureAreaLoaded('inventory', true);
         })
         .catch((error: unknown) => {
           if (inventoryStatus) {
@@ -4634,7 +4694,7 @@ document
     busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
       api
         .openCashSession({ openingFloatCents: parsed.data })
-        .then(() => api.getSession().then(renderCash))
+        .then(() => ensureAreaLoaded('cash', true))
         .catch((error: unknown) => {
           if (cashStatus) {
             cashStatus.textContent =
@@ -4671,7 +4731,7 @@ document
         .then(() => {
           amountInput.value = '';
           noteInput.value = '';
-          return api.getSession().then(renderCash);
+          return ensureAreaLoaded('cash', true);
         })
         .catch((error: unknown) => {
           if (cashStatus) {
@@ -4709,7 +4769,7 @@ document
         .then(() => {
           amountInput.value = '';
           noteInput.value = '';
-          return api.getSession().then(renderCash);
+          return ensureAreaLoaded('cash', true);
         })
         .catch((error: unknown) => {
           if (cashStatus) {
@@ -4750,7 +4810,7 @@ document
         .then(() => {
           countedInput.value = '';
           noteInput.value = '';
-          return api.getSession().then(renderCash);
+          return ensureAreaLoaded('cash', true);
         })
         .catch((error: unknown) => {
           if (cashStatus) {
@@ -4794,24 +4854,21 @@ reverseCreditId?.addEventListener('change', () => {
 });
 
 function refreshAfterReversal(successMessage: string): Promise<void> {
-  return api.getSession().then((session) =>
-    Promise.all([
-      renderReversals(session),
-      renderSales(session),
-      renderInventory(session),
-      renderCash(session),
-      renderAgenda(session),
-    ]).then(() =>
-      renderPayments(session).then(() =>
-        renderCredits(session).then(() => {
-          renderAdjust(session);
-          if (reversalsStatus) {
-            reversalsStatus.textContent = successMessage;
-          }
-        }),
-      ),
-    ),
+  invalidateAreas(
+    'reversals',
+    'sales',
+    'inventory',
+    'cash',
+    'agenda',
+    'payments',
+    'credits',
+    'adjust',
   );
+  return ensureAreaLoaded('reversals', true).then(() => {
+    if (reversalsStatus) {
+      reversalsStatus.textContent = successMessage;
+    }
+  });
 }
 
 document
@@ -5178,24 +5235,23 @@ reservationsList?.addEventListener('click', (event) => {
       });
     }
     saleSourceReservationId = entry.id;
-    openArea('sales');
+    activeArea = 'sales';
+    syncWorkspace(currentSession);
     busyFromEvent(event, 'Não foi possível concluir a ação.', () =>
-      api.getSession().then((session) =>
-        renderSales(session).then(() => {
-          if (
-            entry.linkedStudentId &&
-            saleStudentSelect instanceof HTMLSelectElement
-          ) {
-            saleStudentSelect.value = entry.linkedStudentId;
-            fillSaleAccounts();
-          }
-          renderCart();
-          if (salesStatus) {
-            salesStatus.textContent =
-              'Entrega da reserva. Escolha o pagamento e confirme a venda.';
-          }
-        }),
-      ),
+      ensureAreaLoaded('sales').then(() => {
+        if (
+          entry.linkedStudentId &&
+          saleStudentSelect instanceof HTMLSelectElement
+        ) {
+          saleStudentSelect.value = entry.linkedStudentId;
+          fillSaleAccounts();
+        }
+        renderCart();
+        if (salesStatus) {
+          salesStatus.textContent =
+            'Entrega da reserva. Escolha o pagamento e confirme a venda.';
+        }
+      }),
     );
     return;
   }
