@@ -11,6 +11,8 @@ test-results/
 !.env.example
 
 .clasp.json
+.clasp.dev.json
+.clasp.e2e.json
 .clasprc.json
 *.pem
 *.key

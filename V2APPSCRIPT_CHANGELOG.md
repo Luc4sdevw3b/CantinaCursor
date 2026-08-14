@@ -9,6 +9,43 @@ Regras:
 - não incluir dados reais, tokens ou secrets;
 - não reescrever entradas antigas para alterar a história.
 
+## 2026-08-14 09:10 — Playground DEV numa planilha de teste (parcial)
+
+**Origem:** Pedido do usuário
+**Status:** Parcial
+**Versão alvo:** 0.1.0-dev
+**Fase:** Fase 26
+
+### Pedido / objetivo
+
+- Testar o app numa planilha Google real, sem usar a planilha E2E isolada nem PROD.
+
+### Tentativa / implementação
+
+- Criado um projeto Apps Script separado, preso à planilha de teste, com o código da Fase 26. O projeto E2E não foi reapontado.
+- `.gitignore` passa a ignorar `.clasp.dev.json` e `.clasp.e2e.json` para não versionar IDs.
+- O Web App novo ainda não abre: o Google recusou o acesso anônimo até a primeira implantação/autorização no editor.
+
+### Resultado
+
+- Código enviado ao script da planilha de teste. Falta a dona autorizar o script e criar a implantação Web App no editor do Apps Script.
+
+### Diferenças do pedido
+
+- Ainda não deu para clicar nas telas nem gravar o seed fictício (Coxinha, Ana, recreios) na planilha.
+
+### Impacto técnico
+
+- Sem mudança de schema. Ambiente E2E de automação permanece separado.
+
+### Testes
+
+- Nenhum teste novo. Checks da Fase 26 não foram reexecutados nesta tentativa.
+
+### Pendências / próxima versão
+
+- Autorizar o script no editor, implantar como Web App e, depois, carregar o seed fictício.
+
 ## 2026-08-14 08:56 — Implementada a Fase 26: reserva vira venda
 
 **Origem:** Pedido do usuário
